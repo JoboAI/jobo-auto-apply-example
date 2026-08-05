@@ -41,7 +41,7 @@ sequenceDiagram
     J->>B: Open the apply URL
     B-->>J: Discovered form fields
     J->>A: POST application.fields_requested (signed)
-    Note over A,J: absolute 120s from created_at;<br/>transport retries at 0s / 5s / 20s
+    Note over A,J: absolute 120s from created_at<br/>transport retries at 0s / 5s / 20s
     A->>A: Verify HMAC over id "." ts "." rawBody
     A->>A: Deterministic pass (no network)
     A->>O: One call for the rest
