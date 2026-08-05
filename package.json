@@ -1,0 +1,49 @@
+{
+  "name": "jobo-auto-apply-nextjs",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Example integration for the Jobo Auto Apply API: import a resume as a profile, apply to a job by URL, and answer the ATS form with OpenRouter.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "dev:tunnel": "tsx scripts/dev-tunnel.ts",
+    "tunnel": "cloudflared tunnel --url http://localhost:3000",
+    "doctor": "tsx scripts/doctor.ts",
+    "db:generate": "drizzle-kit generate",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@jobo-ai/autoapply": "^0.3.0",
+    "better-sqlite3": "^11.10.0",
+    "drizzle-orm": "^0.45.2",
+    "geist": "^1.7.2",
+    "next": "^15.3.4",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "server-only": "^0.0.1",
+    "shiki": "^4.3.1",
+    "unpdf": "^1.8.0",
+    "zod": "^3.25.67"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.11",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^22.15.32",
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6",
+    "drizzle-kit": "^0.31.2",
+    "tailwindcss": "^4.1.11",
+    "tsx": "^4.20.3",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.4"
+  }
+}
