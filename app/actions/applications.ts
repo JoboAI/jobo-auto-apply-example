@@ -5,7 +5,7 @@ import { revalidatePath } from 'next/cache'
 import { eq } from 'drizzle-orm'
 import { db } from '@/db/client'
 import { applications } from '@/db/schema'
-import { callbackUrl } from '@/lib/config'
+import { callbackUrl, config } from '@/lib/config'
 import { JoboAPIError } from '@jobo-ai/autoapply'
 import { jobo } from '@/lib/jobo/client'
 import { explain } from '@/lib/jobo/problem'
@@ -24,6 +24,25 @@ export type CreateResult =
   | { ok: false; error: string; code?: string }
 
 /**
+ * Enforced here rather than in the form, because the form is not the only way
+ * in — this is a server action, and anything that can POST to the app can call
+ * it with a URL of its choosing. Runs before the local row is written, so a
+ * refused attempt leaves nothing behind.
+ */
+function sandboxOnlyRefusal(applyUrl: string): string | null {
+  const c = config()
+  if (!c.DEMO_SANDBOX_ONLY) return null
+  let host: string
+  try {
+    host = new URL(applyUrl).hostname
+  } catch {
+    return 'That is not a valid URL.'
+  }
+  if (host === c.SANDBOX_HOST) return null
+  return `This deployment only applies to ${c.SANDBOX_HOST} scenarios. Run it yourself to apply to a real posting.`
+}
+
+/**
  * Create an application.
  *
  * The ordering here is the point. The local row and its Idempotency-Key are
@@ -33,6 +52,12 @@ export type CreateResult =
  * a duplicate application.
  */
 export async function createApplicationAction(input: CreateInput): Promise<CreateResult> {
+  const refusal = sandboxOnlyRefusal(input.applyUrl)
+  if (refusal) {
+    log.warn({ applyUrl: input.applyUrl }, 'refused a non-sandbox apply URL')
+    return { ok: false, error: refusal, code: 'sandbox_only' }
+  }
+
   const id = randomUUID()
   const idempotencyKey = randomUUID()
 

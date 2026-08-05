@@ -1,0 +1,23 @@
+# node_modules must NOT come from the host: better-sqlite3 ships a native
+# binding compiled for whatever built it, so copying a macOS or arm64 build
+# into a linux/amd64 image produces a module that cannot load at boot.
+node_modules
+.next
+.data
+out
+build
+
+.env
+.env.local
+.env*.local
+
+.git
+.gitignore
+*.tsbuildinfo
+next-env.d.ts
+.DS_Store
+
+# Not needed to run the app.
+tests
+scripts
+vitest.config.ts

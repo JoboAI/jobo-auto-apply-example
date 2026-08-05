@@ -242,6 +242,8 @@ The visual system is ported from the Jobo Enterprise portal style guide: flat wh
 | `OPENROUTER_RESUME_MODEL` | Default `deepseek/deepseek-v4-flash-0731`. Runs once per resume, with no clock pressure — a slower, stronger model is a reasonable swap. |
 | `ANSWER_BUDGET_MS` | Default 45000. Ceiling, not a target — the real budget is derived from the event deadline. |
 | `DATA_DIR`, `DEFAULT_SANDBOX` | — |
+| `DEMO_SANDBOX_ONLY` | Default `false`. `true` refuses any apply URL outside `SANDBOX_HOST` — turn it on for a shared deployment so a visitor cannot apply to a real posting on your key. |
+| `SANDBOX_HOST` | Default `sandbox.jobo.world`. Matched on hostname exactly. |
 
 ---
 

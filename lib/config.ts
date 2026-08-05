@@ -85,7 +85,23 @@ const schema = z.object({
   DEFAULT_SANDBOX: z
     .string()
     .default('true')
-    .transform((v) => v !== 'false')
+    .transform((v) => v !== 'false'),
+
+  /**
+   * Refuse to create an application against anything but the sandbox ATS.
+   *
+   * Off by default — you want the real thing locally. It exists for a shared
+   * deployment, where whoever opens the page is not necessarily whoever pays
+   * for the API key: without it, a stranger can point this app at a real
+   * employer's form and a real application gets submitted in your name.
+   */
+  DEMO_SANDBOX_ONLY: z
+    .string()
+    .default('false')
+    .transform((v) => v === 'true'),
+
+  /** The host DEMO_SANDBOX_ONLY permits. Matches Jobo's own SandboxBaseUrl. */
+  SANDBOX_HOST: z.string().default('sandbox.jobo.world')
 })
 
 export type Config = z.infer<typeof schema>
@@ -106,6 +122,8 @@ function raw() {
     OPENROUTER_APP_URL: process.env.OPENROUTER_APP_URL || undefined,
     ANSWER_BUDGET_MS: process.env.ANSWER_BUDGET_MS,
     DATA_DIR: process.env.DATA_DIR,
+    DEMO_SANDBOX_ONLY: process.env.DEMO_SANDBOX_ONLY,
+    SANDBOX_HOST: process.env.SANDBOX_HOST,
     DEFAULT_SANDBOX: process.env.DEFAULT_SANDBOX
   }
 }
