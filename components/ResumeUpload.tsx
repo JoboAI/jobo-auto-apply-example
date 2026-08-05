@@ -29,7 +29,24 @@ export function ResumeUpload({
 
     try {
       const response = await fetch('/api/profiles/import', { method: 'POST', body })
-      const payload = (await response.json()) as { redirectTo?: string; error?: string }
+
+      // Not every response comes from this app. A proxy or CDN in front of it
+      // answers timeouts and upstream failures with its own HTML page or an
+      // empty body, and calling .json() on those throws "Unexpected token '<'"
+      // or "Unexpected end of JSON input" — which tells the user nothing about
+      // what went wrong. Read the body once, then decide.
+      const raw = await response.text()
+      let payload: { redirectTo?: string; error?: string } = {}
+      try {
+        payload = raw ? (JSON.parse(raw) as typeof payload) : {}
+      } catch {
+        setError(
+          `The server returned an unexpected ${response.status} response. ` +
+            'Check the app logs — this usually means it failed upstream of the route.'
+        )
+        return
+      }
+
       if (!response.ok) {
         setError(payload.error ?? `Upload failed (${response.status})`)
         return

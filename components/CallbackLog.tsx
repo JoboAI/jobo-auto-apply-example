@@ -41,6 +41,57 @@ function preview(value: unknown): string {
   return json && json.length > 120 ? `${json.slice(0, 120)}…` : (json ?? '—')
 }
 
+
+/**
+ * Jobo discovers fields from the DOM, so a `select` or `multi_select` arrives
+ * with its own option text folded into the label:
+ *
+ *   "Country ChooseVietnamUnited States"   options: [Vietnam, United States]
+ *   "Preferred locations RemoteHo Chi Minh CityNew York"
+ *
+ * The options get their own column, so repeating them in the label reads as a
+ * rendering bug. Peel them off the end, back to front, since they are
+ * concatenated in order with no separator.
+ *
+ * The placeholder (`<option value="">Choose</option>`) is a special case: it
+ * has no value, so Jobo drops it from `options` and this cannot match it. Trim
+ * a trailing placeholder word only when options were actually removed — that
+ * way a field genuinely called "Choose" is never touched.
+ *
+ * Presentation only. `field.label` is what the answer engine sees, and it is
+ * left exactly as Jobo sent it.
+ */
+const SELECT_PLACEHOLDERS = ['Choose', 'Select', 'Select one', 'Please select', 'None', '--']
+
+export function displayLabel(field: Field): string {
+  const original = (field.label ?? '').trim()
+  const options = field.options ?? []
+  if (options.length === 0) return original
+
+  let label = original
+  let stripped = false
+  for (let i = options.length - 1; i >= 0; i--) {
+    const text = options[i]?.label?.trim()
+    if (text && label.endsWith(text)) {
+      label = label.slice(0, -text.length).trimEnd()
+      stripped = true
+    }
+  }
+
+  if (stripped) {
+    for (const placeholder of SELECT_PLACEHOLDERS) {
+      if (label.toLowerCase().endsWith(placeholder.toLowerCase())) {
+        label = label.slice(0, -placeholder.length).trimEnd()
+        break
+      }
+    }
+  }
+
+  // Never hand back an empty cell — a label that was nothing but options is
+  // still more useful than blank.
+  return label || original
+}
+
 function FieldTable({ fields }: { fields: Field[] }) {
   return (
     <div className="overflow-x-auto border hairline">
@@ -58,7 +109,7 @@ function FieldTable({ fields }: { fields: Field[] }) {
           {fields.map((field) => (
             <tr key={field.field_id}>
               <td className="text-ink-800">
-                {field.label || <code className="font-mono text-xs">{field.field_id}</code>}
+                {displayLabel(field) || <code className="font-mono text-xs">{field.field_id}</code>}
                 {field.sensitive && <span className="ml-1.5 text-xs text-ink-500">(sensitive)</span>}
               </td>
               <td>
@@ -66,7 +117,16 @@ function FieldTable({ fields }: { fields: Field[] }) {
               </td>
               <td className="text-ink-600">{field.requires_answer ? 'yes' : '—'}</td>
               <td className="font-mono text-xs text-ink-500">{field.semantic_key ?? '—'}</td>
-              <td className="text-ink-600">{field.options?.length || '—'}</td>
+              <td className="text-ink-600">
+                {field.options?.length ? (
+                  <span className="text-xs">
+                    {field.options.slice(0, 3).map((option) => option.label).join(', ')}
+                    {field.options.length > 3 && ` +${field.options.length - 3}`}
+                  </span>
+                ) : (
+                  '—'
+                )}
+              </td>
             </tr>
           ))}
         </tbody>

@@ -36,6 +36,14 @@ export interface CompletionOptions<T extends z.ZodTypeAny> {
   temperature?: number
   maxTokens?: number
   signal?: AbortSignal
+  /**
+   * Turn the model's reasoning pass off. Worth doing whenever the output is a
+   * strict JSON schema and the work is extraction rather than deduction: the
+   * reasoning tokens are billed, they count against the response deadline, and
+   * they are discarded — nothing here ever reads them. Models that cannot
+   * disable it ignore the field.
+   */
+  reasoning?: boolean
 }
 
 export interface CompletionResult<T> {
@@ -80,6 +88,9 @@ export async function complete<T extends z.ZodTypeAny>(
           { role: 'system', content: options.system },
           { role: 'user', content: options.user }
         ],
+        // OpenRouter's unified control; `exclude` also keeps the reasoning
+        // out of the response body for providers that always produce it.
+        ...(options.reasoning === false ? { reasoning: { enabled: false, exclude: true } } : {}),
         response_format: responseFormat(options.schemaName, options.schema)
       })
     })

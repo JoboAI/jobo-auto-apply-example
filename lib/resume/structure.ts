@@ -41,6 +41,10 @@ export async function structureResume(text: string): Promise<ResumeProfile> {
     schemaName: 'resume_profile',
     // Parsing, not composing. Keep it as literal as the model allows.
     temperature: 0.1,
+    // No reasoning pass: this is transcription into a schema, not a problem to
+    // think through. It was adding billed tokens and seconds to an import for
+    // no gain in the extracted profile.
+    reasoning: false,
     maxTokens: 8192,
     timeoutMs: 120_000
   })

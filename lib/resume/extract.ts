@@ -45,7 +45,12 @@ export async function extractResumeText(bytes: Uint8Array): Promise<string> {
 
   let text: string
   try {
-    const pdf = await getDocumentProxy(bytes)
+    // pdf.js TRANSFERS the buffer it is handed, leaving the caller's view
+    // detached — `bytes.byteLength` becomes 0 and every later read of it
+    // throws "Cannot perform Construct on a detached ArrayBuffer". The caller
+    // still needs these bytes to store the file afterwards, so hand over a
+    // copy and let pdf.js consume that instead.
+    const pdf = await getDocumentProxy(new Uint8Array(bytes))
     const extracted = await extractText(pdf, { mergePages: true })
     text = Array.isArray(extracted.text) ? extracted.text.join('\n') : extracted.text
   } catch (error) {

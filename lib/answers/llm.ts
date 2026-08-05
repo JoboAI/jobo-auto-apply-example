@@ -59,7 +59,14 @@ export async function generateAnswers(
     // Low but not zero: open-ended answers read as templated at 0, and there is
     // nothing here that benefits from sampling diversity.
     temperature: 0.2,
-    maxTokens: 4096
+    maxTokens: 4096,
+    // No reasoning pass. This call runs against a hard deadline — Jobo gives
+    // the whole exchange 120s, of which this gets ANSWER_BUDGET_MS — and a
+    // reasoning model spends that budget thinking instead of answering. With
+    // it on, a 12-field form timed out at 45s, fell back to the deterministic
+    // pass alone, and cancelled the application for five unanswerable fields.
+    // The task is mapping a known profile onto known fields, not deduction.
+    reasoning: false
   })
 
   return {
