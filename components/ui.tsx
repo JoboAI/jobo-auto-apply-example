@@ -108,6 +108,59 @@ const TONES: Record<Tone, { badge: string; dot: string }> = {
   info: { badge: 'bg-brand-tint text-brand', dot: 'bg-brand' }
 }
 
+/**
+ * A collapsible Panel.
+ *
+ * Native <details>/<summary>: it needs no client JavaScript, so it works in a
+ * server component and survives a page that has not hydrated yet — which
+ * matters here because most of this app is server-rendered.
+ *
+ * Use it where a second column used to be. Side-by-side reads well on a wide
+ * desktop and badly everywhere else, and it forced the main column narrow
+ * enough that code snippets scrolled sideways.
+ */
+export function Accordion({
+  title,
+  eyebrow,
+  summary,
+  defaultOpen = false,
+  children,
+  className = ''
+}: {
+  title: ReactNode
+  eyebrow?: string
+  /** Shown next to the title while collapsed — a count, a status, a hint. */
+  summary?: ReactNode
+  defaultOpen?: boolean
+  children: ReactNode
+  className?: string
+}) {
+  return (
+    <details className={`panel group ${className}`} open={defaultOpen}>
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-6 py-4 [&::-webkit-details-marker]:hidden">
+        <div className="min-w-0">
+          {eyebrow && <p className="eyebrow">{eyebrow}</p>}
+          <h2 className="truncate text-sm font-medium text-ink-900">{title}</h2>
+        </div>
+        <div className="flex shrink-0 items-center gap-3">
+          {summary && <span className="text-xs text-ink-600">{summary}</span>}
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            aria-hidden
+            className="h-4 w-4 text-ink-500 transition-transform duration-150 ease-out group-open:rotate-180"
+          >
+            <path d="m6 9 6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </div>
+      </summary>
+      <div className="border-t hairline px-6 py-5">{children}</div>
+    </details>
+  )
+}
+
 export function Badge({
   children,
   tone = 'neutral',

@@ -18,7 +18,15 @@ const manrope = Manrope({ subsets: ['latin'], weight: ['500'], variable: '--font
 export const metadata: Metadata = {
   title: 'Jobo Auto Apply — Next.js example',
   description:
-    'A guided tutorial: import a resume as a profile, apply to a job by URL, and answer the ATS form over a signed webhook.'
+    'A guided tutorial: import a resume as a profile, apply to a job by URL, and answer the ATS form over a signed webhook.',
+  // Declared rather than relying on app/favicon.ico discovery, because these
+  // live in public/ where brand-kit/generate.mjs writes them.
+  icons: {
+    icon: [
+      { url: '/favicon.svg', type: 'image/svg+xml' },
+      { url: '/favicon.ico', sizes: '48x48' }
+    ]
+  }
 }
 
 // The nav chip reads tutorial state from SQLite on every request; nothing in
@@ -48,9 +56,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" className={`${inter.variable} ${manrope.variable} ${GeistMono.variable}`}>
       <body className="min-h-screen bg-white antialiased">
         <header className="sticky top-0 z-50 border-b hairline bg-white">
-          <div className="mx-auto flex h-14 max-w-[1264px] items-center gap-6 px-4 sm:px-8">
+          <div className="mx-auto flex h-14 max-w-[1600px] items-center gap-6 px-4 sm:px-8">
             <Link href="/" className="flex items-center gap-3">
-              <span className="text-sm font-semibold tracking-tight text-ink-900">Jobo</span>
+              {/* The real lockup from brand-kit/, generated into public/logos
+                  by brand-kit/generate.mjs — not a hand-copied SVG, so
+                  `generate.mjs --check` catches drift. The master is cropped to
+                  its glyph bounds, so this height renders that many pixels. */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/logos/jobo-logo.svg" alt="Jobo" className="h-[18px] w-auto" />
               <span className="hidden h-5 w-px bg-ink-200 sm:block" />
               <span className="hidden text-sm font-medium tracking-tight text-ink-600 sm:block">
                 Auto Apply example
@@ -77,8 +90,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             )}
           </div>
         </header>
-        <main className="mx-auto max-w-[1264px] px-4 py-8 sm:px-8">{children}</main>
-        <footer className="mx-auto max-w-[1264px] px-4 pb-10 pt-4 sm:px-8">
+        <main className="mx-auto max-w-[1600px] px-4 py-8 sm:px-8">{children}</main>
+        <footer className="mx-auto max-w-[1600px] px-4 pb-10 pt-4 sm:px-8">
           <p className="font-mono text-[11px] uppercase tracking-[0.05em] text-ink-500">
             API contract 2026-07-21 · the interesting file is app/api/jobo/webhook/route.ts
           </p>

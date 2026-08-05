@@ -1,199 +1,20 @@
 import type { WebhookEventRow } from '@/db/schema'
-import type { AnswerCommand, Field, FieldsRequestedEvent } from '@jobo-ai/autoapply'
-import type { AnswerTrace } from '@/lib/answers/types'
+import type { AnswerCommand, FieldsRequestedEvent } from '@jobo-ai/autoapply'
 import { Badge, Json, relativeTime } from './ui'
 
 /**
- * The callback log.
+ * The callback log — a request bin for the one exchange that matters.
  *
  * This is why `webhook_events` stores `raw_body` and `response_body` verbatim
- * rather than a summary: being able to see the exact fields Jobo sent, the
- * exact answers we returned, and *why each answer was chosen* is the
- * difference between debugging this integration and guessing at it. It also
- * outlives the data upstream — Jobo purges sandbox applications after 24h.
+ * rather than a summary: when the integration misbehaves you want the exact
+ * bytes Jobo sent and the exact bytes you returned. It also outlives the data
+ * upstream — Jobo purges sandbox applications after 24h.
+ *
+ * Deliberately just those two things. This panel used to open with a table of
+ * every discovered field and a second explaining how each answer was chosen,
+ * which pushed the bodies below the fold — and both restated what the JSON
+ * beneath them already said.
  */
-
-/** The absolute callback deadline, from the event's created_at. */
-const CALLBACK_DEADLINE_MS = 120_000
-
-const SOURCE_TONE = {
-  deterministic: 'good',
-  llm: 'info',
-  repaired: 'warn',
-  previous_round: 'neutral',
-  declined: 'neutral',
-  dropped: 'bad'
-} as const
-
-const SOURCE_LABEL = {
-  deterministic: 'rule',
-  llm: 'AI',
-  repaired: 'repaired',
-  previous_round: 'carried over',
-  declined: 'declined',
-  dropped: 'dropped'
-} as const
-
-function preview(value: unknown): string {
-  if (value === undefined) return '—'
-  if (typeof value === 'string') return value.length > 120 ? `${value.slice(0, 120)}…` : value
-  const json = JSON.stringify(value)
-  return json && json.length > 120 ? `${json.slice(0, 120)}…` : (json ?? '—')
-}
-
-
-/**
- * Jobo discovers fields from the DOM, so a `select` or `multi_select` arrives
- * with its own option text folded into the label:
- *
- *   "Country ChooseVietnamUnited States"   options: [Vietnam, United States]
- *   "Preferred locations RemoteHo Chi Minh CityNew York"
- *
- * The options get their own column, so repeating them in the label reads as a
- * rendering bug. Peel them off the end, back to front, since they are
- * concatenated in order with no separator.
- *
- * The placeholder (`<option value="">Choose</option>`) is a special case: it
- * has no value, so Jobo drops it from `options` and this cannot match it. Trim
- * a trailing placeholder word only when options were actually removed — that
- * way a field genuinely called "Choose" is never touched.
- *
- * Presentation only. `field.label` is what the answer engine sees, and it is
- * left exactly as Jobo sent it.
- */
-const SELECT_PLACEHOLDERS = ['Choose', 'Select', 'Select one', 'Please select', 'None', '--']
-
-export function displayLabel(field: Field): string {
-  const original = (field.label ?? '').trim()
-  const options = field.options ?? []
-  if (options.length === 0) return original
-
-  let label = original
-  let stripped = false
-  for (let i = options.length - 1; i >= 0; i--) {
-    const text = options[i]?.label?.trim()
-    if (text && label.endsWith(text)) {
-      label = label.slice(0, -text.length).trimEnd()
-      stripped = true
-    }
-  }
-
-  if (stripped) {
-    for (const placeholder of SELECT_PLACEHOLDERS) {
-      if (label.toLowerCase().endsWith(placeholder.toLowerCase())) {
-        label = label.slice(0, -placeholder.length).trimEnd()
-        break
-      }
-    }
-  }
-
-  // Never hand back an empty cell — a label that was nothing but options is
-  // still more useful than blank.
-  return label || original
-}
-
-function FieldTable({ fields }: { fields: Field[] }) {
-  return (
-    <div className="overflow-x-auto border hairline">
-      <table className="s-table">
-        <thead>
-          <tr>
-            <th>Label</th>
-            <th>Type</th>
-            <th>Required</th>
-            <th>semantic_key</th>
-            <th>Options</th>
-          </tr>
-        </thead>
-        <tbody>
-          {fields.map((field) => (
-            <tr key={field.field_id}>
-              <td className="text-ink-800">
-                {displayLabel(field) || <code className="font-mono text-xs">{field.field_id}</code>}
-                {field.sensitive && <span className="ml-1.5 text-xs text-ink-500">(sensitive)</span>}
-              </td>
-              <td>
-                <code className="font-mono text-xs text-ink-600">{field.type}</code>
-              </td>
-              <td className="text-ink-600">{field.requires_answer ? 'yes' : '—'}</td>
-              <td className="font-mono text-xs text-ink-500">{field.semantic_key ?? '—'}</td>
-              <td className="text-ink-600">
-                {field.options?.length ? (
-                  <span className="text-xs">
-                    {field.options.slice(0, 3).map((option) => option.label).join(', ')}
-                    {field.options.length > 3 && ` +${field.options.length - 3}`}
-                  </span>
-                ) : (
-                  '—'
-                )}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  )
-}
-
-function TraceTable({ trace }: { trace: AnswerTrace[] }) {
-  return (
-    <ul className="divide-y hairline text-xs">
-      {trace.map((entry, index) => (
-        <li key={`${entry.field_id}-${index}`} className="py-2">
-          <div className="flex flex-wrap items-baseline gap-2">
-            <Badge tone={SOURCE_TONE[entry.source] ?? 'neutral'}>
-              {SOURCE_LABEL[entry.source] ?? entry.source}
-            </Badge>
-            <span className="font-medium text-ink-800">{entry.label}</span>
-            <code className="font-mono text-ink-500">{entry.type}</code>
-            {entry.confidence !== undefined && (
-              <span className="tabular-nums text-ink-500">
-                confidence {entry.confidence.toFixed(2)}
-              </span>
-            )}
-          </div>
-          {entry.value !== undefined && (
-            <p className="mt-1 break-words text-ink-800">{preview(entry.value)}</p>
-          )}
-          {entry.rule && (
-            <p className="mt-0.5 font-mono text-[11px] text-ink-500">rule: {entry.rule}</p>
-          )}
-          {entry.reasoning && <p className="mt-0.5 italic text-ink-600">{entry.reasoning}</p>}
-          {entry.repaired_from !== undefined && (
-            <p className="mt-0.5 text-ink-500">repaired from {preview(entry.repaired_from)}</p>
-          )}
-          {entry.reason && <p className="mt-0.5 text-ink-500">{entry.reason}</p>}
-        </li>
-      ))}
-    </ul>
-  )
-}
-
-/**
- * How much of the 120-second absolute window the answer actually used.
- * Making the deadline visceral is half the point of storing totalMs.
- */
-function BudgetMeter({ totalMs }: { totalMs: number }) {
-  const used = Math.min(totalMs / CALLBACK_DEADLINE_MS, 1)
-  return (
-    <div>
-      <div className="flex items-baseline justify-between">
-        <span className="font-mono text-[11px] uppercase tracking-[0.05em] text-ink-500">
-          Callback budget
-        </span>
-        <span className="text-xs tabular-nums text-ink-600">
-          answered in {(totalMs / 1000).toFixed(1)}s of the 120s window
-        </span>
-      </div>
-      <div className="mt-1.5 h-1.5 w-full bg-ink-100">
-        <div
-          className="h-full bg-brand-bright"
-          style={{ width: `${Math.max(used * 100, 1).toFixed(1)}%` }}
-        />
-      </div>
-    </div>
-  )
-}
 
 function EventCard({ event }: { event: WebhookEventRow }) {
   let parsed: FieldsRequestedEvent | null = null
@@ -212,12 +33,11 @@ function EventCard({ event }: { event: WebhookEventRow }) {
     }
   }
 
-  const isFields = event.type === 'application.fields_requested'
-  const fields = isFields ? (parsed?.step?.fields ?? []) : []
-  const commandErrors = isFields ? (parsed?.step?.command_errors ?? []) : []
+  const commandErrors =
+    event.type === 'application.fields_requested' ? (parsed?.step?.command_errors ?? []) : []
 
   return (
-    <details className="panel" open={isFields}>
+    <details className="panel" open>
       <summary className="flex cursor-pointer flex-wrap items-center gap-2 px-4 py-3 text-sm">
         {/* Every stored event got past signature verification — that is a
             precondition for reaching the handler at all. */}
@@ -232,24 +52,22 @@ function EventCard({ event }: { event: WebhookEventRow }) {
         )}
         {event.attemptsSeen > 1 && <Badge>seen {event.attemptsSeen}×</Badge>}
         <span className="ml-auto text-xs tabular-nums text-ink-500">
-          {event.llmMs ? `AI ${event.llmMs}ms · ` : ''}
-          {event.totalMs ? `total ${event.totalMs}ms · ` : ''}
+          {event.totalMs !== null ? `${(event.totalMs / 1000).toFixed(1)}s · ` : ''}
           {relativeTime(event.receivedAt)}
         </span>
       </summary>
 
       <div className="space-y-4 border-t hairline px-4 py-4">
-        <p className="font-mono text-[11px] text-ink-500">
-          {event.id}
-          {event.llmModel && <> · model {event.llmModel}</>}
-        </p>
-
-        {isFields && event.totalMs !== null && <BudgetMeter totalMs={event.totalMs} />}
+        {/* The event id, because it is the idempotency key: stable across
+            transport retries, and what you grep for on both sides. */}
+        <p className="font-mono text-[11px] text-ink-500">{event.id}</p>
 
         {event.error && (
           <p className="bg-warning-tint px-3 py-2 text-xs text-warning-deep">{event.error}</p>
         )}
 
+        {/* Kept above the bodies on purpose: this is why the previous round was
+            rejected, and it is not derivable from the request alone. */}
         {commandErrors.length > 0 && (
           <div>
             <h4 className="font-mono text-[11px] uppercase tracking-[0.05em] text-ink-500">
@@ -269,43 +87,23 @@ function EventCard({ event }: { event: WebhookEventRow }) {
           </div>
         )}
 
-        {fields.length > 0 && (
-          <div>
-            <h4 className="mb-1.5 font-mono text-[11px] uppercase tracking-[0.05em] text-ink-500">
-              Fields Jobo asked about ({fields.length})
-            </h4>
-            <FieldTable fields={fields} />
-          </div>
-        )}
+        <div>
+          <p className="mb-1 font-mono text-[11px] uppercase tracking-[0.05em] text-ink-500">
+            Request · what Jobo sent
+          </p>
+          <Json value={parsed ?? event.rawBody} />
+        </div>
 
-        {event.trace && event.trace.length > 0 && (
-          <div>
-            <h4 className="mb-1.5 font-mono text-[11px] uppercase tracking-[0.05em] text-ink-500">
-              How each answer was produced ({event.trace.length})
-            </h4>
-            <TraceTable trace={event.trace} />
-          </div>
-        )}
-
-        <details>
-          <summary className="cursor-pointer font-mono text-[11px] uppercase tracking-[0.05em] text-ink-500">
-            Raw request and response
-          </summary>
-          <div className="mt-2 grid gap-3 lg:grid-cols-2">
-            <div>
-              <p className="mb-1 text-xs text-ink-500">Request body (exactly as signed)</p>
-              <Json value={parsed ?? event.rawBody} />
-            </div>
-            <div>
-              <p className="mb-1 text-xs text-ink-500">Our response</p>
-              {command ? (
-                <Json value={command} />
-              ) : (
-                <p className="text-xs text-ink-500">No response recorded.</p>
-              )}
-            </div>
-          </div>
-        </details>
+        <div>
+          <p className="mb-1 font-mono text-[11px] uppercase tracking-[0.05em] text-ink-500">
+            Response · what we returned
+          </p>
+          {command ? (
+            <Json value={command} />
+          ) : (
+            <p className="text-xs text-ink-500">No response recorded.</p>
+          )}
+        </div>
       </div>
     </details>
   )

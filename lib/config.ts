@@ -88,20 +88,30 @@ const schema = z.object({
     .transform((v) => v !== 'false'),
 
   /**
-   * Refuse to create an application against anything but the sandbox ATS.
+   * Refuse to create an application against any host outside
+   * ALLOWED_APPLY_HOSTS.
    *
    * Off by default — you want the real thing locally. It exists for a shared
    * deployment, where whoever opens the page is not necessarily whoever pays
-   * for the API key: without it, a stranger can point this app at a real
-   * employer's form and a real application gets submitted in your name.
+   * for the API key.
    */
-  DEMO_SANDBOX_ONLY: z
+  RESTRICT_APPLY_HOSTS: z
     .string()
     .default('false')
     .transform((v) => v === 'true'),
 
-  /** The host DEMO_SANDBOX_ONLY permits. Matches Jobo's own SandboxBaseUrl. */
-  SANDBOX_HOST: z.string().default('sandbox.jobo.world')
+  /**
+   * Hosts RESTRICT_APPLY_HOSTS permits, comma-separated.
+   *
+   * Matched on hostname EXACTLY, never by suffix — `endsWith('.greenhouse.io')`
+   * would also accept `greenhouse.io.attacker.com`. A leading `.` marks an
+   * entry as a domain suffix explicitly, which is how the Greenhouse and Ashby
+   * boards are covered without opening the door to lookalikes.
+   *
+   * Default is the sandbox alone. Adding a real ATS means a visitor CAN submit
+   * a genuine application to a genuine employer on this deployment's key.
+   */
+  ALLOWED_APPLY_HOSTS: z.string().default('sandbox.jobo.world')
 })
 
 export type Config = z.infer<typeof schema>
@@ -122,8 +132,8 @@ function raw() {
     OPENROUTER_APP_URL: process.env.OPENROUTER_APP_URL || undefined,
     ANSWER_BUDGET_MS: process.env.ANSWER_BUDGET_MS,
     DATA_DIR: process.env.DATA_DIR,
-    DEMO_SANDBOX_ONLY: process.env.DEMO_SANDBOX_ONLY,
-    SANDBOX_HOST: process.env.SANDBOX_HOST,
+    RESTRICT_APPLY_HOSTS: process.env.RESTRICT_APPLY_HOSTS,
+    ALLOWED_APPLY_HOSTS: process.env.ALLOWED_APPLY_HOSTS,
     DEFAULT_SANDBOX: process.env.DEFAULT_SANDBOX
   }
 }

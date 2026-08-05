@@ -5,7 +5,7 @@ import { refreshIfStale } from '@/app/actions/applications'
 import { jobo } from '@/lib/jobo/client'
 import { explainCode } from '@/lib/jobo/problem'
 import type { Application } from '@jobo-ai/autoapply'
-import { Panel } from './ui'
+import { Accordion, Panel } from './ui'
 import { CallbackLog } from './CallbackLog'
 
 /**
@@ -93,8 +93,11 @@ export function ApplicationInspector({ view }: { view: ApplicationView }) {
       </Panel>
 
       {detail && (
-        <div className="grid gap-4 lg:grid-cols-2">
-          <Panel title="Steps (Jobo's view)">
+        <div className="space-y-4">
+          <Accordion
+            title="Steps (Jobo's view)"
+            summary={`${detail.steps.length} step${detail.steps.length === 1 ? '' : 's'}`}
+          >
             {detail.steps.length === 0 ? (
               <p className="text-sm text-ink-600">No steps yet.</p>
             ) : (
@@ -114,12 +117,15 @@ export function ApplicationInspector({ view }: { view: ApplicationView }) {
                 ))}
               </ul>
             )}
-          </Panel>
+          </Accordion>
 
           {/* One terminal webhook per application, summarised. Per-attempt
               detail — including the exact bodies exchanged — is portal-only,
               like webhook setup and secret rotation. */}
-          <Panel title="Terminal delivery (Jobo's view)">
+          <Accordion
+            title="Terminal delivery (Jobo's view)"
+            summary={detail.terminal_delivery ? detail.terminal_delivery.status : 'not sent'}
+          >
             {detail.terminal_delivery === null ? (
               <p className="text-sm text-ink-600">
                 Not sent yet — an application only produces one once it reaches a terminal state.
@@ -143,7 +149,7 @@ export function ApplicationInspector({ view }: { view: ApplicationView }) {
                 </p>
               </div>
             )}
-          </Panel>
+          </Accordion>
         </div>
       )}
     </div>

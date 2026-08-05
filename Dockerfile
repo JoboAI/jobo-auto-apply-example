@@ -37,6 +37,10 @@ ENV DATA_DIR=/data
 # must come along; the native binding is already compiled for this Node major.
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/.next ./.next
+# public/ carries the brand assets (logo, favicons). It genuinely did not exist
+# when this Dockerfile was written; forgetting this line once they arrived
+# would 404 the header logo in the container and nowhere else.
+COPY --from=builder /app/public ./public
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/next.config.ts ./next.config.ts
 # Migrations run on first query, from process.cwd()/db/migrations.

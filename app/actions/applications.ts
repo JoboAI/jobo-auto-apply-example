@@ -10,6 +10,7 @@ import { JoboAPIError } from '@jobo-ai/autoapply'
 import { jobo } from '@/lib/jobo/client'
 import { explain } from '@/lib/jobo/problem'
 import { isTerminal } from '@/lib/status'
+import { hostAllowed, parseAllowedHosts } from '@/lib/apply-hosts'
 import { log } from '@/lib/logger'
 
 export interface CreateInput {
@@ -29,17 +30,18 @@ export type CreateResult =
  * it with a URL of its choosing. Runs before the local row is written, so a
  * refused attempt leaves nothing behind.
  */
-function sandboxOnlyRefusal(applyUrl: string): string | null {
+function refuseDisallowedHost(applyUrl: string): string | null {
   const c = config()
-  if (!c.DEMO_SANDBOX_ONLY) return null
+  if (!c.RESTRICT_APPLY_HOSTS) return null
   let host: string
   try {
     host = new URL(applyUrl).hostname
   } catch {
     return 'That is not a valid URL.'
   }
-  if (host === c.SANDBOX_HOST) return null
-  return `This deployment only applies to ${c.SANDBOX_HOST} scenarios. Run it yourself to apply to a real posting.`
+  const allowed = parseAllowedHosts(c.ALLOWED_APPLY_HOSTS)
+  if (hostAllowed(host, allowed)) return null
+  return `This deployment only accepts apply URLs on ${allowed.join(', ')}. Run it yourself to apply anywhere else.`
 }
 
 /**
@@ -52,10 +54,10 @@ function sandboxOnlyRefusal(applyUrl: string): string | null {
  * a duplicate application.
  */
 export async function createApplicationAction(input: CreateInput): Promise<CreateResult> {
-  const refusal = sandboxOnlyRefusal(input.applyUrl)
+  const refusal = refuseDisallowedHost(input.applyUrl)
   if (refusal) {
-    log.warn({ applyUrl: input.applyUrl }, 'refused a non-sandbox apply URL')
-    return { ok: false, error: refusal, code: 'sandbox_only' }
+    log.warn({ applyUrl: input.applyUrl }, 'refused a disallowed apply host')
+    return { ok: false, error: refusal, code: 'host_not_allowed' }
   }
 
   const id = randomUUID()
