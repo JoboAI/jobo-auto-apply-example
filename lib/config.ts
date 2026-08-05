@@ -75,8 +75,8 @@ const schema = z.object({
   RESUME_URL_SIGNING_SECRET: z.string().min(16, 'must be at least 16 characters'),
 
   OPENROUTER_API_KEY: z.string().min(1, 'required'),
-  OPENROUTER_ANSWER_MODEL: z.string().default('google/gemini-2.0-flash'),
-  OPENROUTER_RESUME_MODEL: z.string().default('openai/gpt-4o-mini'),
+  OPENROUTER_ANSWER_MODEL: z.string().default('deepseek/deepseek-v4-flash-0731'),
+  OPENROUTER_RESUME_MODEL: z.string().default('deepseek/deepseek-v4-flash-0731'),
   OPENROUTER_APP_NAME: z.string().default('Jobo Auto Apply Example'),
   OPENROUTER_APP_URL: z.string().optional(),
 

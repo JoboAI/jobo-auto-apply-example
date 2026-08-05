@@ -238,8 +238,8 @@ The visual system is ported from the Jobo Enterprise portal style guide: flat wh
 | `PUBLIC_BASE_URL` | Your tunnel origin. **https, port 443, publicly resolvable.** Set for you by `npm run dev:tunnel`. |
 | `RESUME_URL_SIGNING_SECRET` | Signs resume download URLs. `openssl rand -base64 32`. |
 | `OPENROUTER_API_KEY` | — |
-| `OPENROUTER_ANSWER_MODEL` | Default `google/gemini-2.0-flash`. Latency matters against the 120s clock. |
-| `OPENROUTER_RESUME_MODEL` | Default `openai/gpt-4o-mini`. Runs once per resume; favour quality. |
+| `OPENROUTER_ANSWER_MODEL` | Default `deepseek/deepseek-v4-flash-0731`. Latency matters against the 120s clock. |
+| `OPENROUTER_RESUME_MODEL` | Default `deepseek/deepseek-v4-flash-0731`. Runs once per resume, with no clock pressure — a slower, stronger model is a reasonable swap. |
 | `ANSWER_BUDGET_MS` | Default 45000. Ceiling, not a target — the real budget is derived from the event deadline. |
 | `DATA_DIR`, `DEFAULT_SANDBOX` | — |
 
