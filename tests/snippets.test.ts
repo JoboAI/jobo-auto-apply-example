@@ -11,7 +11,7 @@ import { describe, expect, it } from 'vitest'
  * anchors still resolve, in order.
  */
 
-const TUTORIAL = 'app/learn/[step]/page.tsx'
+const TUTORIAL = 'app/learn/page.tsx'
 
 interface SnippetCall {
   path: string

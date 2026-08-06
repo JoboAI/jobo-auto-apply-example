@@ -165,8 +165,8 @@ export function StatusTimeline({
     <div className="panel p-6">
       {/* Six labels do not fit on one rail on a phone — "awaiting answers"
           alone is wider than its column — so below `sm` this stacks into a
-          list with the label beside its dot, the same shape Stepper.tsx uses.
-          The rail, with labels under the dots, returns at `sm`. */}
+          list with the label beside its dot. The rail, with labels under the
+          dots, returns at `sm`. */}
       <ol className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-0">
         {stages.map((stage, index) => {
           const state: 'done' | 'current' | 'upcoming' = isTerminal

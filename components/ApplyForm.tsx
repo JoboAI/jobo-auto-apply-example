@@ -15,6 +15,8 @@ interface Props {
   callbackUrl: string
   /** Where to go after a successful create; the new id is appended. */
   redirectPrefix?: string
+  /** Notebook mode: label the submit "Run" with a play glyph. */
+  runButton?: boolean
 }
 
 export function ApplyForm({
@@ -24,7 +26,8 @@ export function ApplyForm({
   sandboxNote,
   defaultSandbox,
   callbackUrl,
-  redirectPrefix = '/applications/'
+  redirectPrefix = '/applications/',
+  runButton = false
 }: Props) {
   const router = useRouter()
   const [profileId, setProfileId] = useState(
@@ -140,7 +143,22 @@ export function ApplyForm({
       )}
 
       <button type="submit" disabled={!canSubmit} className={btn('primary')}>
-        {pending ? 'Creating…' : 'Create application'}
+        {runButton ? (
+          pending ? (
+            'Running…'
+          ) : (
+            <>
+              <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden className="h-3 w-3">
+                <path d="M8 5v14l11-7z" />
+              </svg>
+              Run
+            </>
+          )
+        ) : pending ? (
+          'Creating…'
+        ) : (
+          'Create application'
+        )}
       </button>
     </form>
   )

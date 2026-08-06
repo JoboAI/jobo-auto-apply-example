@@ -4,6 +4,7 @@ import { migrate } from 'drizzle-orm/better-sqlite3/migrator'
 import { mkdirSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import * as schema from './schema'
+import { seedSampleProfiles } from './seed'
 
 /**
  * SQLite connection.
@@ -56,6 +57,16 @@ function create() {
       if (!busy || attempt >= 10) throw error
       Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100)
     }
+  }
+
+  // Seed the sample profiles right behind the migration, at the one choke
+  // point every process passes through. Idempotent (fixed ids + ON CONFLICT
+  // DO NOTHING) and env-free. A failure degrades to an empty dropdown rather
+  // than a database that refuses to open.
+  try {
+    seedSampleProfiles(database, RESUME_DIR)
+  } catch (error) {
+    console.warn('sample profile seeding failed:', error)
   }
 
   return database

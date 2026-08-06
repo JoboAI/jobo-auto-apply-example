@@ -6,7 +6,7 @@ import { applications, profiles } from '@/db/schema'
 import { callbackUrl, config } from '@/lib/config'
 import { getSandboxScenarios } from '@/lib/jobo/client'
 import type { SandboxScenario } from '@/lib/jobo/sandbox'
-import { envRegressed, getTutorialState, TUTORIAL_STEPS } from '@/lib/tutorial'
+import { envRegressed, getTutorialState } from '@/lib/tutorial'
 import { ApplyForm } from '@/components/ApplyForm'
 import { Badge, ButtonLink, Panel, StatusBadge, relativeTime } from '@/components/ui'
 
@@ -15,8 +15,8 @@ export const dynamic = 'force-dynamic'
 /**
  * The front door routes on tutorial state:
  *
- *   incomplete → the current tutorial step (the app IS the tutorial until
- *                you have seen the whole contract execute once)
+ *   incomplete → the notebook (the app IS the tutorial until you have seen
+ *                the whole contract execute once)
  *   complete   → the workbench: create another application in zero clicks,
  *                with the reference surfaces one link away
  */
@@ -24,7 +24,7 @@ export default async function HomePage() {
   const state = getTutorialState()
 
   if (!state.complete) {
-    redirect(`/learn/${TUTORIAL_STEPS[state.currentStep - 1].slug}`)
+    redirect('/learn')
   }
 
   const profileRows = db.select().from(profiles).orderBy(desc(profiles.createdAt)).all()
@@ -50,10 +50,10 @@ export default async function HomePage() {
         <p className="mt-2 text-sm text-ink-600">
           Tutorial complete —{' '}
           <Link
-            href="/learn/connect"
+            href="/learn"
             className="font-medium text-brand hover:text-brand-deep hover:underline"
           >
-            revisit any step
+            reopen the notebook
           </Link>{' '}
           whenever you need the walkthrough again.
         </p>
@@ -64,7 +64,7 @@ export default async function HomePage() {
       {envRegressed() && (
         <div className="bg-warning-tint px-4 py-3 text-sm text-warning-deep">
           Environment values are missing or invalid — callbacks will not arrive.{' '}
-          <Link href="/learn/connect" className="font-medium underline">
+          <Link href="/learn" className="font-medium underline">
             Check your setup
           </Link>
           .

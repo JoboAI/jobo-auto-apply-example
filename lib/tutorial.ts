@@ -1,60 +1,38 @@
 import { count, inArray, isNotNull } from 'drizzle-orm'
 import { db } from '@/db/client'
-import { applications, profiles, webhookEvents } from '@/db/schema'
+import { applications, webhookEvents } from '@/db/schema'
+import type { ApplicationRow, WebhookEventRow } from '@/db/schema'
 import { configIssues } from '@/lib/config'
+import { isTerminal } from '@/lib/status'
 
 /**
- * Tutorial progress.
+ * Notebook progress.
  *
- * Nothing here is stored. Every step's completion is DERIVED, per request,
- * from the same state the integration actually produces: environment
- * variables, a profile row, an application with a Jobo id, a terminal status.
+ * Nothing here is stored. Every state is DERIVED, per request, from the same
+ * state the integration actually produces: environment variables, an
+ * application with a Jobo id, a received callback, a terminal status.
  *
- * That is deliberate and on-message. The tutorial cannot drift from reality —
- * if you delete `.data/` it honestly regresses to step 2, and if your tunnel
- * hostname goes stale the setup step reopens. Three indexed SQLite reads per
- * request is the entire cost.
+ * That is deliberate and on-message. The notebook cannot drift from reality —
+ * if you delete `.data/` it honestly resets, and if your tunnel hostname goes
+ * stale the runtime strip reopens. Two indexed SQLite reads per request is
+ * the entire cost.
  */
 
-export const TUTORIAL_STEPS = [
-  {
-    slug: 'connect',
-    label: 'Verify your setup',
-    description: 'Keys, secret, and a public callback'
-  },
-  {
-    slug: 'profile',
-    label: 'Own the profile',
-    description: 'The half Jobo deliberately does not store'
-  },
-  {
-    slug: 'create',
-    label: 'Create an application',
-    description: 'The only request you make'
-  },
-  {
-    slug: 'watch',
-    label: 'Answer the callback',
-    description: 'Watch your webhook do the work'
-  },
-  { slug: 'done', label: 'Go live', description: 'The contract, recapped' }
-] as const
-
-export type TutorialSlug = (typeof TUTORIAL_STEPS)[number]['slug']
+// ─── Global milestones (layout chip, front-door routing) ────────────────────
 
 export interface TutorialState {
-  steps: { slug: TutorialSlug; label: string; description: string; done: boolean }[]
-  /** 1-based index of the first incomplete step (5 when all done). */
-  currentStep: number
-  /** Steps at or below this index are navigable. */
-  highestAvailableStep: number
+  envReady: boolean
+  /** Any application anywhere reached Jobo (has a Jobo id). */
+  created: boolean
+  /** Any application anywhere reached a terminal status. */
+  terminal: boolean
+  /** 1-based first incomplete milestone: env → create → terminal. */
+  milestone: 1 | 2 | 3
   complete: boolean
 }
 
 export function getTutorialState(): TutorialState {
   const envReady = configIssues().length === 0
-
-  const profileCount = db.select({ value: count() }).from(profiles).get()?.value ?? 0
 
   const created =
     (db
@@ -70,44 +48,75 @@ export function getTutorialState(): TutorialState {
       .where(inArray(applications.status, ['submitted', 'failed', 'canceled']))
       .get()?.value ?? 0) > 0
 
-  const done = [envReady, profileCount > 0, created, terminal, terminal]
-
-  const steps = TUTORIAL_STEPS.map((step, index) => ({ ...step, done: done[index] }))
-
+  const done = [envReady, created, terminal]
   const firstOpen = done.findIndex((value) => !value)
-  const currentStep = firstOpen === -1 ? 5 : firstOpen + 1
+  const milestone = (firstOpen === -1 ? 3 : firstOpen + 1) as 1 | 2 | 3
 
-  // Consecutive-completion gating: you can revisit anything you have finished
-  // plus the step you are on. Once step 4 is done, everything unlocks forever.
-  let consecutive = 0
-  while (consecutive < 4 && done[consecutive]) consecutive += 1
-  const complete = consecutive >= 4
-
-  return {
-    steps,
-    currentStep,
-    highestAvailableStep: complete ? 5 : consecutive + 1,
-    complete
-  }
+  return { envReady, created, terminal, milestone, complete: firstOpen === -1 }
 }
 
-export function stepIndex(slug: string): number {
-  return TUTORIAL_STEPS.findIndex((step) => step.slug === slug) + 1
+// ─── Per-cell states for the notebook page ───────────────────────────────────
+
+export type CellState = 'locked' | 'ready' | 'running' | 'done'
+
+export interface NotebookCells {
+  /** Cell 1 — create the application. */
+  create: CellState
+  /** Cell 2 — Jobo calls your webhook. */
+  callback: CellState
+  /** Cell 3 — your app answers, autonomously. */
+  respond: CellState
 }
 
-/** The latest application worth watching in step 4, newest first. */
-export function latestWatchTarget(): { id: string } | null {
+/**
+ * Pure derivation from the application the page is following. Rows in,
+ * states out — no reads here, so the edges are trivially unit-testable.
+ */
+export function getNotebookState(
+  envReady: boolean,
+  app: ApplicationRow | null,
+  events: WebhookEventRow[]
+): NotebookCells {
+  const created = Boolean(app?.joboApplicationId)
+  const fields = events.filter((event) => event.type === 'application.fields_requested')
+  const terminal = app ? isTerminal(app.status) : false
+
+  const create: CellState = !envReady
+    ? 'locked'
+    : app?.status === 'creating'
+      ? 'running'
+      : created
+        ? 'done'
+        : // No application yet, or a create_failed — either way the Run
+          // button is live again, with the failure shown in the output.
+          'ready'
+
+  const callback: CellState = !created
+    ? 'locked'
+    : fields.length > 0 || terminal
+      ? // A terminal event is also a webhook call: an application can fail
+        // before any fields are requested, and that still completes this cell.
+        'done'
+      : 'running'
+
+  const respond: CellState = fields.length === 0 ? 'locked' : terminal ? 'done' : 'running'
+
+  return { create, callback, respond }
+}
+
+/** The application the notebook follows when no ?app= is pinned: the newest
+ *  row, INCLUDING create failures — cell 1's output has to show those too. */
+export function latestApplication(): { id: string } | null {
   const row = db
     .select({ id: applications.id })
     .from(applications)
-    .where(isNotNull(applications.joboApplicationId))
     .orderBy(applications.createdAt)
     .all()
     .at(-1)
   return row ?? null
 }
 
-/** Aggregates for the completion recap on /learn/done. */
+/** Aggregates for the completion footer. */
 export function tutorialRecap() {
   const events = db
     .select({

@@ -1,8 +1,8 @@
 # Jobo Auto Apply — Next.js example
 
-Import a resume as a profile, paste a job URL, and watch Jobo drive the ATS form while this app answers its questions over a signed webhook.
+Pick a profile, paste a job URL, and watch Jobo drive the ATS form while this app answers its questions over a signed webhook.
 
-**The app is a guided tutorial.** Open it and it walks you through the integration in five steps — verify your setup, own the profile, create an application, answer the callback, go live — with each step teaching the API concept it exercises: the actual code that runs, the actual bytes on the wire, and a live view of your webhook answering. Progress is derived entirely from real state (env + SQLite), never stored; once you have watched one application reach a terminal state, the front page becomes a plain workbench.
+**The app is a notebook-style tutorial.** Open it and the whole contract sits on one page as three cells that unlock top to bottom — create the application, watch Jobo call your webhook, see the response your app returned — each showing the actual code that runs, the actual bytes on the wire, and its live output. Two fictional sample profiles ship with the app so the first cell is runnable in one click; add real ones on the Profiles page. Progress is derived entirely from real state (env + SQLite), never stored; once you have watched one application reach a terminal state, the front page becomes a plain workbench.
 
 **The interesting file is [`app/api/jobo/webhook/route.ts`](app/api/jobo/webhook/route.ts).** Everything else exists to give it something to answer with — and to teach you why.
 
@@ -122,9 +122,9 @@ Check everything before spending a create quota:
 npm run doctor
 ```
 
-`doctor` verifies the env, that your hostname resolves to a public address on port 443, that `/api/health` is reachable *through the tunnel*, your clock skew, your OpenRouter key, and your Jobo key. The same checks run in the browser on the tutorial's first step.
+`doctor` verifies the env, that your hostname resolves to a public address on port 443, that `/api/health` is reachable *through the tunnel*, your clock skew, your OpenRouter key, and your Jobo key. The same checks run in the browser from the notebook's runtime strip.
 
-Then open [http://localhost:3000](http://localhost:3000) — it drops you into the tutorial at whichever step your setup has actually reached.
+Then open [http://localhost:3000](http://localhost:3000) — it drops you into the notebook, with the cells your setup has actually reached unlocked.
 
 ### A tunnel that survives restarts
 
@@ -214,8 +214,9 @@ lib/answers/coerce.ts                typed slot → wire value, per field type
 lib/json-schema.ts                   zod → strict-mode JSON Schema
 lib/resume/                          unpdf extraction + OpenRouter structuring
 
-app/learn/[step]/                    the five-step tutorial (one route, no stored state)
-lib/tutorial.ts                      progress, derived from env + SQLite per request
+app/learn/page.tsx                   the notebook tutorial (one page, three cells, no stored state)
+lib/tutorial.ts                      cell states, derived from env + SQLite per request
+db/seed.ts                           the two sample profiles, reseeded idempotently at boot
 lib/snippets.ts                      tutorial code panels read the REAL source files
 components/StatusTimeline.tsx        created → queued → … → terminal, live
 components/ApplicationInspector.tsx  callback log + Jobo's view (shared with /applications)

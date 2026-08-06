@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { Inter, Manrope } from 'next/font/google'
 import { GeistMono } from 'geist/font/mono'
-import { getTutorialState, TUTORIAL_STEPS } from '@/lib/tutorial'
+import { getTutorialState } from '@/lib/tutorial'
 import './globals.css'
 
 /*
@@ -18,7 +18,7 @@ const manrope = Manrope({ subsets: ['latin'], weight: ['500'], variable: '--font
 export const metadata: Metadata = {
   title: 'Jobo Auto Apply — Next.js example',
   description:
-    'A guided tutorial: import a resume as a profile, apply to a job by URL, and answer the ATS form over a signed webhook.',
+    'A notebook-style tutorial: create an application, watch Jobo call your webhook, and see the answers your app returned — all on one page.',
   // Declared rather than relying on app/favicon.ico discovery, because these
   // live in public/ where brand-kit/generate.mjs writes them.
   icons: {
@@ -44,10 +44,9 @@ function safeTutorialState() {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   const state = safeTutorialState()
-  const currentSlug = state ? TUTORIAL_STEPS[state.currentStep - 1].slug : 'connect'
 
   const nav = [
-    { href: `/learn/${currentSlug}`, label: 'Tutorial' },
+    { href: '/learn', label: 'Tutorial' },
     { href: '/profiles', label: 'Profiles' },
     { href: '/applications', label: 'Applications' }
   ]
@@ -82,10 +81,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </nav>
             {state && !state.complete && (
               <Link
-                href={`/learn/${currentSlug}`}
+                href="/learn"
                 className="ml-auto hidden items-center gap-2 bg-brand-tint px-2.5 py-1 font-mono text-[11px] uppercase tracking-[0.05em] text-brand sm:inline-flex"
               >
-                Step {state.currentStep} of 5
+                Step {state.milestone} of 3
               </Link>
             )}
           </div>

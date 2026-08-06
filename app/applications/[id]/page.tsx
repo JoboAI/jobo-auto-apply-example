@@ -63,7 +63,7 @@ export default async function ApplicationDetailPage({
           all applications
         </Link>{' '}
         · the concepts on this page are covered in{' '}
-        <Link href="/learn/watch" className="underline">
+        <Link href="/learn" className="underline">
           the tutorial
         </Link>
       </p>

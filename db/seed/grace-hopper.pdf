@@ -1,0 +1,65 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> /Contents 4 0 R >>
+endobj
+4 0 obj
+<< /Length 2614 >>
+stream
+BT /F2 17 Tf 56 733.0 Td (Grace Hopper) Tj ET
+BT /F1 8.5 Tf 56 721.6 Td (Staff Platform Engineer · New York, NY, United States) Tj ET
+BT /F1 8.5 Tf 56 710.1 Td (grace.hopper@example.com · +1 202 555 0143 · https://grace-hopper.example.com) Tj ET
+BT /F1 8.5 Tf 56 698.6 Td (Sample profile - a fictional candidate shipped with the Jobo Auto Apply example.) Tj ET
+BT /F2 11 Tf 56 673.8 Td (Summary) Tj ET
+BT /F1 9.5 Tf 56 660.9 Td (Platform engineer with twelve years across SRE and infrastructure. I build paved) Tj ET
+BT /F1 9.5 Tf 56 648.1 Td (roads: golden-path pipelines, observability that answers questions, and deploys) Tj ET
+BT /F1 9.5 Tf 56 635.3 Td (nobody fears. I like deleting more code than I write and documenting the rest.) Tj ET
+BT /F2 11 Tf 56 610.4 Td (Experience) Tj ET
+BT /F2 9.5 Tf 56 593.6 Td (Compiler Works - Staff Platform Engineer) Tj ET
+BT /F1 8.5 Tf 56 582.1 Td (January 2021 - present · Remote \(US\)) Tj ET
+BT /F1 9.5 Tf 56 569.3 Td (Run the platform group \(6 engineers\) for a 200-engineer org: Kubernetes fleet,) Tj ET
+BT /F1 9.5 Tf 56 556.5 Td (CI/CD, and an internal developer portal that cut service-bootstrap time from two) Tj ET
+BT /F1 9.5 Tf 56 543.7 Td (weeks to one afternoon. Halved compute spend with bin-packing and spot pools.) Tj ET
+BT /F2 9.5 Tf 56 524.8 Td (Flowmatic - Senior Site Reliability Engineer) Tj ET
+BT /F1 8.5 Tf 56 513.4 Td (April 2017 - December 2020 · New York, NY) Tj ET
+BT /F1 9.5 Tf 56 500.5 Td (Owned reliability for the payments path \(99.99% SLO\). Introduced error budgets,) Tj ET
+BT /F1 9.5 Tf 56 487.7 Td (progressive rollouts, and the incident-review culture the company still uses.) Tj ET
+BT /F2 9.5 Tf 56 468.9 Td (Mark One Systems - Systems Engineer) Tj ET
+BT /F1 8.5 Tf 56 457.4 Td (August 2013 - March 2017 · Philadelphia, PA) Tj ET
+BT /F1 9.5 Tf 56 444.6 Td (Automated a bare-metal fleet of 800 hosts with config management and PXE.) Tj ET
+BT /F2 11 Tf 56 419.7 Td (Education) Tj ET
+BT /F1 9.5 Tf 56 406.9 Td (Rensselaer Polytechnic Institute - BSc Applied Mathematics, 2009-2013) Tj ET
+BT /F2 11 Tf 56 382.1 Td (Skills) Tj ET
+BT /F1 9.5 Tf 56 369.2 Td (Go · Kubernetes · Terraform · Observability \(Prometheus, OpenTelemetry\) · CI/CD · Linux) Tj ET
+BT /F1 9.5 Tf 56 356.4 Td (Certifications: Certified Kubernetes Administrator \(CNCF, 2022\)) Tj ET
+BT /F1 9.5 Tf 56 343.6 Td (Languages: English \(native\)) Tj ET
+BT /F2 11 Tf 56 318.7 Td (Work authorisation) Tj ET
+BT /F1 9.5 Tf 56 305.9 Td (US citizen - authorised to work in the United States. No sponsorship required.) Tj ET
+BT /F1 9.5 Tf 56 293.1 Td (Notice period: 2 weeks.) Tj ET
+endstream
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+6 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>
+endobj
+xref
+0 7
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000251 00000 n 
+0000002917 00000 n 
+0000003014 00000 n 
+trailer
+<< /Size 7 /Root 1 0 R >>
+startxref
+3116
+%%EOF

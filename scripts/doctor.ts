@@ -2,8 +2,8 @@
  * Preflight CLI.
  *
  * The checks themselves live in lib/doctor-checks.ts and are shared with the
- * tutorial's "Run preflight" action (/learn/connect) — this file only loads
- * the env the way Next.js would and prints the results.
+ * notebook's "Run preflight" action (the runtime strip on /learn) — this file
+ * only loads the env the way Next.js would and prints the results.
  *
  *   npm run doctor
  */

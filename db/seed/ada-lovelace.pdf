@@ -1,0 +1,65 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> /Contents 4 0 R >>
+endobj
+4 0 obj
+<< /Length 2653 >>
+stream
+BT /F2 17 Tf 56 733.0 Td (Ada Lovelace) Tj ET
+BT /F1 8.5 Tf 56 721.6 Td (Senior Backend Engineer · London, United Kingdom) Tj ET
+BT /F1 8.5 Tf 56 710.1 Td (ada.lovelace@example.com · +44 20 7946 0958 · https://ada-lovelace.example.com) Tj ET
+BT /F1 8.5 Tf 56 698.6 Td (Sample profile - a fictional candidate shipped with the Jobo Auto Apply example.) Tj ET
+BT /F2 11 Tf 56 673.8 Td (Summary) Tj ET
+BT /F1 9.5 Tf 56 660.9 Td (Backend engineer with nine years of experience building event-driven systems and the) Tj ET
+BT /F1 9.5 Tf 56 648.1 Td (teams that run them. I care about idempotency, boring failure modes, and APIs that) Tj ET
+BT /F1 9.5 Tf 56 635.3 Td (explain themselves. Most at home owning a service end to end, from schema to pager.) Tj ET
+BT /F2 11 Tf 56 610.4 Td (Experience) Tj ET
+BT /F2 9.5 Tf 56 593.6 Td (Analytical Engines Ltd - Senior Backend Engineer) Tj ET
+BT /F1 8.5 Tf 56 582.1 Td (March 2022 - present · London, UK) Tj ET
+BT /F1 9.5 Tf 56 569.3 Td (Own the job-scheduling platform: a Postgres-backed queue executing 40M tasks/day.) Tj ET
+BT /F1 9.5 Tf 56 556.5 Td (Designed the idempotency-key contract used by every internal producer, cutting) Tj ET
+BT /F1 9.5 Tf 56 543.7 Td (duplicate side effects to zero across three years of incident reports.) Tj ET
+BT /F1 9.5 Tf 56 530.8 Td (Led a team of four through the migration from cron sprawl to event-driven workers.) Tj ET
+BT /F2 9.5 Tf 56 512.0 Td (Difference Works - Backend Engineer) Tj ET
+BT /F1 8.5 Tf 56 500.5 Td (June 2019 - February 2022 · Remote) Tj ET
+BT /F1 9.5 Tf 56 487.7 Td (Built the public REST API \(TypeScript, Node.js\) for a payroll product used by 900) Tj ET
+BT /F1 9.5 Tf 56 474.9 Td (SMEs; wrote the webhook delivery system, including signing and replay protection.) Tj ET
+BT /F2 9.5 Tf 56 456.1 Td (Jacquard Systems - Software Engineer) Tj ET
+BT /F1 8.5 Tf 56 444.6 Td (September 2016 - May 2019 · Manchester, UK) Tj ET
+BT /F1 9.5 Tf 56 431.8 Td (Shipped inventory ingestion pipelines processing supplier feeds in 14 formats.) Tj ET
+BT /F2 11 Tf 56 406.9 Td (Education) Tj ET
+BT /F1 9.5 Tf 56 394.1 Td (University of Edinburgh - BSc Mathematics and Computer Science, 2012-2016) Tj ET
+BT /F2 11 Tf 56 369.2 Td (Skills) Tj ET
+BT /F1 9.5 Tf 56 356.4 Td (TypeScript · Node.js · PostgreSQL · Kubernetes · Event-driven architecture · Terraform) Tj ET
+BT /F1 9.5 Tf 56 343.6 Td (Languages: English \(native\), French \(conversational\)) Tj ET
+BT /F2 11 Tf 56 318.7 Td (Work authorisation) Tj ET
+BT /F1 9.5 Tf 56 305.9 Td (Authorised to work in the UK and the Netherlands. No sponsorship required.) Tj ET
+BT /F1 9.5 Tf 56 293.1 Td (Notice period: 30 days.) Tj ET
+endstream
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+6 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>
+endobj
+xref
+0 7
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000251 00000 n 
+0000002956 00000 n 
+0000003053 00000 n 
+trailer
+<< /Size 7 /Root 1 0 R >>
+startxref
+3155
+%%EOF

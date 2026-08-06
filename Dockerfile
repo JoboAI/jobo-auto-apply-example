@@ -43,8 +43,16 @@ COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/next.config.ts ./next.config.ts
-# Migrations run on first query, from process.cwd()/db/migrations.
+# Migrations run on first query, from process.cwd()/db/migrations. The seed
+# assets (sample personas + resume PDFs) also live under db/.
 COPY --from=builder /app/db ./db
+# The notebook tutorial renders its code panels by reading these REAL source
+# files at request time (lib/snippets.ts). Without them the deployed pages
+# show "not readable" placeholders instead of the code they exist to teach.
+# The sources are already public verbatim via the examples mirror.
+COPY --from=builder /app/app ./app
+COPY --from=builder /app/lib ./lib
+COPY --from=builder /app/components ./components
 
 RUN mkdir -p /data && chown -R node:node /data
 USER node
