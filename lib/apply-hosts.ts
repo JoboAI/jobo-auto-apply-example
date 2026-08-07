@@ -36,7 +36,7 @@ export function hostAllowed(host: string, allowed: readonly string[]): boolean {
  *
  * Exact hostnames rather than a `.greenhouse.io` suffix, because these are the
  * board hosts Jobo's own provider adapters match — see the url patterns in
- * Jobo.Chrome/config. Anything else on those domains is not a job board.
+ * the ApplyAdapters module's Config. Anything else on those domains is not a job board.
  */
 export const ATS_HOSTS = [
   'sandbox.jobo.world',
