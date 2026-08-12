@@ -19,7 +19,7 @@ GET    /api/auto-apply/applications/{id}     read
 POST   /api/auto-apply/applications/{id}/cancel
 ```
 
-There is no profile endpoint, no resume upload, and no "fetch the pending questions" endpoint. When Jobo's browser agent finds a form, it **POSTs the fields to your callback and reads the answers out of your HTTP response body**, synchronously, inside a 120-second budget.
+There is no profile endpoint, no resume upload, and no "fetch the pending questions" endpoint. When Jobo's browser agent finds a form, it **POSTs the fields to your callback and reads the answers out of your HTTP response body**, synchronously. Ordinary field steps have a 120-second budget; a short-lived email verification-code step has a 60-second budget.
 
 So this app is not a client of the answer engine — it *is* the answer engine. That is the half of the integration Jobo deliberately does not own, and it is what this repo shows you how to build.
 
@@ -157,7 +157,7 @@ Compare constant-time against every `v1=` entry in `X-Jobo-Webhook-Signature` (t
 
 You do not have to write any of that: `createCallbackHandler` from [`@jobo-ai/autoapply`](https://www.npmjs.com/package/@jobo-ai/autoapply) does it, and hands your hook the verified event plus the exact signed bytes on `context.raw`. Because Jobo signs a rotation with **both** secrets and sends two `v1=` entries, whichever single secret you hold matches one of them — there is nothing to configure and no second env var.
 
-**The deadline is absolute, and starts at `created_at`.** 120 seconds covering every transport attempt. On the t=20s retry you have ~100s left, not 120s.
+**The deadline is absolute, and starts at `created_at`.** Ordinary steps allow 120 seconds covering every transport attempt. On the t=20s retry you have ~100s left, not 120s. A `one_time_code` step is capped at 60 seconds because the emailed code is short-lived.
 
 **Answer with the response body:**
 
@@ -168,6 +168,14 @@ You do not have to write any of that: `createCallbackHandler` from [`@jobo-ai/au
 or `{"action":"cancel"}` — with `answers` genuinely **absent**, since even an empty array is rejected as `answers_not_allowed`. That is why `AnswerCommand` is a discriminated union rather than an object with an optional array.
 
 **Corrections.** Invalid answers come back as a new `fields_requested` with `command_errors` and an incremented `correction_round`. The **full field list** is re-sent, so your reply must be a complete snapshot, not a delta. After 3 rounds the application dies with `correction_limit_exceeded`.
+
+**Email verification is another field step.** Greenhouse may expose one field with `format: "one_time_code"` and `semantic_key: "email_otp"` after the initial application request. Keep the same webhook request open, prompt the applicant for the code sent to the candidate email from the first step, and return it within 60 seconds:
+
+```json
+{ "action": "proceed", "answers": [ { "field_id": "<otp-field-id>", "value": "AB12CD34" } ] }
+```
+
+There is no OTP endpoint and no new webhook event. Jobo submits the code in one distinct verification request; it never repeats the initial application request. Disposable inboxes belong only to Jobo's sandbox status probe—real applications always use the candidate email your callback supplied.
 
 **Dedupe on `X-Jobo-Webhook-Id`.** It is stable across retries; `X-Jobo-Delivery-Attempt` is not.
 
@@ -183,12 +191,12 @@ Two passes, in this order for a reason: the deterministic pass needs no network,
 | `type: 'file'` | **Rule** | Always the signed resume URL. |
 | `repeating_group` | **Rule** | Ordering, the ≤10 cap, `is_current`/`end_date`, and dedupe are rules, not judgement. |
 | Unambiguous option match | **Rule** | `country_code: "US"` onto an option `{value:"US"}`. |
-| `sensitive: true` | **Neither** | See below. |
+| `sensitive: true` | **Applicant prompt** | Use the applicant-provided value; never ask the model to invent it. |
 | `type: 'unknown'` | **Neither** | Unanswerable by contract. |
 | Open-ended text | **LLM** | "Why this company", "describe a project". |
 | Options needing semantic choice | **LLM** | "5-7 years" → the `senior` option. |
 
-**Sensitive fields are never sent to the model.** For voluntary self-identification the order is: a value the user typed into the UI → the form's own "prefer not to say" option → leave it unanswered. Jobo does not infer these either. An example that invented someone's demographic data to get a form submitted would be teaching the wrong lesson.
+**Sensitive fields are never sent to the model.** A `one_time_code` is prompted from the applicant while the callback is open. For voluntary self-identification the order is: a value the user typed into the UI → the form's own "prefer not to say" option → leave it unanswered. Jobo does not infer either kind of answer.
 
 **Typed slots, not a polymorphic `value`.** A `value` that is a string, number, boolean, array or object depending on a sibling field's type is exactly what strict JSON Schema handles worst, and the failure is silent. Instead the model declares a `kind` and fills the matching slot, and [`lib/answers/coerce.ts`](lib/answers/coerce.ts) turns that into the wire shape. `kind: "skip"` gives it an explicit way to decline instead of fabricating.
 
