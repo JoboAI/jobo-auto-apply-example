@@ -8,6 +8,13 @@
       "when": 1785057189262,
       "tag": "0000_neat_wild_child",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1786600976493,
+      "tag": "0001_lame_wendell_rand",
+      "breakpoints": true
     }
   ]
 }

@@ -9,9 +9,10 @@ import type { AnswerContext } from './types'
  * The single OpenRouter call that answers everything the deterministic pass
  * could not.
  *
- * One call, not one per field: latency is the binding constraint inside a
- * 120-second deadline, and the model answers better when it can see the whole
- * form at once (a "years of experience" question and a "tell us about yourself"
+ * One call, not one per field: latency is the binding constraint inside the
+ * step deadline (answers_expire_at, ~3 minutes — a real browser is holding the
+ * form open), and the model answers better when it can see the whole form at
+ * once (a "years of experience" question and a "tell us about yourself"
  * question should agree with each other).
  */
 
@@ -60,9 +61,9 @@ export async function generateAnswers(
     // nothing here that benefits from sampling diversity.
     temperature: 0.2,
     maxTokens: 4096,
-    // No reasoning pass. This call runs against a hard deadline — Jobo gives
-    // the whole exchange 120s, of which this gets ANSWER_BUDGET_MS — and a
-    // reasoning model spends that budget thinking instead of answering. With
+    // No reasoning pass. This call runs against a hard deadline — the step
+    // expires at answers_expire_at, of which this gets ANSWER_BUDGET_MS — and
+    // a reasoning model spends that budget thinking instead of answering. With
     // it on, a 12-field form timed out at 45s, fell back to the deterministic
     // pass alone, and cancelled the application for five unanswerable fields.
     // The task is mapping a known profile onto known fields, not deduction.

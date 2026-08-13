@@ -4,13 +4,16 @@ import { isTerminal } from '@/lib/status'
 import { Badge, StatusBadge, relativeTime } from '@/components/ui'
 import { ApplicationInspector, loadApplicationView } from '@/components/ApplicationInspector'
 import { StatusTimeline } from '@/components/StatusTimeline'
-import { PollingRefresher } from '@/components/PollingRefresher'
+import { AutoRunner } from '@/components/AutoRunner'
 import { ApplicationActions } from '@/components/ApplicationActions'
 
 export const dynamic = 'force-dynamic'
+// The AutoRunner's advance action can hold a blocking exchange with Jobo for
+// minutes at a time — do not let a platform default cut it off first.
+export const maxDuration = 600
 
 /**
- * Reference view of one application. The tutorial's watch step renders the
+ * Reference view of one application. The tutorial's third cell renders the
  * same inspector with a teaching rail around it — this page is the plain
  * version for everyday use.
  */
@@ -28,8 +31,6 @@ export default async function ApplicationDetailPage({
 
   return (
     <div className="space-y-6">
-      <PollingRefresher active={open} />
-
       {/* The portal's service-header pattern: eyebrow, display title, status,
           actions right, meta row, hairline. */}
       <header className="border-b hairline pb-6">
@@ -52,7 +53,11 @@ export default async function ApplicationDetailPage({
         )}
       </header>
 
-      <StatusTimeline application={application} events={view.events} />
+      {/* Drives the loop from the browser: one blocking advance at a time,
+          refreshing this page between turns, stopping at a terminal status. */}
+      <AutoRunner id={application.id} active={open} />
+
+      <StatusTimeline application={application} steps={view.steps} />
 
       <ApplicationInspector view={view} />
 

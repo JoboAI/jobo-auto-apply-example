@@ -6,7 +6,7 @@ import type { AnswerContext } from './types'
  *
  * The single highest-leverage thing here is *compaction*. A raw `fields[]` from
  * a large ATS form is tens of kilobytes of structure the model does not need,
- * and shipping it whole costs latency (against a 120-second deadline) and
+ * and shipping it whole costs latency (against the ~3 minute step deadline) and
  * accuracy (the relevant details get buried). We project each field down to the
  * keys that actually determine a valid answer.
  */

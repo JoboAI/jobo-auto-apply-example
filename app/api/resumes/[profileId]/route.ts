@@ -9,19 +9,20 @@ import { log } from '@/lib/logger'
  * Serves a resume PDF to Jobo.
  *
  * When an application form has a `file` field, the answer is not an upload —
- * it is a URL that Jobo fetches itself, from its own infrastructure, during the
- * callback window. That has consequences worth stating plainly:
+ * it is a URL that Jobo fetches itself, from its own infrastructure, while the
+ * step is open. That has consequences worth stating plainly:
  *
- *   - It must be reachable from the public internet over HTTPS on port 443.
- *     `http://localhost:3000` cannot work, and neither can a tunnel that
- *     exposes a non-443 port — Jobo's SSRF guard rejects both before it ever
- *     makes the request.
+ *   - It must be reachable from the public internet over HTTPS on port 443
+ *     (this is what PUBLIC_BASE_URL is for — and why it is optional: without
+ *     it the answer engine simply skips file fields). `http://localhost:3000`
+ *     cannot work — Jobo's SSRF guard rejects it before it ever makes the
+ *     request.
  *   - It carries no credentials of ours, so the URL authenticates itself via a
  *     short-lived HMAC signature (lib/signed-url.ts).
  *   - The response's Content-Type must match what the field advertises in
  *     `constraints.accepted_file_types`, or the answer is rejected with
- *     `invalid_file_type`. This is the failure mode behind ngrok's free-tier
- *     browser interstitial: it returns text/html and the field looks correct.
+ *     `invalid_file_type`. Anything that intercepts the download and returns
+ *     text/html (an auth proxy, an interstitial) fails exactly here.
  */
 
 export const runtime = 'nodejs'

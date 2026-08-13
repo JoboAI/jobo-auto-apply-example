@@ -4,7 +4,6 @@ import type { ResumeProfile } from '@/lib/resume/profile-schema'
 import { findDeclineOption, matchBooleanOption, matchOption, normalize } from './options'
 import { coerceValue } from './coerce'
 import { asItemField } from './item-field'
-import { logicalFingerprint } from './validate'
 
 /**
  * Everything that can be answered from the profile without asking a model.
@@ -65,11 +64,14 @@ function fullAddress(profile: ResumeProfile): string | undefined {
 /**
  * The resume, as a `file` field value.
  *
- * Jobo downloads this URL itself during the callback window, so it must be a
+ * Jobo downloads this URL itself while the step is open, so it must be a
  * public HTTPS URL on port 443 — see lib/signed-url.ts and the note in
- * .env.example about why localhost can never work here.
+ * .env.example about why localhost can never work here. When no public origin
+ * is configured (`ctx.resumeUrl` is null) file fields are declined before the
+ * rules run — see runDeterministic below.
  */
 function resumeFile(field: Field, ctx: AnswerContext): FileValue | undefined {
+  if (!ctx.resumeUrl) return undefined
   const accepted = field.constraints?.accepted_file_types
   const patterns = Array.isArray(accepted)
     ? accepted.filter((a): a is string => typeof a === 'string')
@@ -94,6 +96,55 @@ function resumeFile(field: Field, ctx: AnswerContext): FileValue | undefined {
     filename: ctx.resumeFilename,
     content_type: ctx.resumeContentType
   }
+}
+
+/**
+ * The server deduplicates group items by a *logical* fingerprint, not by deep
+ * equality: two education entries at the same school with the same degree and
+ * start date collide even if every other key differs. Mirrored here so the
+ * built group never contains a pair the server would reject as duplicate_item.
+ */
+export function logicalFingerprint(
+  groupType: string | null,
+  item: Record<string, unknown>
+): string {
+  const preferred: string[] =
+    groupType === 'education'
+      ? ['school', 'degree', 'field_of_study', 'start_date']
+      : groupType === 'work_experience'
+        ? ['company', 'title', 'start_date']
+        : groupType === 'website'
+          ? ['url', 'type']
+          : groupType === 'language'
+            ? ['language', 'name']
+            : groupType === 'skill'
+              ? ['skill', 'name']
+              : []
+
+  let selected = preferred.filter((name) => item[name] !== undefined && item[name] !== null)
+  if (selected.length === 0) selected = Object.keys(item).sort()
+
+  return selected
+    .slice()
+    .sort()
+    .map((name) => {
+      let value = item[name]
+      // A typeahead value is compared by its selected option value, so the same
+      // school typed two different ways still collides.
+      if (
+        typeof value === 'object' &&
+        value !== null &&
+        !Array.isArray(value) &&
+        typeof (value as Record<string, unknown>).selection === 'object' &&
+        (value as Record<string, unknown>).selection !== null &&
+        'value' in ((value as Record<string, unknown>).selection as Record<string, unknown>)
+      ) {
+        value = ((value as Record<string, unknown>).selection as { value: unknown }).value
+      }
+      const rendered = typeof value === 'string' ? value.trim().toLowerCase() : JSON.stringify(value)
+      return `${name}:${rendered}`
+    })
+    .join('|')
 }
 
 // ─── Repeating groups ───────────────────────────────────────────────────────
@@ -426,6 +477,18 @@ export function runDeterministic(fields: Field[], ctx: AnswerContext): Determini
   for (const field of fields) {
     // Unanswerable by contract — no rule and no model can help.
     if (field.type === 'unknown') continue
+
+    // A file field needs a public HTTPS URL Jobo can download from. Without
+    // PUBLIC_BASE_URL there is nothing to hand over, so record why rather than
+    // silently leaving a gap — the trace note is the difference between "the
+    // app is broken" and "set PUBLIC_BASE_URL to answer resume fields".
+    if (field.type === 'file' && !ctx.resumeUrl) {
+      declined.set(
+        field.field_id,
+        'file field skipped: PUBLIC_BASE_URL is not set, so there is no public HTTPS URL to serve the resume from'
+      )
+      continue
+    }
 
     if (field.sensitive) {
       const outcome = resolveSensitive(field, ctx)

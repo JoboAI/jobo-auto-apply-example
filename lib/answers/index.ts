@@ -1,35 +1,35 @@
-import type { Answer, AnswerCommand, CommandError, Field } from '@jobo-ai/autoapply'
+import type { Answer, CommandError, Field } from '@jobo-ai/autoapply'
 import { log } from '@/lib/logger'
 import { coerceValue } from './coerce'
 import { asItemField } from './item-field'
 import { runDeterministic } from './deterministic'
 import { generateAnswers, type LlmGap } from './llm'
 import { slotValue } from './schema'
-import { validateCommand } from './validate'
 import type { AnswerContext, AnswerTrace, BuildResult } from './types'
 
 /**
  * The answer pipeline:
  *
- *     deterministic  →  LLM (one call)  →  coerce  →  validate  →  repair  →  decide
+ *     deterministic  →  LLM (one call)  →  coerce  →  decide
  *
  * Ordering is the whole design. The deterministic pass runs first and needs no
  * network, so an LLM timeout degrades to "fewer answers" rather than "no
- * answers". Validation runs before we respond, because the correction limit is
- * 3 and a round spent learning something we could have checked locally is a
- * round wasted.
+ * answers".
+ *
+ * There is no local validation pass, because the server validates for FREE:
+ * submitAnswers checks every value synchronously before anything touches the
+ * employer's form, and a bad answer is an immediate 400 with per-field errors —
+ * no correction round consumed, nothing lost. `repairAnswers` below turns that
+ * 400 into a mechanical fix-and-retry.
  */
 
 /** Values below this are treated as a skip. */
 const MIN_CONFIDENCE = 0.25
 
-/** Jobo caps the callback response at 1 MiB; stay clear of the edge. */
-const MAX_RESPONSE_BYTES = 900_000
-
-export async function buildCommand(
+export async function buildAnswers(
   fields: Field[],
   ctx: AnswerContext
-): Promise<{ command: AnswerCommand; result: BuildResult }> {
+): Promise<BuildResult> {
   const trace: AnswerTrace[] = []
   const fieldMap = new Map(fields.map((f) => [f.field_id, f]))
   const values = new Map<string, unknown>()
@@ -62,9 +62,9 @@ export async function buildCommand(
   }
 
   // ── 2. Carry forward previously accepted answers ──────────────────────────
-  // A correction round re-sends the FULL field list, and the response must be a
-  // complete snapshot rather than a delta. Re-seeding the answers that were not
-  // rejected keeps corrections cheap: only the genuinely broken fields reach
+  // A correction round re-sends the FULL field list, and the submission must be
+  // a complete snapshot rather than a delta. Re-seeding the answers the ATS did
+  // not reject keeps corrections cheap: only the genuinely broken fields reach
   // the model again.
   const rejectedIds = new Set(
     ctx.commandErrors.map((e) => e.field_id).filter((id): id is string => Boolean(id))
@@ -92,8 +92,8 @@ export async function buildCommand(
     if (field.sensitive) return false // never sent to a model
     if (deterministic.declined.has(field.field_id)) return false
     if (!values.has(field.field_id)) return true
-    // A field the last round rejected must be re-answered even if we have a
-    // deterministic value for it — that value is what just got rejected.
+    // A field the ATS rejected last round must be re-answered even if we have
+    // a deterministic value for it — that value is what just got rejected.
     return rejectedIds.has(field.field_id)
   })
 
@@ -182,7 +182,7 @@ export async function buildCommand(
       }
     } catch (error) {
       // Not fatal. The deterministic pass already produced answers, and a
-      // partial proceed may still be valid. If it is not, the unanswerable
+      // partial submission may still be valid. If it is not, the unanswerable
       // check below turns this into a clean cancel.
       llmError = error instanceof Error ? error.message : String(error)
       log.warn({ err: error, budgetMs: ctx.budgetMs }, 'answer generation failed; using deterministic answers only')
@@ -192,55 +192,21 @@ export async function buildCommand(
     log.warn({ budgetMs: ctx.budgetMs, pending: pending.length }, 'skipping LLM: deadline too close')
   }
 
-  // ── 4. Validate, then repair once ─────────────────────────────────────────
-  let answers = toAnswers(values)
-  let errors = validateCommand({ action: 'proceed', answers }, fields)
-
-  if (errors.length > 0) {
-    const repaired = repair(values, errors, fieldMap, trace)
-    if (repaired) {
-      answers = toAnswers(values)
-      errors = validateCommand({ action: 'proceed', answers }, fields)
-    }
-  }
-
-  // Anything still invalid is dropped rather than sent. A field we omit gets a
-  // clean `required` error at worst; a field we send broken can produce several.
-  if (errors.length > 0) {
-    for (const error of errors) {
-      if (!error.field_id) continue
-      if (error.code === 'required' && !values.has(error.field_id)) continue
-      if (values.delete(error.field_id)) {
-        const field = fieldMap.get(error.field_id)
-        trace.push({
-          field_id: error.field_id,
-          label: field?.label ?? error.field_id,
-          type: field?.type ?? 'unknown',
-          source: 'dropped',
-          reason: `failed local validation: ${error.code} — ${error.message}`
-        })
-      }
-    }
-    answers = toAnswers(values)
-  }
-
-  // ── 5. Decide ─────────────────────────────────────────────────────────────
+  // ── 4. Decide ─────────────────────────────────────────────────────────────
+  const answers = toAnswers(values)
   const unanswerable = fields.filter((f) => f.requires_answer && !values.has(f.field_id))
 
-  const result: BuildResult = { answers, trace, unanswerable, llmModel, llmMs, llmError }
-
   if (unanswerable.length > 0) {
-    // A clean cancel beats an incomplete proceed. Proceeding without a required
-    // answer spends one of only three correction rounds to be told something we
-    // already know, and the application is no closer to being submitted.
+    // The caller cancels rather than submitting an incomplete snapshot: the
+    // server would refuse it with per-field `required` errors — free, but no
+    // closer to submitted, and the step deadline keeps running meanwhile.
     log.warn(
       { unanswerable: unanswerable.map((f) => ({ id: f.field_id, label: f.label })) },
-      'canceling: required fields could not be answered'
+      'required fields could not be answered'
     )
-    return { command: { action: 'cancel' }, result }
   }
 
-  return { command: enforceSizeLimit({ action: 'proceed', answers }, trace), result }
+  return { answers, trace, unanswerable, llmModel, llmMs, llmError }
 }
 
 function toAnswers(values: Map<string, unknown>): Answer[] {
@@ -248,84 +214,86 @@ function toAnswers(values: Map<string, unknown>): Answer[] {
 }
 
 /**
- * Mechanically fix what can be fixed.
+ * Mechanically fix what a validation 400 says is broken.
  *
  * Most validation failures are shape problems, not knowledge problems: a length
  * overrun, "yes" where a boolean belongs, a label where an option value
  * belongs, a year where a month is required. Re-running coercion fixes those
- * for free. Anything that needs new information is left for the correction
- * round.
+ * for free — and the 400 itself cost nothing, because the server validates
+ * before anything touches the employer's form. Anything that needs new
+ * information is dropped (unless required) rather than resent broken.
+ *
+ * Returns the repaired snapshot, or null when nothing could be changed — in
+ * which case retrying is pointless and the caller should cancel.
  */
-function repair(
-  values: Map<string, unknown>,
+export function repairAnswers(
+  answers: Answer[],
   errors: CommandError[],
-  fieldMap: Map<string, Field>,
+  fields: Field[],
   trace: AnswerTrace[]
-): boolean {
+): Answer[] | null {
   const REPAIRABLE = new Set([
     'invalid_type',
     'invalid_option',
     'invalid_date',
     'date_precision',
+    'min_length',
     'max_length',
     'minimum',
     'maximum',
     'max_items',
-    'invalid_typeahead'
+    'invalid_typeahead',
+    'pattern'
   ])
 
+  const fieldMap = new Map(fields.map((f) => [f.field_id, f]))
+  const values = new Map(answers.map((a) => [a.field_id, a.value]))
   let changed = false
 
   for (const error of errors) {
-    if (!error.field_id || !REPAIRABLE.has(error.code)) continue
-    // Group repairs need per-item surgery; leave them to the correction round.
-    if (error.item_index !== null) continue
-
+    if (!error.field_id) continue
     const field = fieldMap.get(error.field_id)
     const current = values.get(error.field_id)
-    if (!field || current === undefined) continue
 
-    const repaired = coerceValue(current as never, field)
-    if (repaired === undefined || JSON.stringify(repaired) === JSON.stringify(current)) continue
+    // Group errors need per-item surgery; coercion works on whole values. Drop
+    // the item's broken key when we can, otherwise leave the group for a
+    // correction round.
+    if (error.item_index !== null) continue
 
-    values.set(error.field_id, repaired)
-    changed = true
-    trace.push({
-      field_id: error.field_id,
-      label: field.label,
-      type: field.type,
-      source: 'repaired',
-      repaired_from: current,
-      value: repaired,
-      reason: `local ${error.code}`
-    })
+    if (field && current !== undefined && REPAIRABLE.has(error.code)) {
+      const repaired = coerceValue(current as never, field)
+      if (repaired !== undefined && JSON.stringify(repaired) !== JSON.stringify(current)) {
+        values.set(error.field_id, repaired)
+        changed = true
+        trace.push({
+          field_id: error.field_id,
+          label: field.label,
+          type: field.type,
+          source: 'repaired',
+          repaired_from: current,
+          value: repaired,
+          reason: `server ${error.code}`
+        })
+        continue
+      }
+    }
+
+    // Could not repair. Withdrawing the answer is safe for optional fields —
+    // the server treats a missing optional answer as "leave it alone" — and
+    // strictly better than resubmitting a value we know it will refuse.
+    if (current !== undefined && field && !field.requires_answer && error.code !== 'required') {
+      values.delete(error.field_id)
+      changed = true
+      trace.push({
+        field_id: error.field_id,
+        label: field.label,
+        type: field.type,
+        source: 'dropped',
+        repaired_from: current,
+        reason: `withdrawn after server ${error.code}: ${error.message}`
+      })
+    }
   }
 
-  return changed
-}
-
-/**
- * Keep the response under Jobo's 1 MiB cap.
- * Realistically only reachable via a 10-item repeating group with long
- * descriptions, so trimming the longest free-text values is enough.
- */
-function enforceSizeLimit(command: AnswerCommand, trace: AnswerTrace[]): AnswerCommand {
-  if (command.action !== 'proceed') return command
-  if (Buffer.byteLength(JSON.stringify(command)) <= MAX_RESPONSE_BYTES) return command
-
-  const answers = command.answers.map((answer) => {
-    if (typeof answer.value === 'string' && answer.value.length > 2_000) {
-      trace.push({
-        field_id: answer.field_id,
-        label: answer.field_id,
-        type: 'text',
-        source: 'repaired',
-        reason: 'truncated to keep the response under the 1 MiB cap'
-      })
-      return { ...answer, value: answer.value.slice(0, 2_000) }
-    }
-    return answer
-  })
-
-  return { action: 'proceed', answers }
+  return changed ? toAnswers(values) : null
 }

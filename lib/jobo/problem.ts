@@ -21,8 +21,6 @@ const EXPLANATIONS: Record<string, string> = {
   idempotency_key_required:
     'Every create needs an Idempotency-Key header. This app generates and stores one before the request, so seeing this means the header was dropped in transit.',
   invalid_target: 'Provide exactly one of job_id or apply_url — not both, not neither.',
-  callback_url_required:
-    'No callback URL. Either set an account default in the portal, or pass callback_url on the request (this app always passes it).',
   job_not_found: 'No job with that id.',
   job_apply_url_missing: 'That job has no apply URL, so there is nothing to apply to.',
 
@@ -35,8 +33,6 @@ const EXPLANATIONS: Record<string, string> = {
     'The original result for this Idempotency-Key could not be replayed. Retry with the same key.',
 
   // Configuration
-  webhook_secret_not_configured:
-    'No webhook signing secret on this account. Generate one via PUT /api/auto-apply/settings on the portal API — see the README.',
   ambiguous_ats: 'More than one ATS provider matched this URL, so Jobo will not guess.',
   unsupported_ats: 'No Auto Apply provider supports this ATS yet.',
   invalid_sandbox_target:
@@ -57,18 +53,20 @@ const EXPLANATIONS: Record<string, string> = {
   invalid_status: 'Unknown status filter.',
   invalid_cursor:
     'A pagination cursor is bound to the filters it was created with. Restart pagination when filters change.',
+  invalid_state:
+    'The application is not awaiting answers right now — fetch it (the advance loop does) and act on the state that comes back.',
+  stale_correction_round:
+    'The answers were built for a different correction round than the one currently open. Re-fetch the current step and answer that instead.',
+  validation_failed:
+    'The answer snapshot failed synchronous validation. This is FREE — nothing was consumed and the step is still open. Fix the listed fields and submit again.',
 
   // Failure taxonomy (surfaced on the detail page)
-  callback_unavailable:
-    'Jobo could not reach your callback URL within the 120-second window. Check your tunnel is up and PUBLIC_BASE_URL is current.',
-  callback_rejected:
-    'Your callback returned a non-2xx status. Note this is NOT retried — it fails the application immediately.',
-  callback_invalid_json: 'Your callback response was not valid JSON.',
-  callback_invalid_command:
-    'Your callback returned an unrecognised action. It must be exactly "proceed" or "cancel".',
-  callback_failed: 'The callback exchange failed.',
+  answers_timeout:
+    'The step deadline (answers_expire_at, ~3 minutes) passed before answers were submitted. A real browser was holding the form open — answer faster, or check what stalled the engine.',
+  verification_timeout:
+    'A one-time verification code step expired. These allow only 60 seconds, because the emailed code itself is short-lived.',
   correction_limit_exceeded:
-    'Your answers were rejected 3 times. Jobo stops after 3 correction rounds — check the callback log to see which fields kept failing validation.',
+    'The employer ATS rejected the answers 3 times. Jobo stops after 3 correction rounds — check the step log to see which fields kept failing.',
   field_discovery_failed: 'Jobo could not read the application form on that page.',
   job_unavailable: 'The job posting is gone or no longer accepting applications.',
   unsupported_field: 'The form contains a field type Auto Apply cannot fill.',

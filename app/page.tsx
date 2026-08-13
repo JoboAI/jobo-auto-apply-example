@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation'
 import { desc } from 'drizzle-orm'
 import { db } from '@/db/client'
 import { applications, profiles } from '@/db/schema'
-import { callbackUrl, config } from '@/lib/config'
+import { config } from '@/lib/config'
 import { getSandboxScenarios } from '@/lib/jobo/client'
 import type { SandboxScenario } from '@/lib/jobo/sandbox'
 import { envRegressed, getTutorialState } from '@/lib/tutorial'
@@ -60,10 +60,10 @@ export default async function HomePage() {
       </header>
 
       {/* Reappears exactly when the state that gated the tutorial regresses —
-          most commonly a quick-tunnel hostname that changed on restart. */}
+          a key removed from .env.local, a rotated secret. */}
       {envRegressed() && (
         <div className="bg-warning-tint px-4 py-3 text-sm text-warning-deep">
-          Environment values are missing or invalid — callbacks will not arrive.{' '}
+          Environment values are missing or invalid — applications cannot run.{' '}
           <Link href="/learn" className="font-medium underline">
             Check your setup
           </Link>
@@ -80,7 +80,6 @@ export default async function HomePage() {
               sandboxAvailable={sandboxAvailable && scenarios.length > 0}
               sandboxNote={sandboxNote}
               defaultSandbox={config().DEFAULT_SANDBOX}
-              callbackUrl={callbackUrl()}
             />
           </Panel>
         </div>

@@ -1,6 +1,6 @@
 /**
  * A deliberately tiny structured logger. Swap for pino/winston in a real app —
- * this exists so the webhook path emits greppable JSON without adding a
+ * this exists so the answer path emits greppable JSON without adding a
  * dependency a reader has to learn.
  */
 

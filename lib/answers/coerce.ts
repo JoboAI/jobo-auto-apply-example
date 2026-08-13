@@ -1,5 +1,4 @@
 import type { Field } from '@jobo-ai/autoapply'
-import { isRealDate, isRealPartialDate } from './validate'
 import { matchBooleanOption, matchOption } from './options'
 import { normalizeYearMonth } from '@/lib/resume/profile-schema'
 
@@ -20,6 +19,35 @@ import { normalizeYearMonth } from '@/lib/resume/profile-schema'
  */
 
 export type CoercionInput = string | number | boolean | string[] | Record<string, unknown> | null
+
+// Date shape checks, mirroring the server's rules (real calendar days only).
+const PARTIAL_DATE_RE = /^\d{4}(?:-(?:0[1-9]|1[0-2])(?:-(?:0[1-9]|[12]\d|3[01]))?)?$/
+const FULL_DATE_RE = /^\d{4}-\d{2}-\d{2}$/
+
+function daysInMonth(year: number, month: number): number {
+  return new Date(Date.UTC(year, month, 0)).getUTCDate()
+}
+
+/** `YYYY`, `YYYY-MM` or `YYYY-MM-DD`, and a real calendar day. */
+export function isRealPartialDate(value: unknown): value is string {
+  if (typeof value !== 'string' || !PARTIAL_DATE_RE.test(value)) return false
+  const parts = value.split('-')
+  const year = Number(parts[0])
+  if (!Number.isInteger(year) || year < 1 || year > 9999) return false
+  if (parts.length === 1) return true
+  const month = Number(parts[1])
+  if (month < 1 || month > 12) return false
+  if (parts.length === 2) return true
+  const day = Number(parts[2])
+  return day >= 1 && day <= daysInMonth(year, month)
+}
+
+export function isRealDate(value: unknown): value is string {
+  if (typeof value !== 'string' || !FULL_DATE_RE.test(value)) return false
+  const [year, month, day] = value.split('-').map(Number)
+  if (month < 1 || month > 12) return false
+  return day >= 1 && day <= daysInMonth(year, month)
+}
 
 function clampLength(value: string, field: Field): string {
   const max = field.constraints?.max_length

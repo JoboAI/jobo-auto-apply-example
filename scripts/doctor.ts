@@ -1,9 +1,8 @@
 /**
  * Preflight CLI.
  *
- * The checks themselves live in lib/doctor-checks.ts and are shared with the
- * notebook's "Run preflight" action (the runtime strip on /learn) — this file
- * only loads the env the way Next.js would and prints the results.
+ * The checks themselves live in lib/doctor-checks.ts — this file only loads
+ * the env the way Next.js would and prints the results.
  *
  *   npm run doctor
  */
@@ -41,7 +40,6 @@ async function main() {
   console.log('✓ Environment — all variables present and well-formed')
 
   const { runPreflight } = await import('../lib/doctor-checks')
-  const { callbackUrl } = await import('../lib/config')
 
   const results = await runPreflight()
   for (const result of results) {
@@ -54,9 +52,8 @@ async function main() {
   console.log(
     `\n${failed === 0 ? 'Ready.' : `${failed} check${failed === 1 ? '' : 's'} failed.`}${
       warned ? ` ${warned} warning${warned === 1 ? '' : 's'}.` : ''
-    }`
+    }\n`
   )
-  console.log(`Callback URL: ${callbackUrl()}\n`)
   process.exit(failed === 0 ? 0 : 1)
 }
 

@@ -18,7 +18,7 @@ const manrope = Manrope({ subsets: ['latin'], weight: ['500'], variable: '--font
 export const metadata: Metadata = {
   title: 'Jobo Auto Apply — Next.js example',
   description:
-    'A notebook-style tutorial: create an application, watch Jobo call your webhook, and see the answers your app returned — all on one page.',
+    'A notebook-style tutorial: create an application, receive the form fields synchronously, and watch the answer engine drive it to submitted — all on one page.',
   // Declared rather than relying on app/favicon.ico discovery, because these
   // live in public/ where brand-kit/generate.mjs writes them.
   icons: {
@@ -92,7 +92,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <main className="mx-auto max-w-[1600px] px-4 py-8 sm:px-8">{children}</main>
         <footer className="mx-auto max-w-[1600px] px-4 pb-10 pt-4 sm:px-8">
           <p className="font-mono text-[11px] uppercase tracking-[0.05em] text-ink-500">
-            API contract 2026-07-21 · the interesting file is app/api/jobo/webhook/route.ts
+            API contract 2026-08-12 · the interesting file is app/actions/applications.ts
           </p>
         </footer>
       </body>

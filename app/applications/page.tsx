@@ -30,8 +30,9 @@ export default function ApplicationsPage() {
         </Empty>
       ) : (
         /* Deliberately NOT polled. The list reads from the local database,
-           which webhooks keep current; polling every open application from
-           here would burn rate limit for no benefit. Open one to see it live. */
+           which the advance loop keeps current; syncing every open application
+           from here would burn rate limit for no benefit. Open one to see it
+           live — its AutoRunner picks the loop back up. */
         <Panel padding="none">
           <div className="overflow-x-auto">
             <table className="s-table">

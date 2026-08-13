@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import { coerceValue } from '@/lib/answers/coerce'
-import { validateCommand } from '@/lib/answers/validate'
 import { field, options } from './helpers'
 
 /**
@@ -193,31 +192,57 @@ describe('types coercion never produces', () => {
 describe('the round-trip invariant', () => {
   /**
    * The property that actually matters: for every field type, a coerced value
-   * either validates cleanly or is undefined. Coercion must never hand Jobo
-   * something it will reject.
+   * is either the EXACT wire shape the server accepts, or undefined. There is
+   * no local validator to double-check any more — the server validates for
+   * free on submit — so these cases pin the expected wire value itself.
    */
-  const cases: { name: string; field: ReturnType<typeof field>; input: unknown }[] = [
-    { name: 'text', field: field({ field_id: 'x', type: 'text' }), input: '  hello  ' },
-    { name: 'textarea', field: field({ field_id: 'x', type: 'textarea', constraints: { max_length: 10 } }), input: 'a'.repeat(50) },
-    { name: 'number', field: field({ field_id: 'x', type: 'number', constraints: { max: 5 } }), input: '$99' },
-    { name: 'checkbox', field: field({ field_id: 'x', type: 'checkbox' }), input: 'yes' },
-    { name: 'select', field: field({ field_id: 'x', type: 'select', options: [{ value: 'US', label: 'United States' }] }), input: 'United States' },
-    { name: 'radio', field: field({ field_id: 'x', type: 'radio', options: options('Yes', 'No') }), input: true },
-    { name: 'multi_select', field: field({ field_id: 'x', type: 'multi_select', options: options('a', 'b') }), input: 'a,b' },
-    { name: 'date', field: field({ field_id: 'x', type: 'date' }), input: '2024-06' },
-    { name: 'partial_date', field: field({ field_id: 'x', type: 'partial_date', constraints: { minimum_precision: 'month' } }), input: '2024' },
-    { name: 'typeahead', field: field({ field_id: 'x', type: 'typeahead' }), input: 'MIT' }
+  const cases: {
+    name: string
+    field: ReturnType<typeof field>
+    input: unknown
+    expected: unknown
+  }[] = [
+    { name: 'text', field: field({ field_id: 'x', type: 'text' }), input: '  hello  ', expected: 'hello' },
+    {
+      name: 'textarea',
+      field: field({ field_id: 'x', type: 'textarea', constraints: { max_length: 10 } }),
+      input: 'a'.repeat(50),
+      expected: 'a'.repeat(10)
+    },
+    { name: 'number', field: field({ field_id: 'x', type: 'number', constraints: { max: 5 } }), input: '$99', expected: 5 },
+    { name: 'checkbox', field: field({ field_id: 'x', type: 'checkbox' }), input: 'yes', expected: true },
+    {
+      name: 'select',
+      field: field({ field_id: 'x', type: 'select', options: [{ value: 'US', label: 'United States' }] }),
+      input: 'United States',
+      expected: 'US'
+    },
+    { name: 'radio', field: field({ field_id: 'x', type: 'radio', options: options('Yes', 'No') }), input: true, expected: 'Yes' },
+    {
+      name: 'multi_select',
+      field: field({ field_id: 'x', type: 'multi_select', options: options('a', 'b') }),
+      input: 'a,b',
+      expected: ['a', 'b']
+    },
+    { name: 'date', field: field({ field_id: 'x', type: 'date' }), input: '2024-06', expected: '2024-06-01' },
+    {
+      name: 'partial_date',
+      field: field({ field_id: 'x', type: 'partial_date', constraints: { minimum_precision: 'month' } }),
+      input: '2024',
+      expected: '2024-01'
+    },
+    {
+      name: 'typeahead',
+      field: field({ field_id: 'x', type: 'typeahead' }),
+      input: 'MIT',
+      expected: { query: 'MIT', selection: { value: 'MIT', label: 'MIT' } }
+    }
   ]
 
   for (const testCase of cases) {
-    it(`${testCase.name}: coerced output validates`, () => {
+    it(`${testCase.name}: coerces to the exact wire shape`, () => {
       const value = coerceValue(testCase.input as never, testCase.field)
-      expect(value, 'should have coerced').not.toBeUndefined()
-      const errors = validateCommand(
-        { action: 'proceed', answers: [{ field_id: 'x', value }] },
-        [testCase.field]
-      )
-      expect(errors).toEqual([])
+      expect(value).toEqual(testCase.expected)
     })
   }
 })

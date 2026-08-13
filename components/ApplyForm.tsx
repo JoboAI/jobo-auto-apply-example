@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation'
 import { useState, useTransition } from 'react'
-import { createApplicationAction } from '@/app/actions/applications'
+import { startApplicationAction } from '@/app/actions/applications'
 import type { SandboxScenario } from '@/lib/jobo/sandbox'
 import { btn } from './ui'
 
@@ -12,7 +12,6 @@ interface Props {
   sandboxAvailable: boolean
   sandboxNote: string | null
   defaultSandbox: boolean
-  callbackUrl: string
   /** Where to go after a successful create; the new id is appended. */
   redirectPrefix?: string
   /** Notebook mode: label the submit "Run" with a play glyph. */
@@ -25,7 +24,6 @@ export function ApplyForm({
   sandboxAvailable,
   sandboxNote,
   defaultSandbox,
-  callbackUrl,
   redirectPrefix = '/applications/',
   runButton = false
 }: Props) {
@@ -49,7 +47,7 @@ export function ApplyForm({
         event.preventDefault()
         setError(null)
         startTransition(async () => {
-          const result = await createApplicationAction({
+          const result = await startApplicationAction({
             profileId,
             applyUrl: effectiveUrl,
             sandbox,
@@ -128,11 +126,14 @@ export function ApplyForm({
         </label>
       )}
 
-      {/* Shown so a stale tunnel hostname is visible BEFORE spending a create
-          quota, rather than surfacing 30 seconds later as callback_unavailable. */}
-      <div className="border hairline bg-ink-50 px-3 py-2 text-xs">
-        <span className="font-mono uppercase tracking-[0.05em] text-ink-500">Callback URL</span>
-        <code className="ml-2 break-all font-mono text-ink-800">{callbackUrl}</code>
+      {/* Set expectations before the click: the create call BLOCKS until the
+          form's fields are discovered, so the button stays busy for a while. */}
+      <div className="border hairline bg-ink-50 px-3 py-2 text-xs text-ink-600">
+        <span className="font-mono uppercase tracking-[0.05em] text-ink-500">Heads up</span>
+        <span className="ml-2">
+          Creating blocks until Jobo&apos;s browser agent finds the form — typically 10s to 3
+          minutes. Leave the tab open.
+        </span>
       </div>
 
       {error && (
@@ -145,7 +146,7 @@ export function ApplyForm({
       <button type="submit" disabled={!canSubmit} className={btn('primary')}>
         {runButton ? (
           pending ? (
-            'Running…'
+            'Running — waiting for fields…'
           ) : (
             <>
               <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden className="h-3 w-3">
@@ -155,7 +156,7 @@ export function ApplyForm({
             </>
           )
         ) : pending ? (
-          'Creating…'
+          'Creating — waiting for fields…'
         ) : (
           'Create application'
         )}

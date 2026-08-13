@@ -55,9 +55,9 @@ export interface CompletionResult<T> {
 /**
  * One structured completion. One attempt — no internal retry.
  *
- * On the answer path a retry inside the callback window would risk blowing the
- * 120-second deadline for a marginal gain, and Jobo's correction loop is
- * already the real retry mechanism.
+ * On the answer path a retry would risk blowing the step deadline
+ * (answers_expire_at, ~3 minutes) for a marginal gain, and the free
+ * validation-and-repair loop is already the real retry mechanism.
  */
 export async function complete<T extends z.ZodTypeAny>(
   options: CompletionOptions<T>

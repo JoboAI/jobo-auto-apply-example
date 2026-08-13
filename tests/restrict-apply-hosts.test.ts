@@ -14,20 +14,19 @@ import { beforeAll, describe, expect, it } from 'vitest'
 
 process.env.DATA_DIR = mkdtempSync(join(tmpdir(), 'jobo-sandbox-only-'))
 process.env.JOBO_API_KEY = 'jbe_test_key'
-process.env.JOBO_WEBHOOK_SECRET = 'whsec_test_secret_for_the_sandbox_suite'
 process.env.PUBLIC_BASE_URL = 'https://example.com'
 process.env.RESUME_URL_SIGNING_SECRET = 'a'.repeat(32)
 process.env.OPENROUTER_API_KEY = 'sk-or-v1-test'
 process.env.RESTRICT_APPLY_HOSTS = 'true'
 
-let createApplicationAction: typeof import('@/app/actions/applications').createApplicationAction
+let startApplicationAction: typeof import('@/app/actions/applications').startApplicationAction
 
 beforeAll(async () => {
-  ;({ createApplicationAction } = await import('@/app/actions/applications'))
+  ;({ startApplicationAction } = await import('@/app/actions/applications'))
 })
 
 const create = (applyUrl: string) =>
-  createApplicationAction({ profileId: 'prof_missing', applyUrl, sandbox: true })
+  startApplicationAction({ profileId: 'prof_missing', applyUrl, sandbox: true })
 
 describe('RESTRICT_APPLY_HOSTS', () => {
   it.each([

@@ -15,10 +15,11 @@ import { z } from 'zod'
  */
 
 /**
- * Jobo's SSRF guard only accepts an https origin on port 443 that resolves to a
- * public address. Encoding those rules here turns the single most common setup
- * mistake — pointing this at http://localhost:3000 — into a clear message
- * rather than a silent `unsafe_url` failure 30 seconds into an application.
+ * Only needed to serve resume files. Jobo downloads a `file` field's URL from
+ * its own infrastructure, and its SSRF guard only accepts an https origin on
+ * port 443 that resolves to a public address. Encoding those rules here turns
+ * the most common mistake — pointing this at http://localhost:3000 — into a
+ * clear message rather than a silent `invalid_file` failure mid-application.
  */
 const publicOrigin = z
   .string()
@@ -34,13 +35,13 @@ const publicOrigin = z
     if (url.protocol !== 'https:') {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: `must use https (got ${url.protocol.replace(':', '')}). Jobo rejects http callbacks.`
+        message: `must use https (got ${url.protocol.replace(':', '')}). Jobo rejects http file URLs.`
       })
     }
     if (url.port && url.port !== '443') {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: `must be on port 443 (got :${url.port}). Jobo rejects any other port, so a tunnel that exposes a custom port will not work.`
+        message: `must be on port 443 (got :${url.port}). Jobo rejects any other port.`
       })
     }
     if (url.pathname !== '/' && url.pathname !== '') {
@@ -52,7 +53,8 @@ const publicOrigin = z
     if (/^(localhost|127\.|0\.0\.0\.0|\[?::1)/i.test(url.hostname)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'must be publicly resolvable — localhost will never receive a callback. Run `npm run tunnel`.'
+        message:
+          'must be publicly resolvable — Jobo downloads resumes from its own infrastructure, so localhost can never work. Leave it unset to skip file fields instead.'
       })
     }
   })
@@ -66,12 +68,14 @@ const schema = z.object({
       'must start with jbe_live_ or jbe_test_ (master keys are rejected on Auto Apply routes)'
     ),
   JOBO_API_BASE_URL: z.string().url().default('https://connect.jobo.world'),
-  JOBO_WEBHOOK_SECRET: z
-    .string()
-    .min(1, 'required')
-    .refine((v) => v.startsWith('whsec_'), 'must start with whsec_'),
 
-  PUBLIC_BASE_URL: publicOrigin,
+  /**
+   * OPTIONAL. Everything in the synchronous loop works without a public
+   * origin — the one thing that needs it is `file` fields, because Jobo
+   * downloads the resume from a public HTTPS URL this app serves. When unset,
+   * the answer engine skips file fields and records why in the trace.
+   */
+  PUBLIC_BASE_URL: publicOrigin.optional(),
   RESUME_URL_SIGNING_SECRET: z.string().min(16, 'must be at least 16 characters'),
 
   OPENROUTER_API_KEY: z.string().min(1, 'required'),
@@ -122,8 +126,7 @@ function raw() {
   return {
     JOBO_API_KEY: process.env.JOBO_API_KEY,
     JOBO_API_BASE_URL: process.env.JOBO_API_BASE_URL,
-    JOBO_WEBHOOK_SECRET: process.env.JOBO_WEBHOOK_SECRET,
-    PUBLIC_BASE_URL: process.env.PUBLIC_BASE_URL,
+    PUBLIC_BASE_URL: process.env.PUBLIC_BASE_URL || undefined,
     RESUME_URL_SIGNING_SECRET: process.env.RESUME_URL_SIGNING_SECRET,
     OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
     OPENROUTER_ANSWER_MODEL: process.env.OPENROUTER_ANSWER_MODEL,
@@ -168,12 +171,16 @@ export function configIssues(): ConfigIssue[] {
 }
 
 
-/** Absolute URL on our public origin. Used for callback and resume URLs. */
+/**
+ * Absolute URL on our public origin, used for the resume URLs Jobo downloads.
+ * Callers must check `config().PUBLIC_BASE_URL` first — the answer engine
+ * skips file fields entirely when no public origin is configured.
+ */
 export function publicUrl(path: string): string {
-  const base = config().PUBLIC_BASE_URL.replace(/\/+$/, '')
+  const origin = config().PUBLIC_BASE_URL
+  if (!origin) {
+    throw new Error('PUBLIC_BASE_URL is not set — file fields are skipped without a public origin.')
+  }
+  const base = origin.replace(/\/+$/, '')
   return `${base}${path.startsWith('/') ? path : `/${path}`}`
-}
-
-export function callbackUrl(): string {
-  return publicUrl('/api/jobo/webhook')
 }

@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm'
-import { index, integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
+import { index, integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core'
+import type { Answer, CommandError, Field } from '@jobo-ai/autoapply'
 import type { ResumeProfile, EeoAnswers } from '@/lib/resume/profile-schema'
 import type { AnswerTrace } from '@/lib/answers/types'
 
@@ -8,14 +9,16 @@ import type { AnswerTrace } from '@/lib/answers/types'
  *
  * SQLite is not the point of the example, but two of these choices are:
  *
- *  1. `webhook_events.id` is the `evt_...` value itself, as the primary key.
- *     Replay protection is therefore a UNIQUE constraint enforced by the
- *     database, not a check-then-act race in application code.
+ *  1. `applications.idempotency_key` is NOT NULL UNIQUE and is written BEFORE
+ *     the network call. If the blocking create drops mid-hold you cannot know
+ *     whether Jobo accepted it — the only safe retry is one that reuses this
+ *     exact key (it re-attaches to the in-flight application and its wait),
+ *     and it can only exist beforehand if you wrote it beforehand.
  *
- *  2. `applications.idempotency_key` is NOT NULL UNIQUE and is written BEFORE
- *     the network call. If the create times out you cannot know whether Jobo
- *     accepted it — the only safe retry is one that reuses this exact key, and
- *     it can only exist beforehand if you wrote it beforehand.
+ *  2. `steps` is keyed on (step_id, correction_round). A correction round
+ *     re-issues the SAME step with the round incremented, and each round is a
+ *     separate exchange worth auditing — what the ATS rejected, what was
+ *     re-sent, what the model was told. One row per exchange.
  */
 
 export const profiles = sqliteTable('profiles', {
@@ -62,7 +65,7 @@ export const applications = sqliteTable(
     /** Written before the create call. See the note at the top of this file. */
     idempotencyKey: text('idempotency_key').notNull().unique(),
 
-    /** Null until create returns 202. */
+    /** Null until the blocking create returns. */
     joboApplicationId: text('jobo_application_id').unique(),
 
     profileId: text('profile_id')
@@ -74,8 +77,8 @@ export const applications = sqliteTable(
     scenarioSlug: text('scenario_slug'),
 
     /**
-     * Jobo's six statuses, plus two local-only ones: `creating` (the request is
-     * in flight) and `create_failed` (it never reached Jobo).
+     * Jobo's six statuses, plus two local-only ones: `creating` (the blocking
+     * create is in flight) and `create_failed` (it never reached Jobo).
      */
     status: text('status').notNull(),
 
@@ -86,7 +89,7 @@ export const applications = sqliteTable(
     failureMessage: text('failure_message'),
     failureRetryable: integer('failure_retryable', { mode: 'boolean' }),
 
-    /** e.g. `auto_apply_coming_soon` — distinct from a post-creation failure. */
+    /** e.g. `unsupported_ats` — distinct from a post-creation failure. */
     createErrorCode: text('create_error_code'),
     createErrorMessage: text('create_error_message'),
 
@@ -100,52 +103,56 @@ export const applications = sqliteTable(
   ]
 )
 
-export const webhookEvents = sqliteTable(
-  'webhook_events',
+/**
+ * One row per answer exchange: a step at a given correction round. This is the
+ * audit trail the inspector, timeline and trace table read — the fields Jobo
+ * discovered, the answers this app sent, why each answer was chosen, and what
+ * the ATS rejected. It also outlives the data upstream: Jobo purges sandbox
+ * applications after 24 hours.
+ */
+export const steps = sqliteTable(
+  'steps',
   {
-    /** The `evt_...` id. THE idempotency guarantee — see the top of this file. */
-    id: text('id').primaryKey(),
+    /** Jobo's step id. Stable across correction rounds of the same step. */
+    stepId: text('step_id').notNull(),
+    correctionRound: integer('correction_round').notNull().default(0),
 
-    joboApplicationId: text('jobo_application_id'),
-    applicationId: text('application_id').references(() => applications.id, {
-      onDelete: 'cascade'
-    }),
+    applicationId: text('application_id')
+      .notNull()
+      .references(() => applications.id, { onDelete: 'cascade' }),
 
-    type: text('type').notNull(),
-    correctionRound: integer('correction_round'),
+    sequence: integer('sequence').notNull(),
 
-    /** X-Jobo-Delivery-Attempt when we first saw this event. */
-    firstAttempt: integer('first_attempt').notNull().default(1),
-    /** Incremented on every replay of the same event id. */
-    attemptsSeen: integer('attempts_seen').notNull().default(1),
+    /** The full field list Jobo sent for this round. */
+    fieldsJson: text('fields_json', { mode: 'json' }).$type<Field[]>(),
+    /** The complete answer snapshot this app submitted for this round. */
+    answersJson: text('answers_json', { mode: 'json' }).$type<Answer[]>(),
+    /** Why the PREVIOUS round was rejected — the ATS's own errors. */
+    commandErrorsJson: text('command_errors_json', { mode: 'json' }).$type<CommandError[]>(),
 
+    /** answering | submitted | canceled | error. Local, not a Jobo status. */
     status: text('status').notNull(),
-
-    /**
-     * Exactly the bytes that arrived, and exactly the bytes we returned.
-     * This is what makes the callback log inspector genuinely useful — and it
-     * matters because Jobo purges sandbox applications after 24 hours.
-     */
-    rawBody: text('raw_body').notNull(),
-    responseBody: text('response_body'),
 
     /** Per-field provenance: deterministic rule id, LLM reasoning, repairs. */
     trace: text('trace', { mode: 'json' }).$type<AnswerTrace[]>(),
 
     llmModel: text('llm_model'),
     llmMs: integer('llm_ms'),
+    /** Receipt of the fields to acceptance of the answers, wall clock. */
     totalMs: integer('total_ms'),
     error: text('error'),
 
+    /** When the blocking call handed this round's fields to us. */
     receivedAt: integer('received_at').notNull().default(sql`(unixepoch() * 1000)`),
-    respondedAt: integer('responded_at')
+    /** When submitAnswers accepted the snapshot. Null if never submitted. */
+    submittedAt: integer('submitted_at')
   },
   (table) => [
-    index('webhook_events_application_idx').on(table.applicationId, table.receivedAt),
-    index('webhook_events_jobo_application_idx').on(table.joboApplicationId)
+    primaryKey({ columns: [table.stepId, table.correctionRound] }),
+    index('steps_application_idx').on(table.applicationId, table.receivedAt)
   ]
 )
 
 export type ProfileRow = typeof profiles.$inferSelect
 export type ApplicationRow = typeof applications.$inferSelect
-export type WebhookEventRow = typeof webhookEvents.$inferSelect
+export type StepRow = typeof steps.$inferSelect

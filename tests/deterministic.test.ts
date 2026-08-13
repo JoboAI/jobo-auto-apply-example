@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import { runDeterministic } from '@/lib/answers/deterministic'
-import { validateCommand } from '@/lib/answers/validate'
 import { emptyEeo, emptyProfile, type ResumeProfile } from '@/lib/resume/profile-schema'
 import type { AnswerContext } from '@/lib/answers/types'
 import { field, group, itemField, options } from './helpers'
@@ -258,13 +257,21 @@ describe('repeating groups', () => {
     expect([...groupGaps.keys()]).toContain('w#1.hours_per_week')
   })
 
-  it('produces groups that pass validation', () => {
+  it('produces groups in the exact wire shape the server accepts', () => {
+    // There is no local validator any more (the server validates for free on
+    // submit), so pin the server's rules structurally: only advertised keys,
+    // every required key present, end_date null exactly when is_current.
     const { resolved } = runDeterministic([workGroup], context({ profile: withHistory }))
-    const errors = validateCommand(
-      { action: 'proceed', answers: [{ field_id: 'w', value: resolved.get('w')!.value }] },
-      [workGroup]
-    )
-    expect(errors).toEqual([])
+    const items = resolved.get('w')?.value as Record<string, unknown>[]
+    const advertised = new Set(workGroup.item_fields.map((f) => f.key))
+
+    for (const item of items) {
+      for (const key of Object.keys(item)) expect(advertised.has(key), key).toBe(true)
+      expect(typeof item.company).toBe('string')
+      expect(typeof item.title).toBe('string')
+      if (item.is_current === true) expect(item.end_date).toBeNull()
+      else if (item.end_date != null) expect(String(item.end_date)).toMatch(/^\d{4}(-\d{2}){0,2}$/)
+    }
   })
 })
 

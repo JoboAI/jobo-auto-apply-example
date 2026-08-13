@@ -1,5 +1,4 @@
-import type { ApplicationRow, WebhookEventRow } from '@/db/schema'
-import type { AnswerCommand } from '@jobo-ai/autoapply'
+import type { ApplicationRow, StepRow } from '@/db/schema'
 import { explainCode } from '@/lib/jobo/problem'
 
 /**
@@ -10,9 +9,9 @@ import { explainCode } from '@/lib/jobo/problem'
  *   created → queued → running → awaiting answers → answered → terminal
  *
  * "answered" is not a Jobo status — it is derived from OUR side of the
- * exchange: the latest fields_requested event has a recorded response whose
- * action was `proceed`. (Checking for the response alone would count a cancel
- * as "answered", which reads wrong.)
+ * exchange: the latest step round in the audit table has a submitted answer
+ * snapshot. (A canceled round does not count as "answered", which would read
+ * wrong.)
  */
 
 const STATUS_RANK: Record<string, number> = {
@@ -26,42 +25,37 @@ const STATUS_RANK: Record<string, number> = {
   canceled: 5
 }
 
-function latestFieldsEvent(events: WebhookEventRow[]): WebhookEventRow | undefined {
-  return events.find((event) => event.type === 'application.fields_requested')
-}
-
-function answeredProceed(event: WebhookEventRow | undefined): boolean {
-  if (!event?.respondedAt || !event.responseBody) return false
-  try {
-    return (JSON.parse(event.responseBody) as AnswerCommand).action === 'proceed'
-  } catch {
-    return false
-  }
+/** The most recent round of the most recent step, if any. */
+function latestStep(steps: StepRow[]): StepRow | undefined {
+  return steps[0]
 }
 
 function statusLine(
   application: ApplicationRow,
-  events: WebhookEventRow[],
+  steps: StepRow[],
   rank: number
 ): { text: string; tone: 'neutral' | 'good' | 'warn' | 'bad' } {
-  const fields = latestFieldsEvent(events)
+  const latest = latestStep(steps)
 
-  if ((fields?.correctionRound ?? 0) > 0 && rank < 5) {
+  if ((latest?.correctionRound ?? 0) > 0 && rank < 5) {
     return {
-      text: `Jobo rejected some answers — correction round ${fields?.correctionRound} of 3. The full field list was re-sent and must be answered as a complete snapshot.`,
+      text: `The employer's ATS rejected some answers — correction round ${latest?.correctionRound} of 3. The full field list came back and must be answered as a complete snapshot.`,
       tone: 'warn'
     }
   }
 
   switch (application.status) {
     case 'creating':
-      return { text: 'Creating the application…', tone: 'neutral' }
+      return {
+        text: 'Creating the application — the call blocks until the first fields are discovered.',
+        tone: 'neutral'
+      }
     case 'queued':
       return { text: 'Application accepted. A browser agent is picking it up.', tone: 'neutral' }
     case 'running':
-      if (rank >= 4 && fields) {
-        const answers = countAnswers(fields)
-        const seconds = fields.totalMs ? (fields.totalMs / 1000).toFixed(1) : '?'
+      if (rank >= 4 && latest?.submittedAt) {
+        const answers = latest.answersJson?.length ?? 0
+        const seconds = latest.totalMs ? (latest.totalMs / 1000).toFixed(1) : '?'
         return {
           text: `Your app answered ${answers} field${answers === 1 ? '' : 's'} in ${seconds}s. Jobo is filling the form.`,
           tone: 'good'
@@ -69,9 +63,12 @@ function statusLine(
       }
       return { text: 'The agent is opening the apply URL and discovering the form.', tone: 'neutral' }
     case 'awaiting_answers':
-      return { text: 'Fields are on their way to your callback — watch the log below.', tone: 'neutral' }
+      return {
+        text: 'Fields are in hand — the answer engine composes a snapshot and submits it before the step deadline (answers_expire_at).',
+        tone: 'neutral'
+      }
     case 'submitted':
-      return { text: 'Submitted. The form went through and the terminal event was delivered.', tone: 'good' }
+      return { text: 'Submitted. The form went through — the loop is complete.', tone: 'good' }
     case 'failed': {
       const gloss = application.failureCode ? explainCode(application.failureCode) : null
       return {
@@ -83,15 +80,6 @@ function statusLine(
       return { text: 'Canceled. A clean cancel is a valid outcome, not an error.', tone: 'neutral' }
     default:
       return { text: application.status, tone: 'neutral' }
-  }
-}
-
-function countAnswers(event: WebhookEventRow): number {
-  try {
-    const command = JSON.parse(event.responseBody ?? '') as AnswerCommand
-    return command.action === 'proceed' ? command.answers.length : 0
-  } catch {
-    return 0
   }
 }
 
@@ -129,17 +117,18 @@ function Dot({
 
 export function StatusTimeline({
   application,
-  events
+  steps
 }: {
   application: ApplicationRow
-  events: WebhookEventRow[]
+  /** Step rounds, most recent first. */
+  steps: StepRow[]
 }) {
-  const fields = latestFieldsEvent(events)
+  const latest = latestStep(steps)
 
   let rank = STATUS_RANK[application.status] ?? 0
-  // Seeing a callback proves the agent ran even if a status sync lagged.
-  if (fields && rank < 3) rank = 3
-  if (answeredProceed(fields) && rank < 4) rank = 4
+  // A recorded step proves the agent found the form even if a sync lagged.
+  if (latest && rank < 3) rank = 3
+  if (latest?.submittedAt && rank < 4) rank = 4
 
   const isTerminal = STATUS_RANK[application.status] === 5
   const terminalKind = isTerminal ? (application.status as 'submitted' | 'failed' | 'canceled') : null
@@ -153,7 +142,7 @@ export function StatusTimeline({
     terminalKind ? terminalKind.replace(/_/g, ' ') : 'done'
   ]
 
-  const line = statusLine(application, events, rank)
+  const line = statusLine(application, steps, rank)
   const lineTones = {
     neutral: 'text-ink-600',
     good: 'text-success-deep',

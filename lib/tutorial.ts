@@ -1,7 +1,7 @@
 import { count, inArray, isNotNull } from 'drizzle-orm'
 import { db } from '@/db/client'
-import { applications, webhookEvents } from '@/db/schema'
-import type { ApplicationRow, WebhookEventRow } from '@/db/schema'
+import { applications, steps } from '@/db/schema'
+import type { ApplicationRow, StepRow } from '@/db/schema'
 import { configIssues } from '@/lib/config'
 import { isTerminal } from '@/lib/status'
 
@@ -10,12 +10,11 @@ import { isTerminal } from '@/lib/status'
  *
  * Nothing here is stored. Every state is DERIVED, per request, from the same
  * state the integration actually produces: environment variables, an
- * application with a Jobo id, a received callback, a terminal status.
+ * application with a Jobo id, a recorded step, a terminal status.
  *
  * That is deliberate and on-message. The notebook cannot drift from reality —
- * if you delete `.data/` it honestly resets, and if your tunnel hostname goes
- * stale the runtime strip reopens. Two indexed SQLite reads per request is
- * the entire cost.
+ * if you delete `.data/` it honestly resets. Two indexed SQLite reads per
+ * request is the entire cost.
  */
 
 // ─── Global milestones (layout chip, front-door routing) ────────────────────
@@ -60,26 +59,28 @@ export function getTutorialState(): TutorialState {
 export type CellState = 'locked' | 'ready' | 'running' | 'done'
 
 export interface NotebookCells {
-  /** Cell 1 — create the application. */
+  /** Cell 1 — the blocking create hands back the first step's fields. */
   create: CellState
-  /** Cell 2 — Jobo calls your webhook. */
-  callback: CellState
-  /** Cell 3 — your app answers, autonomously. */
-  respond: CellState
+  /** Cell 2 — a deliberately bad answer meets the free validation 400. */
+  validate: CellState
+  /** Cell 3 — the answer engine drives the loop to a terminal status. */
+  answer: CellState
 }
 
 /**
- * Pure derivation from the application the page is following. Rows in,
- * states out — no reads here, so the edges are trivially unit-testable.
+ * Pure derivation from the application the page is following and its recorded
+ * steps. Rows in, states out — no reads here, so the edges are trivially
+ * unit-testable.
  */
 export function getNotebookState(
   envReady: boolean,
   app: ApplicationRow | null,
-  events: WebhookEventRow[]
+  stepRows: StepRow[]
 ): NotebookCells {
   const created = Boolean(app?.joboApplicationId)
-  const fields = events.filter((event) => event.type === 'application.fields_requested')
   const terminal = app ? isTerminal(app.status) : false
+  const awaiting = app?.status === 'awaiting_answers'
+  const answered = stepRows.some((step) => step.submittedAt !== null)
 
   const create: CellState = !envReady
     ? 'locked'
@@ -91,17 +92,29 @@ export function getNotebookState(
           // button is live again, with the failure shown in the output.
           'ready'
 
-  const callback: CellState = !created
+  // The validation cell needs a step that is genuinely open: the probe posts
+  // real (bad) answers to the live application. Once a round was answered or
+  // the application finished, its teaching moment has passed.
+  const validate: CellState = !created
     ? 'locked'
-    : fields.length > 0 || terminal
-      ? // A terminal event is also a webhook call: an application can fail
-        // before any fields are requested, and that still completes this cell.
-        'done'
-      : 'running'
+    : answered || terminal
+      ? 'done'
+      : awaiting
+        ? 'ready'
+        : // Between create and the first fields (a 202 snapshot): Jobo is
+          // still working, and the cell will unlock when the fields land.
+          'running'
 
-  const respond: CellState = fields.length === 0 ? 'locked' : terminal ? 'done' : 'running'
+  const answer: CellState =
+    !created || (!awaiting && !answered && !terminal)
+      ? 'locked'
+      : terminal
+        ? 'done'
+        : awaiting && !answered
+          ? 'ready'
+          : 'running'
 
-  return { create, callback, respond }
+  return { create, validate, answer }
 }
 
 /** The application the notebook follows when no ?app= is pinned: the newest
@@ -116,25 +129,26 @@ export function latestApplication(): { id: string } | null {
   return row ?? null
 }
 
-/** Aggregates for the completion footer. */
+/** Aggregates for the completion footer, from the steps audit table. */
 export function tutorialRecap() {
-  const events = db
+  const rows = db
     .select({
-      type: webhookEvents.type,
-      trace: webhookEvents.trace,
-      totalMs: webhookEvents.totalMs
+      trace: steps.trace,
+      submittedAt: steps.submittedAt
     })
-    .from(webhookEvents)
+    .from(steps)
     .all()
 
-  let callbacks = 0
+  let exchanges = 0
+  let answeredSteps = 0
   let byRule = 0
   let byAi = 0
   let repaired = 0
 
-  for (const event of events) {
-    callbacks += 1
-    for (const entry of event.trace ?? []) {
+  for (const row of rows) {
+    exchanges += 1
+    if (row.submittedAt) answeredSteps += 1
+    for (const entry of row.trace ?? []) {
       if (entry.source === 'deterministic') byRule += 1
       else if (entry.source === 'llm') byAi += 1
       else if (entry.source === 'repaired') repaired += 1
@@ -149,7 +163,7 @@ export function tutorialRecap() {
     .all()
     .at(-1)
 
-  return { callbacks, byRule, byAi, repaired, lastTerminal: lastTerminal ?? null }
+  return { exchanges, answeredSteps, byRule, byAi, repaired, lastTerminal: lastTerminal ?? null }
 }
 
 /** Health regressions to surface on the workbench after completion. */

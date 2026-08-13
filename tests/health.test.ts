@@ -4,12 +4,11 @@ import { GET } from '@/app/api/health/route'
 /**
  * The probe has to fail when the environment is broken. An orchestrator that
  * sees 200 marks the pod healthy and completes the rollout, while every page
- * and the webhook 500 on `config()` — a green deploy hiding a dead app.
+ * and the advance loop 500 on `config()` — a green deploy hiding a dead app.
  */
 
 const REQUIRED = {
   JOBO_API_KEY: 'jbe_test_key',
-  JOBO_WEBHOOK_SECRET: 'whsec_test_secret_for_the_health_suite',
   PUBLIC_BASE_URL: 'https://example.com',
   RESUME_URL_SIGNING_SECRET: 'a'.repeat(32),
   OPENROUTER_API_KEY: 'sk-or-v1-test'
@@ -42,9 +41,16 @@ describe('GET /api/health', () => {
   })
 
   it('is 503 when a variable is present but malformed', async () => {
-    setEnv({ ...REQUIRED, JOBO_WEBHOOK_SECRET: 'not-a-whsec-key' })
+    setEnv({ ...REQUIRED, PUBLIC_BASE_URL: 'http://localhost:3000' })
     const response = GET()
     expect(response.status).toBe(503)
+  })
+
+  it('is 200 without the optional PUBLIC_BASE_URL', async () => {
+    // Only file fields need a public origin; the loop itself does not.
+    setEnv({ ...REQUIRED, PUBLIC_BASE_URL: undefined })
+    const response = GET()
+    expect(response.status).toBe(200)
   })
 
   it('never leaks a value, only the variable name', async () => {

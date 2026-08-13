@@ -4,8 +4,8 @@ import { z } from 'zod'
  * The candidate profile.
  *
  * This is the half of Auto Apply that Jobo deliberately does not own. Jobo
- * stores no profile and no resume — it asks your callback for answers and you
- * produce them from something like this.
+ * stores no profile and no resume — it hands you the form's fields and you
+ * produce the answers from something like this.
  *
  * Two shape decisions are load-bearing:
  *

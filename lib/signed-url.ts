@@ -15,7 +15,7 @@ import { config, publicUrl } from './config'
  *   - at most 3 redirects, 30s download timeout, 10 MiB max
  */
 
-/** Comfortably longer than the 120s callback window, still short-lived. */
+/** Comfortably longer than a step's ~3 minute deadline, still short-lived. */
 const DEFAULT_TTL_SECONDS = 15 * 60
 
 function sign(profileId: string, expiresAt: number): string {

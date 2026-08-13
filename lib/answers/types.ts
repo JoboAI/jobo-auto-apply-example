@@ -1,7 +1,7 @@
 import type { Answer, CommandError, Field } from '@jobo-ai/autoapply'
 import type { EeoAnswers, ResumeProfile } from '@/lib/resume/profile-schema'
 
-/** Where an answer came from. Surfaced per-field in the callback log UI. */
+/** Where an answer came from. Surfaced per-field in the step log UI. */
 export type AnswerSource =
   | 'deterministic'
   | 'llm'
@@ -30,8 +30,12 @@ export interface AnswerTrace {
 export interface AnswerContext {
   profile: ResumeProfile
   eeo: EeoAnswers | null
-  /** Public HTTPS URL Jobo can download the resume from. */
-  resumeUrl: string
+  /**
+   * Public HTTPS URL Jobo can download the resume from, or null when
+   * PUBLIC_BASE_URL is not configured — file fields are then skipped with a
+   * trace note instead of answered.
+   */
+  resumeUrl: string | null
   resumeFilename: string
   resumeContentType: string
   /** Raw resume text, as fallback context for open-ended questions. */

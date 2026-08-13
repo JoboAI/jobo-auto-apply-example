@@ -37,8 +37,8 @@ function create() {
   mkdirSync(dirname(dbPath), { recursive: true })
   const sqlite = new Database(dbPath)
 
-  // WAL lets the UI read while a webhook is mid-write. Without it, loading a
-  // page during answer generation blocks on the writer.
+  // WAL lets the UI read while the advance loop is mid-write. Without it,
+  // loading a page during answer generation blocks on the writer.
   sqlite.pragma('journal_mode = WAL')
   sqlite.pragma('busy_timeout = 5000')
   sqlite.pragma('foreign_keys = ON')

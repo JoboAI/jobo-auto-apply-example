@@ -21,7 +21,7 @@ import { z } from 'zod'
  *   model with nothing to say invents something, and a confident fabrication is
  *   far more expensive than a gap we can detect.
  *
- *   `reasoning` is stored per-answer and rendered in the callback log, which is
+ *   `reasoning` is stored per-answer and rendered in the step log, which is
  *   what makes a wrong answer diagnosable instead of mysterious.
  */
 
