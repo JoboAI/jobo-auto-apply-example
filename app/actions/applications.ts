@@ -56,9 +56,10 @@ import { log } from '@/lib/logger'
  *     while the answers are produced — miss it and the application fails with
  *     `answers_timeout`. The LLM budget is derived from it.
  *
- *  2. Blocking calls are held server-side for up to ~9 minutes, then answer
- *     202 with a snapshot. `get(id, { waitSeconds: 540 })` is the re-attach
- *     path — the SDK's own timeout sits just above the server's hold.
+ *  2. Blocking calls are held server-side for up to 90 seconds, then answer
+ *     202 with a snapshot. Looping `get(id, { waitSeconds: 90 })` is the
+ *     re-attach path — the SDK's own timeout sits just above the server's
+ *     hold, and each 202 simply means "still working, ask again".
  *
  *  3. Validation is free. submitAnswers checks every value BEFORE anything
  *     touches the employer's form; a bad answer is an immediate 400 with
@@ -75,7 +76,7 @@ import { log } from '@/lib/logger'
 const RESERVE_MS = 20_000
 
 /** Server-side cap on GET ?wait_seconds. */
-const MAX_WAIT_SECONDS = 540
+const MAX_WAIT_SECONDS = 90
 
 export interface StartInput {
   profileId: string
