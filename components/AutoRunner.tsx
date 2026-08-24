@@ -23,7 +23,7 @@ import { btn } from './ui'
 
 const STATUS_LINES: Record<string, string> = {
   creating: 'Re-attaching to the blocking create…',
-  queued: 'Queued — holding a connection while a browser agent picks it up…',
+  queued: 'Queued — holding a connection while a browser session starts…',
   running: 'The agent is working the form — holding a connection for the next step…',
   awaiting_answers: 'Fields received — the answer engine is composing answers…'
 }

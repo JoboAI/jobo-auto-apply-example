@@ -70,7 +70,7 @@ Content-Type: application/json
 
 { "apply_url": "https://sandbox.jobo.world/ats/apply/..." }
 
-... the connection is HELD while a browser agent opens the page
+... the connection is HELD while a browser session opens the page
 ... and discovers the form — typically 10s to 3 minutes
 
 HTTP/1.1 200 OK
@@ -200,7 +200,7 @@ export default async function NotebookPage({
           <p className="text-sm leading-6 text-ink-600">
             One POST with an <code className="code-chip text-xs">Idempotency-Key</code> that is
             written to the local database <em>before</em> the network call. The call then{' '}
-            <em>blocks</em> — typically 10s to 3 minutes — until Jobo&apos;s browser agent has
+            <em>blocks</em> — typically 10s to 3 minutes — until Jobo&apos;s browser session has
             opened the page, found the form, and can hand back the fields in{' '}
             <code className="code-chip text-xs">current_step</code>. If the connection drops
             mid-hold, the stored key re-attaches to the same application.

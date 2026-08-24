@@ -20,7 +20,7 @@ POST   /api/auto-apply/applications/{id}/answers  submit   (validates free, then
 POST   /api/auto-apply/applications/{id}/cancel
 ```
 
-There is no profile endpoint, no resume upload, and no webhook. `create` holds the connection while a browser agent opens the page and discovers the form — typically 10 seconds to 3 minutes — and resolves with the fields in `current_step`. You answer them with `submitAnswers`, which **validates the snapshot synchronously before anything touches the employer's form** (a bad value is an immediate 400 with per-field errors, and costs nothing), then holds again while the agent fills the form and clicks through. The response is the next step, a correction round, or the terminal application. That is the whole loop.
+There is no profile endpoint, no resume upload, and no webhook. `create` holds the connection while an HTTP browser-host session opens the page and discovers the form — typically 10 seconds to 3 minutes — and resolves with the fields in `current_step`. You answer them with `submitAnswers`, which **validates the snapshot synchronously before anything touches the employer's form** (a bad value is an immediate 400 with per-field errors, and costs nothing), then holds again while the session fills the form and clicks through. The response is the next step, a correction round, or the terminal application. That is the whole loop.
 
 So this app is not a client of the answer engine — it *is* the answer engine. That is the half of the integration Jobo deliberately does not own, and it is what this repo shows you how to build.
 
@@ -54,7 +54,7 @@ sequenceDiagram
         A->>J: POST /answers (repaired)
       end
       J->>B: Fill the form, continue or submit
-      Note over A,J: HELD again while the agent works
+      Note over A,J: HELD again while the browser session works
       alt ATS rejects a value
         J-->>A: same step, correction_round+1, command_errors
       else next page or done

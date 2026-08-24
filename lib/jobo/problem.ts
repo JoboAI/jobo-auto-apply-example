@@ -72,8 +72,8 @@ const EXPLANATIONS: Record<string, string> = {
   unsupported_field: 'The form contains a field type Auto Apply cannot fill.',
   login_required: 'The form requires an authenticated session.',
   captcha_required: 'The form is protected by a CAPTCHA.',
-  agent_unavailable: 'No browser agent was available.',
-  queue_timeout: 'The application waited too long for a browser agent.',
+  agent_unavailable: 'No browser session was available.',
+  queue_timeout: 'The application waited too long for a browser session.',
   execution_timeout: 'The browser run exceeded its time budget.',
   submission_unconfirmed:
     'Jobo could not confirm the submission went through. Do NOT blindly retry — the form may have been submitted.',

@@ -131,7 +131,7 @@ export function ApplyForm({
       <div className="border hairline bg-ink-50 px-3 py-2 text-xs text-ink-600">
         <span className="font-mono uppercase tracking-[0.05em] text-ink-500">Heads up</span>
         <span className="ml-2">
-          Creating blocks until Jobo&apos;s browser agent finds the form — typically 10s to 3
+          Creating blocks until Jobo&apos;s browser session finds the form — typically 10s to 3
           minutes. Leave the tab open.
         </span>
       </div>

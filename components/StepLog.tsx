@@ -115,7 +115,7 @@ export function StepLog({ steps }: { steps: StepRow[] }) {
   if (steps.length === 0) {
     return (
       <p className="text-sm text-ink-600">
-        Steps not received yet. The blocking create resolves once Jobo&apos;s browser agent has
+        Steps not received yet. The blocking create resolves once Jobo&apos;s browser session has
         opened the page and found the form — typically within a minute or two.
       </p>
     )

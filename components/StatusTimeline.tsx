@@ -51,7 +51,7 @@ function statusLine(
         tone: 'neutral'
       }
     case 'queued':
-      return { text: 'Application accepted. A browser agent is picking it up.', tone: 'neutral' }
+      return { text: 'Application accepted. A browser session is starting.', tone: 'neutral' }
     case 'running':
       if (rank >= 4 && latest?.submittedAt) {
         const answers = latest.answersJson?.length ?? 0
