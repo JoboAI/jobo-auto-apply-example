@@ -95,7 +95,7 @@ Then open [http://localhost:3000](http://localhost:3000) — it drops you into t
 
 **Create blocks until the fields arrive.** Write your `Idempotency-Key` to local storage *before* the call: the connection can be held for up to 90 seconds per request, and if it drops — or the hold budget expires with a 202 snapshot — retrying with the same key **re-attaches to the in-flight application and its blocking wait** instead of creating a duplicate. Looping `GET /applications/{id}?wait_seconds=90` is the same re-attach from anywhere.
 
-**A real browser is holding the form open.** Every answerable step carries `answers_expire_at` — about 3 minutes, 60 seconds for one-time verification codes. Miss it and the application fails with `answers_timeout`. The LLM budget in this app is derived from that deadline.
+**A real browser is holding the form open.** Every answerable step carries `answers_expire_at` — about 5 minutes, 60 seconds for one-time verification codes. Past it, most applications release the browser and keep waiting for your answers (resuming is slower — a fresh browser has to pick the form back up); verification-code steps fail with `verification_timeout`. The LLM budget in this app is derived from that deadline.
 
 **Validation is free.** `submitAnswers` checks every value before anything touches the employer's form. A bad value is an immediate 400 carrying per-field errors — nothing consumed, no correction round burned. Fix and resubmit. This is why the app ships no local port of Jobo's validator: the server *is* the validator, at zero cost.
 
@@ -187,7 +187,7 @@ The visual system is ported from the Jobo Enterprise portal style guide: flat wh
 | Symptom | Cause | Fix |
 |---|---|---|
 | The create call "hangs" | It is supposed to | `create` blocks until the fields are discovered — 10s to 3min, in holds of up to 90s. A 202 snapshot means the hold budget expired, not a failure; keep re-attaching with `get(id, { waitSeconds: 90 })` until answerable or terminal. |
-| `answers_timeout` | The ~3 minute step deadline passed before answers were submitted | A real browser was holding the form open. Check what stalled the engine — usually a slow model; `ANSWER_BUDGET_MS` caps the LLM call. |
+| `answers_timeout` | The step deadline (~5 min) passed and the application could not park and wait | A real browser was holding the form open. Check what stalled the engine — usually a slow model; `ANSWER_BUDGET_MS` caps the LLM call. |
 | 400 with per-field errors on submit | The snapshot failed validation | **Free** — nothing consumed. Fix the listed fields and submit again; the repair pass does exactly this. |
 | `stale_correction_round` (409) | You answered a round that has moved on | Re-fetch the application and answer `current_step` as it is now. |
 | `correction_limit_exceeded` | The **employer's ATS** rejected the answers 3 times | Open the step log — `command_errors` names the exact fields. Usually a missing option alias. |
