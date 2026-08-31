@@ -165,7 +165,8 @@ export function coerceValue(value: CoercionInput, field: Field): unknown | undef
     case 'radio': {
       // Always answer with an advertised option `value`, never a label and
       // never the model's paraphrase of one.
-      if (field.options?.length > 0) {
+      const options = field.options ?? []
+      if (options.length > 0) {
         const candidates =
           typeof value === 'boolean'
             ? undefined
@@ -173,14 +174,15 @@ export function coerceValue(value: CoercionInput, field: Field): unknown | undef
               ? value
               : [String(value)]
         const matched = candidates
-          ? matchOption(field.options, candidates)
-          : matchBooleanOption(field.options, value as boolean)
+          ? matchOption(options, candidates)
+          : matchBooleanOption(options, value as boolean)
         return matched?.value
       }
       return typeof value === 'string' ? value : undefined
     }
 
     case 'multi_select': {
+      const options = field.options ?? []
       const candidates = Array.isArray(value)
         ? value.map(String)
         : typeof value === 'string'
@@ -190,9 +192,8 @@ export function coerceValue(value: CoercionInput, field: Field): unknown | undef
 
       const resolved: string[] = []
       for (const candidate of candidates) {
-        const matched =
-          field.options?.length > 0 ? matchOption(field.options, [candidate]) : undefined
-        const next = matched ? matched.value : field.options?.length > 0 ? undefined : candidate
+        const matched = options.length > 0 ? matchOption(options, [candidate]) : undefined
+        const next = matched ? matched.value : options.length > 0 ? undefined : candidate
         if (next && !resolved.includes(next)) resolved.push(next)
       }
       if (resolved.length === 0) return undefined
@@ -208,6 +209,7 @@ export function coerceValue(value: CoercionInput, field: Field): unknown | undef
       return coercePartialDate(value, field)
 
     case 'typeahead': {
+      const options = field.options ?? []
       // The model may hand back either a bare string or a partial object.
       if (typeof value === 'object' && !Array.isArray(value)) {
         const record = value as Record<string, unknown>
@@ -216,17 +218,15 @@ export function coerceValue(value: CoercionInput, field: Field): unknown | undef
         const rawLabel = (selection?.label ?? record.label ?? rawValue) as string | undefined
         const query = (record.query as string | undefined) ?? rawLabel ?? rawValue
         if (!rawValue || !rawLabel || !query) return undefined
-        const matched =
-          field.options?.length > 0 ? matchOption(field.options, [rawValue, rawLabel]) : undefined
+        const matched = options.length > 0 ? matchOption(options, [rawValue, rawLabel]) : undefined
         const selected = matched ?? { value: rawValue, label: rawLabel }
         return { query: String(query), selection: selected }
       }
       if (typeof value === 'string' && value.trim()) {
-        const matched =
-          field.options?.length > 0 ? matchOption(field.options, [value]) : undefined
+        const matched = options.length > 0 ? matchOption(options, [value]) : undefined
         if (matched) return { query: matched.label, selection: matched }
         // With no advertised options, the free-text query IS the selection.
-        if (!field.options || field.options.length === 0) {
+        if (options.length === 0) {
           return { query: value.trim(), selection: { value: value.trim(), label: value.trim() } }
         }
       }

@@ -16,7 +16,6 @@ import { jobo } from '@/lib/jobo/client'
 import { explain } from '@/lib/jobo/problem'
 import { buildAnswers, repairAnswers } from '@/lib/answers'
 import type { AnswerContext } from '@/lib/answers/types'
-import { emptyEeo } from '@/lib/resume/profile-schema'
 import { signResumeUrl } from '@/lib/signed-url'
 import { isTerminal } from '@/lib/status'
 import { hostAllowed, parseAllowedHosts } from '@/lib/apply-hosts'
@@ -341,7 +340,6 @@ async function answerStep(
 
   const ctx: AnswerContext = {
     profile: profile.data,
-    eeo: profile.eeo ?? emptyEeo,
     // File fields need a public HTTPS URL Jobo can download the resume from.
     // Without PUBLIC_BASE_URL the engine skips them and records a trace note.
     resumeUrl: config().PUBLIC_BASE_URL ? signResumeUrl(profile.id) : null,

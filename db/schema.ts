@@ -34,10 +34,9 @@ export const profiles = sqliteTable('profiles', {
   data: text('data', { mode: 'json' }).$type<ResumeProfile>().notNull(),
 
   /**
-   * Voluntary self-identification answers. Populated ONLY by explicit user
-   * input in the UI, never by the resume parser and never by the answer LLM.
-   * Jobo marks these fields `sensitive: true` and never infers them; this app
-   * takes the same position. See lib/answers/deterministic.ts.
+   * Retained so existing local databases remain readable without a migration.
+   * The answer pipeline never reads or submits these values: sensitive fields
+   * use only an advertised decline option or remain unanswered.
    */
   eeo: text('eeo', { mode: 'json' }).$type<EeoAnswers>(),
 

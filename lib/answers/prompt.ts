@@ -1,5 +1,6 @@
 import type { Field, GroupItemField } from '@jobo-ai/autoapply'
 import type { AnswerContext } from './types'
+import { fieldOptions, groupItemOptions } from './options'
 
 /**
  * Prompt construction for the answer model.
@@ -33,7 +34,7 @@ Hard rules:
 
 /** Strip a field down to what determines a valid answer. */
 function compactField(field: Field) {
-  const options = field.options ?? []
+  const options = fieldOptions(field)
   const truncated = options.length > MAX_OPTIONS
 
   return {
@@ -41,8 +42,6 @@ function compactField(field: Field) {
     type: field.type,
     label: field.label,
     required: field.required || field.requires_answer,
-    ...(field.semantic_key ? { semantic_key: field.semantic_key } : {}),
-    ...(field.category ? { category: field.category } : {}),
     ...(field.format ? { format: field.format } : {}),
     ...(options.length
       ? {
@@ -57,8 +56,12 @@ function compactField(field: Field) {
     ...(field.constraints && Object.keys(field.constraints).length
       ? { constraints: field.constraints }
       : {}),
-    ...(field.min_items !== null ? { min_items: field.min_items } : {}),
-    ...(field.max_items !== null ? { max_items: field.max_items } : {})
+    ...(field.type === 'repeating_group' && field.min_items !== undefined
+      ? { min_items: field.min_items }
+      : {}),
+    ...(field.type === 'repeating_group' && field.max_items !== undefined
+      ? { max_items: field.max_items }
+      : {})
   }
 }
 
@@ -69,14 +72,15 @@ function compactGap(
   groupLabel: string,
   item: Record<string, unknown>
 ) {
+  const options = groupItemOptions(itemField)
   return {
     field_id: syntheticId,
     type: itemField.type,
     label: `${groupLabel} → ${itemField.label}`,
     required: itemField.required,
     context: item,
-    ...(itemField.options?.length
-      ? { options: itemField.options.slice(0, MAX_OPTIONS) }
+    ...(options.length
+      ? { options: options.slice(0, MAX_OPTIONS) }
       : {}),
     ...(itemField.constraints && Object.keys(itemField.constraints).length
       ? { constraints: itemField.constraints }
@@ -95,8 +99,8 @@ export interface PromptInput {
 export function buildUserPrompt({ ctx, fields, gaps }: PromptInput): string {
   const { profile } = ctx
 
-  // The `eeo` block is deliberately never included. Sensitive fields are
-  // resolved without a model — see lib/answers/deterministic.ts.
+  // Sensitive fields are deliberately never included. They are declined
+  // without a model — see lib/answers/deterministic.ts.
   const blocks: Record<string, unknown> = {
     candidate_profile: profile,
     resume_excerpt: ctx.resumeText.slice(0, MAX_RESUME_EXCERPT),
@@ -130,30 +134,37 @@ export function buildUserPrompt({ ctx, fields, gaps }: PromptInput): string {
 function buildCorrectionBlock(ctx: AnswerContext, fields: Field[]) {
   const fieldMap = new Map(fields.map((f) => [f.field_id, f]))
   const previous = new Map(ctx.previousAnswers.map((a) => [a.field_id, a.value]))
+  const rejected = ctx.commandErrors.flatMap((error) => {
+    const fieldId = error.field_id
+    if (!fieldId) return []
+
+    // `fields` is the already-filtered, model-safe set. Never join correction
+    // metadata or prior values for a field that was excluded from that set.
+    const field = fieldMap.get(fieldId)
+    if (!field) return []
+
+    const sent = previous.get(fieldId)
+    return [{
+      field_id: fieldId,
+      label: field.label,
+      item_index: error.item_index,
+      field_key: error.field_key,
+      code: error.code,
+      message: error.message,
+      you_sent:
+        error.item_index !== null && Array.isArray(sent)
+          ? (sent as Record<string, unknown>[])[error.item_index]?.[error.field_key ?? '']
+          : sent,
+      ...(fieldOptions(field).length
+        ? { allowed_values: fieldOptions(field).slice(0, MAX_OPTIONS).map((o) => o.value) }
+        : {})
+    }]
+  })
 
   return {
     correction_round: ctx.correctionRound,
     instruction:
       'Your previous answers were rejected. Re-answer EVERY entry below. Do not repeat the value under "you_sent". When code is "invalid_option", return exactly one string from "allowed_values".',
-    rejected: ctx.commandErrors.map((error) => {
-      const field = error.field_id ? fieldMap.get(error.field_id) : undefined
-      const sent = error.field_id ? previous.get(error.field_id) : undefined
-
-      return {
-        field_id: error.field_id,
-        label: field?.label ?? null,
-        item_index: error.item_index,
-        field_key: error.field_key,
-        code: error.code,
-        message: error.message,
-        you_sent:
-          error.item_index !== null && Array.isArray(sent)
-            ? (sent as Record<string, unknown>[])[error.item_index]?.[error.field_key ?? '']
-            : sent,
-        ...(field?.options?.length
-          ? { allowed_values: field.options.slice(0, MAX_OPTIONS).map((o) => o.value) }
-          : {})
-      }
-    })
+    rejected
   }
 }

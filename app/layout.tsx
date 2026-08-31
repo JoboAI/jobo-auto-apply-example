@@ -92,7 +92,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <main className="mx-auto max-w-[1600px] px-4 py-8 sm:px-8">{children}</main>
         <footer className="mx-auto max-w-[1600px] px-4 pb-10 pt-4 sm:px-8">
           <p className="font-mono text-[11px] uppercase tracking-[0.05em] text-ink-500">
-            API contract 2026-08-12 · the interesting file is app/actions/applications.ts
+            API contract 2026-08-31 · the interesting file is app/actions/applications.ts
           </p>
         </footer>
       </body>

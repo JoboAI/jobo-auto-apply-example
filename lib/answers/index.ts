@@ -73,13 +73,15 @@ export async function buildAnswers(
     for (const previous of ctx.previousAnswers) {
       if (rejectedIds.has(previous.field_id)) continue
       if (values.has(previous.field_id)) continue
-      if (!fieldMap.has(previous.field_id)) continue
-      values.set(previous.field_id, previous.value)
       const field = fieldMap.get(previous.field_id)
+      if (!field) continue
+      if (field.sensitive) continue
+      if (deterministic.declined.has(previous.field_id)) continue
+      values.set(previous.field_id, previous.value)
       trace.push({
         field_id: previous.field_id,
-        label: field?.label ?? previous.field_id,
-        type: field?.type ?? 'unknown',
+        label: field.label,
+        type: field.type,
         source: 'previous_round',
         value: previous.value
       })

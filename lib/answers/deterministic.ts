@@ -1,7 +1,7 @@
-import type { Field, FileValue, GroupItemField } from '@jobo-ai/autoapply'
+import type { Field, FileValue, GroupItemField, RepeatingGroupField } from '@jobo-ai/autoapply'
 import type { AnswerContext } from './types'
 import type { ResumeProfile } from '@/lib/resume/profile-schema'
-import { findDeclineOption, matchBooleanOption, matchOption, normalize } from './options'
+import { fieldOptions, findDeclineOption, matchBooleanOption, matchOption, normalize } from './options'
 import { coerceValue } from './coerce'
 import { asItemField } from './item-field'
 
@@ -29,21 +29,20 @@ interface Rule {
 }
 
 /**
- * `semantic_key` is provider-driven and the vocabulary grows over time, so
- * match on a pattern rather than equality, and always leave the label heuristic
- * as a fallback rather than failing closed on an unrecognised key.
+ * Match only stable form identity: the provider field id and visible label.
+ * Both raw and normalized spellings are checked so provider ids such as
+ * `first_name` and labels such as `First name` share the same rule.
  */
-function sem(pattern: RegExp) {
-  return (field: Field) => Boolean(field.semantic_key && pattern.test(field.semantic_key))
-}
-
-/** Match on the human label, normalized. The safety net behind semantic_key. */
-function label(pattern: RegExp) {
-  return (field: Field) => pattern.test(normalize(field.label))
-}
-
-function either(...matchers: ((field: Field) => boolean)[]) {
-  return (field: Field) => matchers.some((m) => m(field))
+function named(...patterns: RegExp[]) {
+  return (field: Field) => {
+    const values = [
+      field.field_id.toLowerCase(),
+      field.label.toLowerCase(),
+      normalize(field.field_id),
+      normalize(field.label)
+    ]
+    return patterns.some((pattern) => values.some((value) => pattern.test(value)))
+  }
 }
 
 function linkOf(profile: ResumeProfile, type: string): string | undefined {
@@ -149,8 +148,10 @@ export function logicalFingerprint(
 
 // ─── Repeating groups ───────────────────────────────────────────────────────
 
+const PLATFORM_MAX_GROUP_ITEMS = 100
+
 /** Source rows for a group type, most recent first. */
-function groupRows(field: Field, profile: ResumeProfile): Record<string, unknown>[] {
+function groupRows(field: RepeatingGroupField, profile: ResumeProfile): Record<string, unknown>[] {
   switch (field.group_type) {
     case 'work_experience':
       return [...profile.work_experience]
@@ -187,6 +188,18 @@ function groupRows(field: Field, profile: ResumeProfile): Record<string, unknown
           grade: row.grade,
           gpa: row.grade
         }))
+
+    case 'certification':
+      return profile.certifications.map((row) => ({
+        certification: row.name,
+        name: row.name,
+        title: row.name,
+        issuer: row.issuer,
+        issuing_organization: row.issuer,
+        issued: row.issued,
+        issue_date: row.issued,
+        date: row.issued
+      }))
 
     case 'website':
       return profile.links.map((row) => ({
@@ -230,17 +243,18 @@ export interface GroupBuildResult {
  * The fiddly parts are all rules rather than judgement, which is exactly why
  * this is deterministic: emit only keys the field advertises (anything else is
  * `unknown_item_field`), null out `end_date` on current roles
- * (`current_end_date`), respect the platform cap of 10 (`item_count`), and
- * dedupe on the server's own logical fingerprint (`duplicate_item`).
+ * (`current_end_date`), respect the provider limit and 100-item platform cap
+ * (`item_count`), and dedupe on the server's own logical fingerprint
+ * (`duplicate_item`).
  */
-export function buildGroup(field: Field, ctx: AnswerContext): GroupBuildResult | undefined {
+export function buildGroup(field: RepeatingGroupField, ctx: AnswerContext): GroupBuildResult | undefined {
   const rows = groupRows(field, ctx.profile)
   if (rows.length === 0) return undefined
 
   const advertised = field.item_fields ?? []
   if (advertised.length === 0) return undefined
 
-  const max = Math.min(field.max_items ?? 10, 10)
+  const max = Math.min(field.max_items ?? PLATFORM_MAX_GROUP_ITEMS, PLATFORM_MAX_GROUP_ITEMS)
   const items: Record<string, unknown>[] = []
   const gaps: GroupBuildResult['gaps'] = []
   const fingerprints = new Set<string>()
@@ -310,45 +324,45 @@ const RULES: Rule[] = [
   {
     id: 'repeating_group',
     match: (f) => f.type === 'repeating_group',
-    resolve: (f, ctx) => buildGroup(f, ctx)?.items
+    resolve: (f, ctx) => f.type === 'repeating_group' ? buildGroup(f, ctx)?.items : undefined
   },
 
   // Identity
-  { id: 'first_name', match: either(sem(/first_?name$/), label(/^first name$/)), resolve: (_, c) => c.profile.personal.first_name },
-  { id: 'last_name', match: either(sem(/last_?name$|surname$/), label(/^(last name|surname|family name)$/)), resolve: (_, c) => c.profile.personal.last_name },
-  { id: 'full_name', match: either(sem(/full_?name$|(^|\.)name$/), label(/^(full name|name|your name)$/)), resolve: (_, c) => c.profile.personal.full_name },
-  { id: 'email', match: either(sem(/e?_?mail$/), label(/^e?\s?mail( address)?$/)), resolve: (_, c) => c.profile.personal.email },
-  { id: 'phone', match: either(sem(/phone|mobile|telephone/), label(/phone|mobile/)), resolve: (_, c) => c.profile.personal.phone },
-  { id: 'pronouns', match: either(sem(/pronoun/), label(/pronoun/)), resolve: (_, c) => c.profile.personal.pronouns },
-  { id: 'headline', match: either(sem(/headline|current_?title/), label(/^(headline|current title|job title)$/)), resolve: (_, c) => c.profile.personal.headline },
+  { id: 'first_name', match: named(/first_?name$/, /^first name$/), resolve: (_, c) => c.profile.personal.first_name },
+  { id: 'last_name', match: named(/last_?name$|surname$/, /^(last name|surname|family name)$/), resolve: (_, c) => c.profile.personal.last_name },
+  { id: 'full_name', match: named(/full_?name$|(^|\.)name$/, /^(full name|name|your name)$/), resolve: (_, c) => c.profile.personal.full_name },
+  { id: 'email', match: named(/e?_?mail$/, /^e?\s?mail( address)?$/), resolve: (_, c) => c.profile.personal.email },
+  { id: 'phone', match: named(/phone|mobile|telephone/), resolve: (_, c) => c.profile.personal.phone },
+  { id: 'pronouns', match: named(/pronoun/), resolve: (_, c) => c.profile.personal.pronouns },
+  { id: 'headline', match: named(/headline|current_?title/, /^(headline|current title|job title)$/), resolve: (_, c) => c.profile.personal.headline },
 
   // Location
   {
     id: 'country',
-    match: either(sem(/country/), label(/^country$/)),
+    match: named(/country/, /^country$/),
     resolve: (f, c) =>
-      f.options?.length
-        ? matchOption(f.options, [c.profile.location.country_code, c.profile.location.country_name])?.value
+      fieldOptions(f).length
+        ? matchOption(fieldOptions(f), [c.profile.location.country_code, c.profile.location.country_name])?.value
         : (c.profile.location.country_name ?? c.profile.location.country_code)
   },
   {
     id: 'region',
-    match: either(sem(/state|province|region/), label(/^(state|province|region|county)$/)),
+    match: named(/state|province|region/, /^(state|province|region|county)$/),
     resolve: (f, c) =>
-      f.options?.length ? matchOption(f.options, [c.profile.location.region])?.value : c.profile.location.region
+      fieldOptions(f).length ? matchOption(fieldOptions(f), [c.profile.location.region])?.value : c.profile.location.region
   },
-  { id: 'city', match: either(sem(/city|locality/), label(/^(city|town)$/)), resolve: (_, c) => c.profile.location.city },
-  { id: 'postal_code', match: either(sem(/postal|zip/), label(/^(zip|postal)( code)?$/)), resolve: (_, c) => c.profile.location.postal_code },
-  { id: 'address_line1', match: either(sem(/address\.?line_?1|street/), label(/^(address|street address|address line 1)$/)), resolve: (_, c) => c.profile.location.line1 },
-  { id: 'address_line2', match: sem(/address\.?line_?2/), resolve: (_, c) => c.profile.location.line2 },
-  { id: 'address_full', match: either(sem(/(^|\.)address$/), label(/^(full address|mailing address)$/)), resolve: (_, c) => fullAddress(c.profile) },
+  { id: 'city', match: named(/city|locality/, /^(city|town)$/), resolve: (_, c) => c.profile.location.city },
+  { id: 'postal_code', match: named(/postal|zip/, /^(zip|postal)( code)?$/), resolve: (_, c) => c.profile.location.postal_code },
+  { id: 'address_line1', match: named(/address\.?line_?1|street/, /^(address|street address|address line 1)$/), resolve: (_, c) => c.profile.location.line1 },
+  { id: 'address_line2', match: named(/address\.?line_?2/, /address line 2/), resolve: (_, c) => c.profile.location.line2 },
+  { id: 'address_full', match: named(/(^|\.)address$/, /^(full address|mailing address)$/), resolve: (_, c) => fullAddress(c.profile) },
 
   // Links
-  { id: 'linkedin', match: either(sem(/linkedin/), label(/linkedin/)), resolve: (_, c) => linkOf(c.profile, 'linkedin') },
-  { id: 'github', match: either(sem(/github/), label(/github/)), resolve: (_, c) => linkOf(c.profile, 'github') },
+  { id: 'linkedin', match: named(/linkedin/), resolve: (_, c) => linkOf(c.profile, 'linkedin') },
+  { id: 'github', match: named(/github/), resolve: (_, c) => linkOf(c.profile, 'github') },
   {
     id: 'portfolio',
-    match: either(sem(/portfolio|website|personal_?site/), label(/^(portfolio|website|personal website)$/)),
+    match: named(/portfolio|website|personal_?site/, /^(portfolio|website|personal website)$/),
     resolve: (_, c) => linkOf(c.profile, 'portfolio') ?? linkOf(c.profile, 'website')
   },
 
@@ -356,16 +370,16 @@ const RULES: Rule[] = [
   // data. A null in the profile defers to the model rather than guessing.
   {
     id: 'requires_sponsorship',
-    match: either(sem(/sponsor/), label(/sponsor/)),
+    match: named(/sponsor/),
     resolve: (f, c) => {
       const needs = c.profile.work_authorization.requires_sponsorship
       if (needs === null || needs === undefined) return undefined
-      return f.options?.length ? matchBooleanOption(f.options, needs)?.value : needs
+      return fieldOptions(f).length ? matchBooleanOption(fieldOptions(f), needs)?.value : needs
     }
   },
   {
     id: 'work_authorized',
-    match: either(sem(/work_?authoriz|legally_?authoriz|right_?to_?work/), label(/legally authori[sz]ed|authori[sz]ed to work|right to work/)),
+    match: named(/work_?authoriz|legally_?authoriz|right_?to_?work/, /legally authori[sz]ed|authori[sz]ed to work|right to work/),
     resolve: (f, c) => {
       const codes = c.profile.work_authorization.authorized_country_codes
       if (!codes || codes.length === 0) return undefined
@@ -373,12 +387,12 @@ const RULES: Rule[] = [
       // matches. Otherwise this is a question for the model, or for a human.
       const country = c.profile.location.country_code
       const authorized = country ? codes.includes(country) : codes.length > 0
-      return f.options?.length ? matchBooleanOption(f.options, authorized)?.value : authorized
+      return fieldOptions(f).length ? matchBooleanOption(fieldOptions(f), authorized)?.value : authorized
     }
   },
   {
     id: 'notice_period',
-    match: either(sem(/notice_?period/), label(/notice period/)),
+    match: named(/notice_?period/, /notice period/),
     resolve: (f, c) => {
       const days = c.profile.work_authorization.notice_period_days
       if (days === null || days === undefined) return undefined
@@ -389,30 +403,30 @@ const RULES: Rule[] = [
   // Preferences
   {
     id: 'desired_salary',
-    match: either(sem(/salary|compensation|expected_?pay/), label(/salary|compensation expectation/)),
+    match: named(/salary|compensation|expected_?pay/, /salary|compensation expectation/),
     resolve: (_, c) => c.profile.preferences.desired_salary ?? undefined
   },
   {
     id: 'willing_to_relocate',
-    match: either(sem(/relocat/), label(/relocat/)),
+    match: named(/relocat/),
     resolve: (f, c) => {
       const willing = c.profile.preferences.willing_to_relocate
       if (willing === null || willing === undefined) return undefined
-      return f.options?.length ? matchBooleanOption(f.options, willing)?.value : willing
+      return fieldOptions(f).length ? matchBooleanOption(fieldOptions(f), willing)?.value : willing
     }
   },
   {
     id: 'remote_preference',
-    match: either(sem(/remote|work_?location_?preference/), label(/remote preference|work preference/)),
+    match: named(/remote|work_?location_?preference/, /remote preference|work preference/),
     resolve: (f, c) => {
       const preference = c.profile.preferences.remote_preference
       if (!preference) return undefined
-      return f.options?.length ? matchOption(f.options, [preference])?.value : preference
+      return fieldOptions(f).length ? matchOption(fieldOptions(f), [preference])?.value : preference
     }
   },
   {
     id: 'start_date',
-    match: either(sem(/start_?date|available/), label(/start date|availability|available from/)),
+    match: named(/start_?date|available/, /start date|availability|available from/),
     resolve: (_, c) => c.profile.preferences.earliest_start_date ?? undefined
   }
 ]
@@ -431,37 +445,23 @@ export interface DeterministicResult {
  * Sensitive fields — voluntary self-identification.
  *
  * Order matters and the policy is deliberate:
- *   1. a value the user explicitly typed into the UI, if there is one;
- *   2. otherwise the form's own "prefer not to say" option;
- *   3. otherwise nothing.
+ *   1. the form's own "prefer not to say" option, if there is one;
+ *   2. otherwise nothing.
  *
  * These are never sent to the model. Jobo does not infer them either; an
  * example that quietly invented someone's demographic data to get a form
  * submitted would be teaching the wrong lesson.
  */
-function resolveSensitive(field: Field, ctx: AnswerContext): { value?: unknown; reason: string } {
-  const key = field.semantic_key ?? ''
-  const eeo = ctx.eeo
-
-  const stored =
-    eeo &&
-    (/gender|sex/i.test(key) ? eeo.gender
-      : /race|ethnic/i.test(key) ? eeo.race_ethnicity
-        : /veteran/i.test(key) ? eeo.veteran_status
-          : /disab/i.test(key) ? eeo.disability_status
-            : /hispanic|latino/i.test(key) ? eeo.hispanic_or_latino
-              : null)
-
-  if (stored) {
-    const matched = field.options?.length ? matchOption(field.options, [stored]) : undefined
-    if (matched) return { value: matched.value, reason: 'user-provided self-identification' }
-    if (!field.options?.length) return { value: stored, reason: 'user-provided self-identification' }
+function resolveSensitive(field: Field): { value?: unknown; reason: string } {
+  const decline = findDeclineOption(fieldOptions(field))
+  if (decline) {
+    return {
+      value: field.type === 'multi_select' ? [decline.value] : decline.value,
+      reason: 'declined to self-identify'
+    }
   }
 
-  const decline = findDeclineOption(field.options ?? [])
-  if (decline) return { value: decline.value, reason: 'declined to self-identify (no user-provided value)' }
-
-  return { reason: 'sensitive field with no user-provided value and no decline option' }
+  return { reason: 'sensitive field with no advertised decline option' }
 }
 
 /**
@@ -491,7 +491,7 @@ export function runDeterministic(fields: Field[], ctx: AnswerContext): Determini
     }
 
     if (field.sensitive) {
-      const outcome = resolveSensitive(field, ctx)
+      const outcome = resolveSensitive(field)
       if (outcome.value !== undefined) {
         resolved.set(field.field_id, { value: outcome.value, rule: `sensitive:${outcome.reason}` })
       } else {

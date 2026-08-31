@@ -3,8 +3,7 @@ import { eq } from 'drizzle-orm'
 import { db } from '@/db/client'
 import { profiles } from '@/db/schema'
 import { Panel } from '@/components/ui'
-import { EeoEditor, NotesEditor } from '@/components/ProfileEditor'
-import { emptyEeo } from '@/lib/resume/profile-schema'
+import { NotesEditor } from '@/components/ProfileEditor'
 
 export const dynamic = 'force-dynamic'
 
@@ -169,10 +168,6 @@ export default async function ProfileDetailPage({
               ))}
             </ul>
           )}
-        </Panel>
-
-        <Panel title="Voluntary self-identification">
-          <EeoEditor profileId={profile.id} initial={profile.eeo ?? emptyEeo} />
         </Panel>
       </div>
     </div>

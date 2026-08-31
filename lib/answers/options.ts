@@ -1,4 +1,4 @@
-import type { FieldOption } from '@jobo-ai/autoapply'
+import type { Field, FieldOption, GroupItemField } from '@jobo-ai/autoapply'
 
 /**
  * Matching a profile value onto an ATS's advertised option list.
@@ -22,6 +22,32 @@ export function normalize(value: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, ' ')
     .trim()
+}
+
+/** Return advertised options only for field types that may expose them. */
+export function fieldOptions(field: Field): readonly FieldOption[] {
+  switch (field.type) {
+    case 'select':
+    case 'multi_select':
+    case 'radio':
+    case 'typeahead':
+      return field.options ?? []
+    default:
+      return []
+  }
+}
+
+/** Group-item counterpart to fieldOptions. */
+export function groupItemOptions(field: GroupItemField): readonly FieldOption[] {
+  switch (field.type) {
+    case 'select':
+    case 'multi_select':
+    case 'radio':
+    case 'typeahead':
+      return field.options ?? []
+    default:
+      return []
+  }
 }
 
 /**

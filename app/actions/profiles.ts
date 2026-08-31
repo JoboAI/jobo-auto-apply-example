@@ -5,11 +5,11 @@ import { eq } from 'drizzle-orm'
 import { db } from '@/db/client'
 import { profiles } from '@/db/schema'
 import { deleteResume } from '@/lib/resume/storage'
-import { normalizeProfile, type EeoAnswers, type ResumeProfile } from '@/lib/resume/profile-schema'
+import { normalizeProfile, type ResumeProfile } from '@/lib/resume/profile-schema'
 
 export async function updateProfileAction(
   id: string,
-  update: { name?: string; data?: ResumeProfile; eeo?: EeoAnswers }
+  update: { name?: string; data?: ResumeProfile }
 ): Promise<{ ok: boolean }> {
   db.update(profiles)
     .set({
@@ -17,7 +17,6 @@ export async function updateProfileAction(
       // Re-normalise on every write: a hand-edited date should be subject to
       // the same rules as a parsed one.
       ...(update.data ? { data: normalizeProfile(update.data) } : {}),
-      ...(update.eeo ? { eeo: update.eeo } : {}),
       updatedAt: Date.now()
     })
     .where(eq(profiles.id, id))
@@ -41,12 +40,6 @@ export async function updateNotesAction(id: string, notes: string): Promise<{ ok
     .where(eq(profiles.id, id))
     .run()
 
-  revalidatePath(`/profiles/${id}`)
-  return { ok: true }
-}
-
-export async function updateEeoAction(id: string, eeo: EeoAnswers): Promise<{ ok: boolean }> {
-  db.update(profiles).set({ eeo, updatedAt: Date.now() }).where(eq(profiles.id, id)).run()
   revalidatePath(`/profiles/${id}`)
   return { ok: true }
 }

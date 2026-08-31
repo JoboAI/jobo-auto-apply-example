@@ -1,4 +1,5 @@
 import type { Field, GroupItemField } from '@jobo-ai/autoapply'
+import { groupItemOptions } from './options'
 
 /**
  * Treat one field *inside* a repeating group as if it were a top-level field,
@@ -14,16 +15,17 @@ import type { Field, GroupItemField } from '@jobo-ai/autoapply'
  * and `coerce.ts` already imports from `validate.ts`.
  */
 export function asItemField(parent: Field, item: GroupItemField): Field {
+  const options = groupItemOptions(item)
   return {
-    ...parent,
+    field_id: `${parent.field_id}.${item.key}`,
     type: item.type,
     label: item.label,
     required: item.required,
     requires_answer: item.required,
-    options: item.options ?? [],
-    constraints: item.constraints ?? {},
-    // A group item is never itself a group.
-    group_type: null,
-    item_fields: []
-  } as Field
+    ...(parent.sensitive ? { sensitive: true as const } : {}),
+    ...(options.length ? { options } : {}),
+    ...(item.constraints && Object.keys(item.constraints).length
+      ? { constraints: item.constraints }
+      : {})
+  } as unknown as Field
 }

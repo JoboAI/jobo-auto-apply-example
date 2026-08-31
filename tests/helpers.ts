@@ -1,17 +1,28 @@
-import type { Field, FieldType, GroupItemField, GroupType } from '@jobo-ai/autoapply'
+import type { Field, FieldOption, FieldType, GroupItemField, GroupType, RepeatingGroupField } from '@jobo-ai/autoapply'
 
-/**
- * The SDK's `Field` is a discriminated union — `current_value` is a `string` on
- * a text field, a `boolean` on a checkbox, and so on — which is exactly what
- * you want in application code and exactly what gets in the way in a factory
- * whose `type` is a parameter. This is the union's shared shape, with the
- * per-arm properties widened so a test can say `field({ type, current_value })`
- * without picking the arm by hand.
- */
-type FieldShape = Omit<Field, 'type' | 'current_value' | 'group_type'> & {
+/** Shared test-builder shape for the SDK's discriminated field union. */
+type FieldShape = {
+  field_id: string
   type: FieldType
-  current_value?: unknown
-  group_type?: GroupType | null
+  label: string
+  required: boolean
+  requires_answer: boolean
+  sensitive?: true
+  format?: string
+  options?: FieldOption[]
+  constraints?: Record<string, unknown>
+  group_type?: GroupType
+  min_items?: number
+  max_items?: number
+  item_fields?: GroupItemField[]
+}
+
+type GroupItemFieldShape = {
+  type: Exclude<FieldType, 'repeating_group'>
+  label: string
+  required: boolean
+  options?: FieldOption[]
+  constraints?: Record<string, unknown>
 }
 
 /** Build a Field with sane defaults so tests only state what they care about. */
@@ -19,37 +30,24 @@ export function field(
   overrides: Partial<FieldShape> & { field_id: string; type: FieldType }
 ): Field {
   return {
-    group_type: null,
     label: overrides.field_id,
     required: false,
     requires_answer: false,
-    current_value: null,
-    options: [],
-    constraints: {},
-    category: null,
-    semantic_key: null,
-    sensitive: false,
-    format: null,
-    min_items: null,
-    max_items: null,
-    item_fields: [],
     ...overrides
   } as Field
 }
 
 export function itemField(
   key: string,
-  overrides: Partial<GroupItemField> = {}
+  overrides: Partial<GroupItemFieldShape> = {}
 ): GroupItemField {
   return {
     key,
     type: 'text',
     label: key,
     required: false,
-    options: [],
-    constraints: {},
     ...overrides
-  }
+  } as GroupItemField
 }
 
 export function group(
@@ -57,14 +55,14 @@ export function group(
   groupType: GroupType,
   itemFields: GroupItemField[],
   overrides: Partial<FieldShape> = {}
-): Field {
+): RepeatingGroupField {
   return field({
     field_id: fieldId,
     type: 'repeating_group',
     group_type: groupType,
     item_fields: itemFields,
     ...overrides
-  })
+  }) as RepeatingGroupField
 }
 
 export function options(...values: string[]) {

@@ -137,11 +137,9 @@ export type ResumeProfile = z.infer<typeof resumeProfileSchema>
 /**
  * Voluntary self-identification.
  *
- * Kept OUT of `ResumeProfile` on purpose, and never produced by the resume
- * parser or the answer model. Jobo marks these fields `sensitive: true` and
- * never infers them; this app only ever uses values a human typed into the UI.
- * Absent a stored answer we prefer a "decline to state" option, and failing
- * that we leave the field unanswered.
+ * Kept OUT of `ResumeProfile` and retained only for existing local database
+ * compatibility. The answer pipeline never reads these values: it uses an
+ * advertised decline option or leaves a sensitive field unanswered.
  */
 export const eeoAnswersSchema = z.object({
   gender: z.string().nullable(),

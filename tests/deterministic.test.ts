@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { runDeterministic } from '@/lib/answers/deterministic'
-import { emptyEeo, emptyProfile, type ResumeProfile } from '@/lib/resume/profile-schema'
+import { emptyProfile, type ResumeProfile } from '@/lib/resume/profile-schema'
 import type { AnswerContext } from '@/lib/answers/types'
 import { field, group, itemField, options } from './helpers'
 
@@ -17,7 +17,6 @@ function profile(overrides: Partial<ResumeProfile> = {}): ResumeProfile {
 function context(overrides: Partial<AnswerContext> = {}): AnswerContext {
   return {
     profile: profile(),
-    eeo: emptyEeo,
     resumeUrl: 'https://example.com/api/resumes/abc?exp=1&token=2',
     resumeFilename: 'ada.pdf',
     resumeContentType: 'application/pdf',
@@ -32,21 +31,21 @@ function context(overrides: Partial<AnswerContext> = {}): AnswerContext {
 }
 
 describe('identity and contact mapping', () => {
-  it('maps by semantic_key', () => {
+  it('maps by provider field id', () => {
     const fields = [
-      field({ field_id: 'e', type: 'text', semantic_key: 'personal.email' }),
-      field({ field_id: 'f', type: 'text', semantic_key: 'personal.first_name' }),
-      field({ field_id: 'l', type: 'text', semantic_key: 'personal.last_name' }),
-      field({ field_id: 'p', type: 'text', semantic_key: 'personal.phone' })
+      field({ field_id: 'candidate_email', type: 'text', label: 'Contact' }),
+      field({ field_id: 'first_name', type: 'text', label: 'Given' }),
+      field({ field_id: 'last_name', type: 'text', label: 'Family' }),
+      field({ field_id: 'phone_number', type: 'text', label: 'Contact number' })
     ]
     const { resolved } = runDeterministic(fields, context())
-    expect(resolved.get('e')?.value).toBe('ada@example.com')
-    expect(resolved.get('f')?.value).toBe('Ada')
-    expect(resolved.get('l')?.value).toBe('Lovelace')
-    expect(resolved.get('p')?.value).toBe('+14155550123')
+    expect(resolved.get('candidate_email')?.value).toBe('ada@example.com')
+    expect(resolved.get('first_name')?.value).toBe('Ada')
+    expect(resolved.get('last_name')?.value).toBe('Lovelace')
+    expect(resolved.get('phone_number')?.value).toBe('+14155550123')
   })
 
-  it('falls back to the label when semantic_key is absent', () => {
+  it('maps by visible label when the field id is opaque', () => {
     const fields = [
       field({ field_id: 'e', type: 'text', label: 'Email Address' }),
       field({ field_id: 'c', type: 'text', label: 'City' })
@@ -56,19 +55,16 @@ describe('identity and contact mapping', () => {
     expect(resolved.get('c')?.value).toBe('Amsterdam')
   })
 
-  it('matches an unfamiliar semantic_key by pattern rather than failing closed', () => {
-    // The vocabulary is provider-driven and grows; `candidate.email_address`
-    // should still land on the email rule.
-    const fields = [field({ field_id: 'e', type: 'text', semantic_key: 'candidate.email' })]
+  it('normalizes punctuation in provider field ids', () => {
+    const fields = [field({ field_id: 'candidate.email', type: 'text', label: 'Contact' })]
     const { resolved } = runDeterministic(fields, context())
-    expect(resolved.get('e')?.value).toBe('ada@example.com')
+    expect(resolved.get('candidate.email')?.value).toBe('ada@example.com')
   })
 
   it('picks the option value for a country select', () => {
     const target = field({
       field_id: 'country',
       type: 'select',
-      semantic_key: 'address.country',
       options: [{ value: 'nl', label: 'Netherlands' }, { value: 'us', label: 'United States' }]
     })
     const { resolved } = runDeterministic([target], context())
@@ -127,8 +123,8 @@ describe('sensitive fields', () => {
   const gender = field({
     field_id: 'g',
     type: 'select',
+    label: 'Gender',
     sensitive: true,
-    semantic_key: 'eeo.gender',
     options: [
       { value: 'male', label: 'Male' },
       { value: 'female', label: 'Female' },
@@ -136,9 +132,24 @@ describe('sensitive fields', () => {
     ]
   })
 
-  it('uses a value the user explicitly provided', () => {
-    const ctx = context({ eeo: { ...emptyEeo, gender: 'female' } })
-    expect(runDeterministic([gender], ctx).resolved.get('g')?.value).toBe('female')
+  it('uses the advertised decline option', () => {
+    expect(runDeterministic([gender], context()).resolved.get('g')?.value).toBe('decline')
+  })
+
+  it('uses the advertised decline option with the multi-select wire shape', () => {
+    const demographics = field({
+      field_id: 'demographics',
+      type: 'multi_select',
+      label: 'Voluntary demographics',
+      sensitive: true,
+      options: [
+        { value: 'group-a', label: 'Group A' },
+        { value: 'decline', label: 'Prefer not to answer' }
+      ]
+    })
+
+    expect(runDeterministic([demographics], context()).resolved.get('demographics')?.value)
+      .toEqual(['decline'])
   })
 
   it('otherwise selects the form’s own decline option', () => {
@@ -150,8 +161,8 @@ describe('sensitive fields', () => {
     const noDecline = field({
       field_id: 'g',
       type: 'select',
+      label: 'Gender',
       sensitive: true,
-      semantic_key: 'eeo.gender',
       options: options('male', 'female')
     })
     const { resolved, declined } = runDeterministic([noDecline], context())
@@ -163,8 +174,8 @@ describe('sensitive fields', () => {
     const noDecline = field({
       field_id: 'g',
       type: 'select',
+      label: 'Gender',
       sensitive: true,
-      semantic_key: 'eeo.gender',
       options: options('male', 'female')
     })
     // `declined` is terminal — index.ts excludes these from the LLM batch.
@@ -211,7 +222,7 @@ describe('repeating groups', () => {
     expect(Object.keys(items[0]).sort()).toEqual(['company', 'title'])
   })
 
-  it('caps at 10 items regardless of what the field advertises', () => {
+  it('respects the provider item limit', () => {
     const many = profile({
       work_experience: Array.from({ length: 15 }, (_, i) => ({
         company: `Company ${i}`,
@@ -224,9 +235,40 @@ describe('repeating groups', () => {
         description: ''
       }))
     })
-    const generous = group('w', 'work_experience', [itemField('company'), itemField('title')], { max_items: 50 })
+    const limited = group('w', 'work_experience', [itemField('company'), itemField('title')], { max_items: 12 })
+    const { resolved } = runDeterministic([limited], context({ profile: many }))
+    expect((resolved.get('w')?.value as unknown[]).length).toBe(12)
+  })
+
+  it('caps groups at the platform limit of 100', () => {
+    const many = profile({
+      work_experience: Array.from({ length: 120 }, (_, i) => ({
+        company: `Company ${i}`,
+        title: 'Engineer',
+        employment_type: null,
+        location: null,
+        start_date: '2020-01',
+        end_date: null,
+        is_current: false,
+        description: ''
+      }))
+    })
+    const generous = group('w', 'work_experience', [itemField('company'), itemField('title')], { max_items: 150 })
     const { resolved } = runDeterministic([generous], context({ profile: many }))
-    expect((resolved.get('w')?.value as unknown[]).length).toBe(10)
+    expect((resolved.get('w')?.value as unknown[]).length).toBe(100)
+  })
+
+  it('maps certification groups from the resume profile', () => {
+    const certified = profile({
+      certifications: [{ name: 'CKA', issuer: 'CNCF', issued: '2022-05' }]
+    })
+    const certificationGroup = group('c', 'certification', [
+      itemField('name', { required: true }),
+      itemField('issuer'),
+      itemField('issued', { type: 'partial_date' })
+    ])
+    const { resolved } = runDeterministic([certificationGroup], context({ profile: certified }))
+    expect(resolved.get('c')?.value).toEqual([{ name: 'CKA', issuer: 'CNCF', issued: '2022-05' }])
   })
 
   it('drops logical duplicates that Jobo would reject', () => {
@@ -292,7 +334,7 @@ describe('high-stakes fields', () => {
 
 describe('unanswerable types', () => {
   it('never answers an unknown field type', () => {
-    const target = field({ field_id: 'u', type: 'unknown', semantic_key: 'personal.email' })
-    expect(runDeterministic([target], context()).resolved.has('u')).toBe(false)
+    const target = field({ field_id: 'personal.email', type: 'unknown', label: 'Email' })
+    expect(runDeterministic([target], context()).resolved.has('personal.email')).toBe(false)
   })
 })

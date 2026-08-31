@@ -113,16 +113,19 @@ Two passes, in this order for a reason: the deterministic pass needs no network,
 
 | Situation | Producer | Why |
 |---|---|---|
-| `semantic_key` / label matches a profile field | **Rule** | Free, instant, exact. Never let a model retype an email address. |
+| `field_id` / label matches a profile field | **Rule** | Free, instant, exact. Never let a model retype an email address. |
 | `type: 'file'` | **Rule** | Always the signed resume URL (skipped, with a trace note, when `PUBLIC_BASE_URL` is unset). |
-| `repeating_group` | **Rule** | Ordering, the ≤10 cap, `is_current`/`end_date`, and dedupe are rules, not judgement. |
+| `repeating_group` | **Rule** | Ordering, the provider limit and ≤100 platform cap, `is_current`/`end_date`, and dedupe are rules, not judgement. |
 | Unambiguous option match | **Rule** | `country_code: "US"` onto an option `{value:"US"}`. |
-| `sensitive: true` | **Applicant prompt** | Use the applicant-provided value; never ask the model to invent it. |
+| `sensitive: true` | **Rule** | Use only an advertised decline option; otherwise leave it unresolved. Never send it to the model. |
 | `type: 'unknown'` | **Neither** | Unanswerable by contract. |
 | Open-ended text | **LLM** | "Why this company", "describe a project". |
 | Options needing semantic choice | **LLM** | "5-7 years" → the `senior` option. |
 
-**Sensitive fields are never sent to the model.** For voluntary self-identification the order is: a value the user typed into the UI → the form's own "prefer not to say" option → leave it unanswered. Jobo does not infer either kind of answer.
+**Sensitive fields are never sent to the model.** For voluntary
+self-identification this example uses only the form's own "prefer not to say"
+option; when none is advertised, it leaves the field unanswered. It never
+infers or submits demographic values.
 
 **Typed slots, not a polymorphic `value`.** A `value` that is a string, number, boolean, array or object depending on a sibling field's type is exactly what strict JSON Schema handles worst, and the failure is silent. Instead the model declares a `kind` and fills the matching slot, and [`lib/answers/coerce.ts`](lib/answers/coerce.ts) turns that into the wire shape. `kind: "skip"` gives it an explicit way to decline instead of fabricating.
 
