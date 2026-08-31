@@ -20,7 +20,7 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@jobo-ai/autoapply": "^1.0.0",
+    "@jobo-ai/autoapply": "^2.0.0",
     "better-sqlite3": "^11.10.0",
     "drizzle-orm": "^0.45.2",
     "geist": "^1.7.2",
