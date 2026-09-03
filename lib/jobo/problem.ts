@@ -44,7 +44,9 @@ const EXPLANATIONS: Record<string, string> = {
   application_quota_exceeded:
     'You have hit the create quota (5 live applications per 24 hours, 20 sandbox per hour).',
   application_capacity_exceeded:
-    'Too many applications in flight. Jobo allows 5 non-terminal and 1 executing at a time.',
+    'Too many applications in flight. Jobo allows up to 200 queued or running applications per account.',
+  concurrency_limit_reached:
+    'You have reached your concurrent application limit. Cancel or submit an existing application before starting a new one — retrying will not help.',
   intake_paused: 'Application intake is temporarily paused.',
   provider_catalog_unavailable: 'The provider catalogue is briefly unavailable. Retry shortly.',
 
