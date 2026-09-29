@@ -63,6 +63,9 @@ function createAuth() {
   return betterAuth({
     baseURL: process.env.BETTER_AUTH_URL,
     secret: process.env.BETTER_AUTH_SECRET,
+    // The production nginx proxy overwrites X-Real-IP after resolving the
+    // trusted Cloudflare address; clients cannot supply this header directly.
+    advanced: { ipAddress: { ipAddressHeaders: ['x-real-ip'] } },
     database: drizzleAdapter(db, {
       provider: 'sqlite',
       schema: { user, session, account, verification },

@@ -8,6 +8,7 @@ import { profiles, applications, savedJobs } from '@/db/schema'
 import { requireUser } from '@/lib/session'
 import { getJobs } from '@/lib/jobs'
 import { ApplyButton, SaveButton } from '@/components/JobActions'
+import { SandboxJobLink } from '@/components/SandboxJobLink'
 export default async function JobPage({
   params,
 }: {
@@ -97,6 +98,7 @@ export default async function JobPage({
               available={job.available}
               existingId={existing?.id}
             />
+            <SandboxJobLink url={job.applyUrl} slug={job.slug} title={job.role} />
             <small>
               We only use facts you’ve provided. If something’s missing, we stop
               and let you know.

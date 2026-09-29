@@ -10,6 +10,8 @@ import { isTerminal } from '@/lib/status'
 import { applicationLabel, canRetry, displayDate } from '@/lib/presentation'
 import { LiveRefresh, CancelButton } from '@/components/ApplicationLive'
 import { ApplyButton } from '@/components/JobActions'
+import { ApplicationAnswers } from '@/components/ApplicationAnswers'
+import { SandboxJobLink } from '@/components/SandboxJobLink'
 export default async function Page({
   params,
 }: {
@@ -85,6 +87,9 @@ export default async function Page({
               We hit a temporary connection issue. We’re checking the
               application safely before continuing.
             </div>
+          )}
+          {history.some(step => step.answersJson?.length) && (
+            <a href="#answers-sent-heading" className="button secondary small answer-jump">View answers sent</a>
           )}
           <ol className="timeline">
             <li>
@@ -173,6 +178,7 @@ export default async function Page({
               <FileText size={22} />
             </span>
             <h3>Candidate snapshot</h3>
+            <SandboxJobLink url={row.applyUrl} slug={row.jobId ?? ''} title={row.jobSnapshot?.role ?? 'application'} />
             <p>{row.profileSnapshot?.resumeFilename}</p>
             <dl className="snapshot-details">
               <dt>Name</dt>
@@ -201,6 +207,7 @@ export default async function Page({
           </div>
         </aside>
       </div>
+      <ApplicationAnswers history={history} />
     </>
   )
 }

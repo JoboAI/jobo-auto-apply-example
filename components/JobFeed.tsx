@@ -15,6 +15,7 @@ import {
 import type { Job } from '@/lib/jobs-types'
 import { SaveButton } from './JobActions'
 import { CardApply } from './CardApply'
+import { SandboxJobLink } from './SandboxJobLink'
 import { ApiDocsLink, SourceLink } from './SourceLink'
 import type { CardApplication } from '@/lib/presentation'
 export function JobFeed({
@@ -217,6 +218,7 @@ export function JobFeed({
                   available={job.available}
                   application={applicationStates[job.slug]}
                 />
+                <SandboxJobLink url={job.applyUrl} slug={job.slug} title={job.role} />
               </article>
             ))}
           </div>

@@ -126,6 +126,8 @@ test('account → resume → saved role → hands-free application, desktop and 
   })
   await page.getByLabel('Search jobs').fill('Cascade')
   await expect(page.locator('.job-card')).toHaveCount(1)
+  await expect(page.locator('.job-card').getByRole('link', { name: /View Data Engineer on sandbox.jobo.world/ }))
+    .toHaveAttribute('href', 'https://sandbox.jobo.world/apply/multi-step')
   await page.getByRole('button', { name: 'Save job', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Unsave job' })).toBeVisible()
   await page.getByRole('link', { name: 'Saved jobs', exact: true }).click()
@@ -195,6 +197,12 @@ test('account → resume → saved role → hands-free application, desktop and 
   await expect(
     tracker.getByText('Submission confirmed', { exact: true }),
   ).toBeVisible({ timeout: 30000 })
+  await tracker.getByRole('link', { name: 'View answers sent', exact: true }).click()
+  const receipt = tracker.locator('.application-answers')
+  await expect(receipt.getByRole('heading', { name: 'Answers sent' })).toBeVisible()
+  await expect(receipt).toContainText('Full name')
+  await expect(receipt).toContainText('Ada Lovelace')
+  await expect(receipt).toContainText('Accepted by API')
   await tracker.screenshot({
     path: 'test-results/application-desktop.png',
     animations: 'disabled',

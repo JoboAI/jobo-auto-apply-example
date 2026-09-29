@@ -38,7 +38,6 @@ export function ResumeUpload() {
         return
       }
       router.push(payload.redirectTo)
-      router.refresh()
     } catch {
       setError(
         'Could not upload your resume. Check your connection and try again.',

@@ -254,8 +254,8 @@ export function ProfileEditor({
           else if (step < 2) goTo(step + 1)
           else {
             setSaved(true)
-            router.refresh()
             if (!reviewed) router.push('/jobs')
+            else router.refresh()
           }
         } catch {
           setError('Could not save your profile. Please try again.')
