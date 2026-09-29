@@ -4,12 +4,13 @@ import { notFound } from 'next/navigation'
 import { and, asc, desc, eq } from 'drizzle-orm'
 import { ArrowLeft, Check, Circle, FileText, Sparkles } from 'lucide-react'
 import { db } from '@/db/client'
-import { applications, profiles, steps } from '@/db/schema'
+import { applications, profiles, steps, apiExchanges } from '@/db/schema'
 import { requireUser } from '@/lib/session'
 import { isTerminal } from '@/lib/status'
 import { applicationLabel, canRetry, displayDate } from '@/lib/presentation'
 import { LiveRefresh, CancelButton } from '@/components/ApplicationLive'
 import { ApplyButton } from '@/components/JobActions'
+import { ApplicationApiPreview } from '@/components/ApplicationApiPreview'
 import { ApplicationAnswers } from '@/components/ApplicationAnswers'
 import { SandboxJobLink } from '@/components/SandboxJobLink'
 export default async function Page({
@@ -31,6 +32,8 @@ export default async function Page({
     .where(eq(steps.applicationId, id))
     .orderBy(asc(steps.receivedAt))
     .all()
+  const exchanges = db.select().from(apiExchanges)
+    .where(eq(apiExchanges.applicationId, id)).orderBy(asc(apiExchanges.startedAt)).limit(100).all()
   const profile = db
     .select()
     .from(profiles)
@@ -207,6 +210,7 @@ export default async function Page({
           </div>
         </aside>
       </div>
+      <ApplicationApiPreview exchanges={exchanges} />
       <ApplicationAnswers history={history} />
     </>
   )

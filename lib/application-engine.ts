@@ -61,7 +61,7 @@ export async function advanceApplication(
       // the process died mid-hold). Replaying create with the SAME stored
       // Idempotency-Key re-attaches to the in-flight application and its
       // wait — this is why the key was written before the first attempt.
-      application = await jobo().applications.create(
+      application = await jobo(id).applications.create(
         { apply_url: local.applyUrl },
         { idempotencyKey: local.idempotencyKey },
       )
@@ -69,7 +69,7 @@ export async function advanceApplication(
       // Long-poll only while Jobo is working; a plain snapshot suffices when
       // the local state says a step is already waiting for answers.
       const working = local.status === 'queued' || local.status === 'running'
-      application = await jobo().applications.get(
+      application = await jobo(id).applications.get(
         local.joboApplicationId,
         working ? { waitSeconds: MAX_WAIT_SECONDS } : undefined,
       )
@@ -84,8 +84,8 @@ export async function advanceApplication(
       .get()!
     if (fresh.cancelRequested && !isTerminal(application.status)) {
       assertLease(id, leaseOwner)
-      await jobo().applications.cancel(application.id)
-      application = await jobo().applications.get(application.id, {
+      await jobo(id).applications.cancel(application.id)
+      application = await jobo(id).applications.get(application.id, {
         waitSeconds: MAX_WAIT_SECONDS,
       })
       persistApplication(id, application, leaseOwner)
@@ -162,7 +162,7 @@ async function answerStep(
     )
     .get()
   if (existing?.submittedAt) {
-    return jobo().applications.get(joboId, { waitSeconds: MAX_WAIT_SECONDS })
+    return jobo(local.id).applications.get(joboId, { waitSeconds: MAX_WAIT_SECONDS })
   }
 
   const completeStep = (
@@ -194,9 +194,9 @@ async function answerStep(
       .set({ stopReason: reason, cancelRequested: true })
       .where(eq(applications.id, local.id))
       .run()
-    await jobo().applications.cancel(joboId)
+    await jobo(local.id).applications.cancel(joboId)
     // Cancels settle at the next safe checkpoint; wait for the terminal state.
-    return jobo().applications.get(joboId, { waitSeconds: MAX_WAIT_SECONDS })
+    return jobo(local.id).applications.get(joboId, { waitSeconds: MAX_WAIT_SECONDS })
   }
 
   const profile = local.profileSnapshot
@@ -361,7 +361,7 @@ async function answerStep(
       llmModel: result.llmModel ?? null,
       llmMs: result.llmMs ?? null,
     })
-    const next = await jobo().applications.submitAnswers(joboId, answers, {
+    const next = await jobo(local.id).applications.submitAnswers(joboId, answers, {
       // Optimistic guard: refuse to answer a different round than the one this
       // snapshot was built for (409 stale_correction_round on mismatch).
       correctionRound: step.correction_round,

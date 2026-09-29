@@ -203,11 +203,23 @@ test('account → resume → saved role → hands-free application, desktop and 
   await expect(receipt).toContainText('Full name')
   await expect(receipt).toContainText('Ada Lovelace')
   await expect(receipt).toContainText('Accepted by API')
+  const apiPreview = tracker.locator('.api-preview')
+  await apiPreview.locator(':scope > summary').click()
+  await expect(apiPreview.locator('.api-exchange')).not.toHaveCount(0)
+  await apiPreview.locator('.api-exchange > summary').first().click()
+  await expect(apiPreview.getByRole('region', { name: 'Request 1', exact: true })).toContainText('/api/auto-apply/applications')
+  await expect(apiPreview.getByRole('region', { name: 'Response 1', exact: true })).toContainText('awaiting_answers')
+  await expect(apiPreview).not.toContainText('jbe_test_fixture')
+  await expect(apiPreview).not.toContainText('fixture-openrouter')
   await tracker.screenshot({
     path: 'test-results/application-desktop.png',
     animations: 'disabled',
     fullPage: true,
   })
+  await tracker.setViewportSize({ width: 390, height: 844 })
+  expect(await tracker.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+  await apiPreview.screenshot({ path: 'test-results/api-preview-mobile.png', animations: 'disabled' })
+  await tracker.setViewportSize({ width: 1440, height: 1050 })
   await tracker.getByRole('link', { name: 'All applications' }).click()
   await expect(tracker.locator('.application-row')).toHaveCount(1)
   await tracker.setViewportSize({ width: 390, height: 844 })
@@ -295,6 +307,17 @@ test('account → resume → saved role → hands-free application, desktop and 
   const strangerPage = await stranger.newPage()
   await strangerPage.goto(applicationUrl)
   await expect(strangerPage).toHaveURL(/\/login/)
+  const signup = await stranger.request.post(new URL('/api/auth/sign-up/email', applicationUrl).href, {
+    data: { name: 'Other Developer', email: 'other.browser@example.com', password: 'browser-other-password-123' },
+    headers: { origin: 'http://127.0.0.1:3311' },
+  })
+  expect(signup.ok()).toBe(true)
+  const otherMail = await (await request.get('/__test__/mail')).json() as string[]
+  await strangerPage.goto(otherMail.at(-1)!.split('\n').find(s => s.startsWith('http'))!)
+  await strangerPage.goto(applicationUrl)
+  await expect(strangerPage.locator('.api-preview')).toHaveCount(0)
+  await expect(strangerPage.locator('body')).not.toContainText('Ada Lovelace')
+  await expect(strangerPage.getByRole('heading', { name: 'This page has moved on.' })).toBeVisible()
   await stranger.close()
   await tracker
     .getByRole('link', { name: 'Account settings', exact: true })

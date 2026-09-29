@@ -66,3 +66,7 @@ After PDF extraction, a three-step review collects contact details, common appli
 Location, work authorization, sponsorship, availability, and relocation preferences are recommended and may remain unanswered. The engine stops if a required application fact is unavailable. EEO demographic data is not collected or inferred. Users choose either the form’s advertised “prefer not to answer” option (default), or leaving sensitive fields blank. This preference is saved with the profile and snapshotted per application; sensitive fields never go to the model.
 
 The demo reads job metadata, scenario availability, and application URLs from `https://sandbox.jobo.world/api/jobs`. The retired public API scenario endpoint is not used. Sandbox catalog availability describes the forms; the Auto Apply API separately enforces account access and quotas during creation.
+
+### API exchange preview
+
+Application details include a collapsed **API requests & responses** inspector. New worker calls capture the actual SDK HTTP requests, responses, errors, and retries in the application's private SQLite audit trail. Authentication headers, cookies, known server secrets, and signed download tokens are removed before storage. Captures are limited to the first 100 calls per application and 64K characters per JSON preview; truncation is identified. Old applications have no historical HTTP capture. A missing response is never treated as proof of submission.

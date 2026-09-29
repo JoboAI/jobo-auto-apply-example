@@ -259,3 +259,19 @@ export const steps = sqliteTable(
 export type ProfileRow = typeof profiles.$inferSelect
 export type ApplicationRow = typeof applications.$inferSelect
 export type StepRow = typeof steps.$inferSelect
+
+/** Redacted HTTP exchanges; access is inherited from the owning application. */
+export const apiExchanges = sqliteTable('api_exchanges', {
+  id: text('id').primaryKey(),
+  applicationId: text('application_id').notNull().references(() => applications.id, { onDelete: 'cascade' }),
+  method: text('method').notNull(),
+  url: text('url').notNull(),
+  requestJson: text('request_json').notNull(),
+  responseJson: text('response_json'),
+  statusCode: integer('status_code'),
+  error: text('error'),
+  startedAt: integer('started_at').notNull(),
+  finishedAt: integer('finished_at'),
+  elapsedMs: integer('elapsed_ms'),
+}, t => [index('api_exchanges_application_idx').on(t.applicationId, t.startedAt)])
+export type ApiExchangeRow = typeof apiExchanges.$inferSelect
