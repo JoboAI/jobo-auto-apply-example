@@ -3,7 +3,7 @@
 # into a linux/amd64 image produces a module that cannot load at boot.
 node_modules
 .next
-.data
+.data*
 out
 build
 
@@ -19,5 +19,6 @@ next-env.d.ts
 
 # Not needed to run the app.
 tests
-scripts
+test-results
+playwright-report
 vitest.config.ts
