@@ -1,174 +1,112 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import { desc } from 'drizzle-orm'
-import { db } from '@/db/client'
-import { applications, profiles } from '@/db/schema'
-import { config } from '@/lib/config'
-import { getSandboxScenarios } from '@/lib/jobo/client'
-import type { SandboxScenario } from '@/lib/jobo/sandbox'
-import { envRegressed, getTutorialState } from '@/lib/tutorial'
-import { ApplyForm } from '@/components/ApplyForm'
-import { Badge, ButtonLink, Panel, StatusBadge, relativeTime } from '@/components/ui'
-
-export const dynamic = 'force-dynamic'
-
-/**
- * The front door routes on tutorial state:
- *
- *   incomplete → the notebook (the app IS the tutorial until you have seen
- *                the whole contract execute once)
- *   complete   → the workbench: create another application in zero clicks,
- *                with the reference surfaces one link away
- */
-export default async function HomePage() {
-  const state = getTutorialState()
-
-  if (!state.complete) {
-    redirect('/learn')
-  }
-
-  const profileRows = db.select().from(profiles).orderBy(desc(profiles.createdAt)).all()
-  const recent = db.select().from(applications).orderBy(desc(applications.createdAt)).limit(8).all()
-
-  let scenarios: SandboxScenario[] = []
-  let sandboxAvailable = false
-  let sandboxNote: string | null = null
-  try {
-    const response = await getSandboxScenarios()
-    sandboxAvailable = response.available
-    scenarios = response.scenarios.filter((scenario) => scenario.apply_url)
-    if (!response.available) sandboxNote = 'the sandbox is not enabled on this deployment yet'
-  } catch (error) {
-    sandboxNote = `could not load scenarios (${error instanceof Error ? error.message : String(error)})`
-  }
-
+import { ArrowUpRight, ArrowRight, Check, Sparkles } from 'lucide-react'
+import {
+  ApplicationFlowGraphic,
+  IntegrationGraphic,
+} from '@/components/ApplicationFlowGraphic'
+import { currentUser } from '@/lib/session'
+import { ApiDocsLink, SourceLink } from '@/components/SourceLink'
+export default async function Home() {
+  if (await currentUser()) redirect('/jobs')
   return (
-    <div className="space-y-8">
-      <header className="border-b hairline pb-6">
-        <p className="eyebrow">Workbench</p>
-        <h1 className="mt-1 font-display text-3xl font-medium text-ink-900">Auto Apply</h1>
-        <p className="mt-2 text-sm text-ink-600">
-          Tutorial complete —{' '}
-          <Link
-            href="/learn"
-            className="font-medium text-brand hover:text-brand-deep hover:underline"
-          >
-            reopen the notebook
-          </Link>{' '}
-          whenever you need the walkthrough again.
-        </p>
+    <div className="landing">
+      <header className="landing-nav">
+        <Link className="logo" href="/">
+          <img src="/logos/jobo-logo.svg" alt="Jobo" />
+        </Link>
+        <span className="sandbox-pill">
+          <span />
+          Auto Apply Demo
+        </span>
+        <SourceLink compact />
+        <Link href="/login" className="button secondary">
+          Log in <ArrowUpRight size={16} />
+        </Link>
       </header>
-
-      {/* Reappears exactly when the state that gated the tutorial regresses —
-          a key removed from .env.local, a rotated secret. */}
-      {envRegressed() && (
-        <div className="bg-warning-tint px-4 py-3 text-sm text-warning-deep">
-          Environment values are missing or invalid — applications cannot run.{' '}
-          <Link href="/learn" className="font-medium underline">
-            Check your setup
-          </Link>
-          .
-        </div>
-      )}
-
-      <div className="grid gap-6 lg:grid-cols-5">
-        <div className="lg:col-span-3">
-          <Panel title="New application">
-            <ApplyForm
-              profiles={profileRows.map((p) => ({ id: p.id, name: p.name, isDefault: p.isDefault }))}
-              scenarios={scenarios}
-              sandboxAvailable={sandboxAvailable && scenarios.length > 0}
-              sandboxNote={sandboxNote}
-              defaultSandbox={config().DEFAULT_SANDBOX}
-            />
-          </Panel>
-        </div>
-
-        <div className="space-y-6 lg:col-span-2">
-          <Panel
-            title="Profiles"
-            actions={
-              <Link href="/profiles" className="text-xs font-medium text-brand hover:text-brand-deep hover:underline">
-                Manage
-              </Link>
-            }
-          >
-            {profileRows.length === 0 ? (
-              <p className="text-sm text-ink-600">Profiles not added yet.</p>
-            ) : (
-              <ul className="divide-y hairline text-sm">
-                {profileRows.slice(0, 4).map((profile) => (
-                  <li key={profile.id} className="flex items-center justify-between gap-3 py-2">
-                    <Link href={`/profiles/${profile.id}`} className="truncate text-ink-800 hover:underline">
-                      {profile.name}
-                    </Link>
-                    {profile.isDefault && <Badge tone="info">default</Badge>}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Panel>
-        </div>
-      </div>
-
-      <Panel
-        title="Recent applications"
-        padding="none"
-        actions={
-          <Link href="/applications" className="text-xs font-medium text-brand hover:text-brand-deep hover:underline">
-            View all
-          </Link>
-        }
-      >
-        {recent.length === 0 ? (
-          <p className="p-6 text-sm text-ink-600">Applications not created yet.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="s-table">
-              <thead>
-                <tr>
-                  <th>Provider</th>
-                  <th>URL</th>
-                  <th>Status</th>
-                  <th>Created</th>
-                </tr>
-              </thead>
-              <tbody>
-                {recent.map((application) => (
-                  <tr key={application.id}>
-                    <td>
-                      <Link
-                        href={`/applications/${application.id}`}
-                        className="font-medium text-ink-900 hover:underline"
-                      >
-                        {application.providerName || 'Unmatched'}
-                      </Link>
-                      {application.sandbox && (
-                        <span className="ml-2">
-                          <Badge>sandbox</Badge>
-                        </span>
-                      )}
-                    </td>
-                    <td className="max-w-64 truncate text-ink-600">{application.applyUrl}</td>
-                    <td>
-                      <StatusBadge status={application.status} />
-                    </td>
-                    <td className="text-ink-600">{relativeTime(application.createdAt)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      <main className="hero">
+        <div className="hero-copy">
+          <div className="eyebrow">
+            <Sparkles size={16} /> JOBO AUTO APPLY API · DEVELOPER DEMO
           </div>
-        )}
-      </Panel>
-
-      {profileRows.length === 0 && (
-        <div className="flex justify-end">
-          <ButtonLink href="/profiles" variant="secondary" size="sm">
-            Import a resume
-          </ButtonLink>
+          <h1>
+            Your app. Our API.
+            <br />
+            <em>Applications, automated.</em>
+          </h1>
+          <p>
+            See what you can build with the Auto Apply API. Upload a resume,
+            click Apply on a sandbox job, and follow every step through to
+            submission. Then explore the code and build it into your app.
+          </p>
+          <div className="hero-actions">
+            <Link href="/signup" className="button primary large">
+              Try Auto Apply <ArrowRight size={18} />
+            </Link>
+            <ApiDocsLink />
+          </div>
+          <div className="hero-footnote">
+            <Check size={15} /> Fictional jobs. Real API calls. No real
+            employers contacted.
+          </div>
         </div>
-      )}
+        <ApplicationFlowGraphic />
+      </main>
+      <section className="landing-steps">
+        {[
+          {
+            n: '01',
+            graphic: 'profile' as const,
+            title: 'Prepare candidate data',
+            text: 'Upload a resume and confirm the facts used to answer fields.',
+          },
+          {
+            n: '02',
+            graphic: 'application' as const,
+            title: 'Run a sandbox application',
+            text: 'Click Apply and watch the create, answer, and submit flow.',
+          },
+          {
+            n: '03',
+            graphic: 'integration' as const,
+            title: 'Build it into your app',
+            text: 'Explore the working integration on GitHub and adapt it to your product.',
+          },
+        ].map(({ n, graphic, title, text }) => (
+          <div key={n}>
+            <span className="step-number">{n}</span>
+            <IntegrationGraphic kind={graphic} />
+            <h3>{title}</h3>
+            <p>{text}</p>
+          </div>
+        ))}
+      </section>
+      <section className="integration-boundary">
+        <div>
+          <span className="eyebrow">YOUR APP</span>
+          <h3>You own the candidate experience.</h3>
+          <p>
+            Profiles, resumes, and answer generation live in your app. This
+            example uses reviewed profile data and OpenRouter for generated
+            answers.
+          </p>
+        </div>
+        <div>
+          <span className="eyebrow">AUTO APPLY API</span>
+          <h3>Jobo handles the application form.</h3>
+          <p>
+            Send an application URL, receive typed fields, and return your
+            answers. The API fills the form and returns the next step or final
+            result.
+          </p>
+        </div>
+      </section>
+      <footer className="landing-footer">
+        <span>
+          Jobo Auto Apply Demo · Fictional jobs. Real application flows.
+        </span>
+        <SourceLink />
+      </footer>
     </div>
   )
 }

@@ -1,7 +1,18 @@
-import type { Field, FileValue, GroupItemField, RepeatingGroupField } from '@jobo-ai/autoapply'
+import type {
+  Field,
+  FileValue,
+  GroupItemField,
+  RepeatingGroupField,
+} from '@jobo-ai/autoapply'
 import type { AnswerContext } from './types'
 import type { ResumeProfile } from '@/lib/resume/profile-schema'
-import { fieldOptions, findDeclineOption, matchBooleanOption, matchOption, normalize } from './options'
+import {
+  fieldOptions,
+  findDeclineOption,
+  matchBooleanOption,
+  matchOption,
+  normalize,
+} from './options'
 import { coerceValue } from './coerce'
 import { asItemField } from './item-field'
 
@@ -39,9 +50,11 @@ function named(...patterns: RegExp[]) {
       field.field_id.toLowerCase(),
       field.label.toLowerCase(),
       normalize(field.field_id),
-      normalize(field.label)
+      normalize(field.label),
     ]
-    return patterns.some((pattern) => values.some((value) => pattern.test(value)))
+    return patterns.some((pattern) =>
+      values.some((value) => pattern.test(value)),
+    )
   }
 }
 
@@ -55,7 +68,7 @@ function fullAddress(profile: ResumeProfile): string | undefined {
     profile.location.line2,
     profile.location.city,
     profile.location.region,
-    profile.location.postal_code
+    profile.location.postal_code,
   ].filter(Boolean)
   return parts.length ? parts.join(', ') : undefined
 }
@@ -84,8 +97,10 @@ function resumeFile(field: Field, ctx: AnswerContext): FileValue | undefined {
   if (patterns.length > 0) {
     const ok = patterns.some((pattern) =>
       pattern.trim().endsWith('/*')
-        ? ctx.resumeContentType.toLowerCase().startsWith(pattern.trim().slice(0, -1).toLowerCase())
-        : ctx.resumeContentType.toLowerCase() === pattern.trim().toLowerCase()
+        ? ctx.resumeContentType
+            .toLowerCase()
+            .startsWith(pattern.trim().slice(0, -1).toLowerCase())
+        : ctx.resumeContentType.toLowerCase() === pattern.trim().toLowerCase(),
     )
     if (!ok) return undefined
   }
@@ -93,7 +108,7 @@ function resumeFile(field: Field, ctx: AnswerContext): FileValue | undefined {
   return {
     url: ctx.resumeUrl,
     filename: ctx.resumeFilename,
-    content_type: ctx.resumeContentType
+    content_type: ctx.resumeContentType,
   }
 }
 
@@ -105,7 +120,7 @@ function resumeFile(field: Field, ctx: AnswerContext): FileValue | undefined {
  */
 export function logicalFingerprint(
   groupType: string | null,
-  item: Record<string, unknown>
+  item: Record<string, unknown>,
 ): string {
   const preferred: string[] =
     groupType === 'education'
@@ -120,7 +135,9 @@ export function logicalFingerprint(
               ? ['skill', 'name']
               : []
 
-  let selected = preferred.filter((name) => item[name] !== undefined && item[name] !== null)
+  let selected = preferred.filter(
+    (name) => item[name] !== undefined && item[name] !== null,
+  )
   if (selected.length === 0) selected = Object.keys(item).sort()
 
   return selected
@@ -136,11 +153,20 @@ export function logicalFingerprint(
         !Array.isArray(value) &&
         typeof (value as Record<string, unknown>).selection === 'object' &&
         (value as Record<string, unknown>).selection !== null &&
-        'value' in ((value as Record<string, unknown>).selection as Record<string, unknown>)
+        'value' in
+          ((value as Record<string, unknown>).selection as Record<
+            string,
+            unknown
+          >)
       ) {
-        value = ((value as Record<string, unknown>).selection as { value: unknown }).value
+        value = (
+          (value as Record<string, unknown>).selection as { value: unknown }
+        ).value
       }
-      const rendered = typeof value === 'string' ? value.trim().toLowerCase() : JSON.stringify(value)
+      const rendered =
+        typeof value === 'string'
+          ? value.trim().toLowerCase()
+          : JSON.stringify(value)
       return `${name}:${rendered}`
     })
     .join('|')
@@ -151,7 +177,10 @@ export function logicalFingerprint(
 const PLATFORM_MAX_GROUP_ITEMS = 100
 
 /** Source rows for a group type, most recent first. */
-function groupRows(field: RepeatingGroupField, profile: ResumeProfile): Record<string, unknown>[] {
+function groupRows(
+  field: RepeatingGroupField,
+  profile: ResumeProfile,
+): Record<string, unknown>[] {
   switch (field.group_type) {
     case 'work_experience':
       return [...profile.work_experience]
@@ -169,12 +198,16 @@ function groupRows(field: RepeatingGroupField, profile: ResumeProfile): Record<s
           is_current: row.is_current,
           current: row.is_current,
           description: row.description,
-          summary: row.description
+          summary: row.description,
         }))
 
     case 'education':
       return [...profile.education]
-        .sort((a, b) => (b.end_date ?? b.start_date ?? '').localeCompare(a.end_date ?? a.start_date ?? ''))
+        .sort((a, b) =>
+          (b.end_date ?? b.start_date ?? '').localeCompare(
+            a.end_date ?? a.start_date ?? '',
+          ),
+        )
         .map((row) => ({
           school: row.school,
           institution: row.school,
@@ -186,7 +219,7 @@ function groupRows(field: RepeatingGroupField, profile: ResumeProfile): Record<s
           end_date: row.is_current ? null : row.end_date,
           is_current: row.is_current,
           grade: row.grade,
-          gpa: row.grade
+          gpa: row.grade,
         }))
 
     case 'certification':
@@ -198,7 +231,7 @@ function groupRows(field: RepeatingGroupField, profile: ResumeProfile): Record<s
         issuing_organization: row.issuer,
         issued: row.issued,
         issue_date: row.issued,
-        date: row.issued
+        date: row.issued,
       }))
 
     case 'website':
@@ -206,7 +239,7 @@ function groupRows(field: RepeatingGroupField, profile: ResumeProfile): Record<s
         url: row.url,
         type: row.type,
         label: row.label,
-        name: row.label
+        name: row.label,
       }))
 
     case 'language':
@@ -214,7 +247,7 @@ function groupRows(field: RepeatingGroupField, profile: ResumeProfile): Record<s
         language: row.name,
         name: row.name,
         proficiency: row.proficiency,
-        level: row.proficiency
+        level: row.proficiency,
       }))
 
     case 'skill':
@@ -222,7 +255,7 @@ function groupRows(field: RepeatingGroupField, profile: ResumeProfile): Record<s
         skill: row.name,
         name: row.name,
         level: row.level,
-        proficiency: row.level
+        proficiency: row.level,
       }))
 
     default:
@@ -247,14 +280,20 @@ export interface GroupBuildResult {
  * (`item_count`), and dedupe on the server's own logical fingerprint
  * (`duplicate_item`).
  */
-export function buildGroup(field: RepeatingGroupField, ctx: AnswerContext): GroupBuildResult | undefined {
+export function buildGroup(
+  field: RepeatingGroupField,
+  ctx: AnswerContext,
+): GroupBuildResult | undefined {
   const rows = groupRows(field, ctx.profile)
   if (rows.length === 0) return undefined
 
   const advertised = field.item_fields ?? []
   if (advertised.length === 0) return undefined
 
-  const max = Math.min(field.max_items ?? PLATFORM_MAX_GROUP_ITEMS, PLATFORM_MAX_GROUP_ITEMS)
+  const max = Math.min(
+    field.max_items ?? PLATFORM_MAX_GROUP_ITEMS,
+    PLATFORM_MAX_GROUP_ITEMS,
+  )
   const items: Record<string, unknown>[] = []
   const gaps: GroupBuildResult['gaps'] = []
   const fingerprints = new Set<string>()
@@ -300,7 +339,8 @@ export function buildGroup(field: RepeatingGroupField, ctx: AnswerContext): Grou
 
     const index = items.length
     items.push(item)
-    for (const itemField of pending) gaps.push({ index, key: itemField.key, itemField })
+    for (const itemField of pending)
+      gaps.push({ index, key: itemField.key, itemField })
   }
 
   if (items.length === 0) return undefined
@@ -324,17 +364,49 @@ const RULES: Rule[] = [
   {
     id: 'repeating_group',
     match: (f) => f.type === 'repeating_group',
-    resolve: (f, ctx) => f.type === 'repeating_group' ? buildGroup(f, ctx)?.items : undefined
+    resolve: (f, ctx) =>
+      f.type === 'repeating_group' ? buildGroup(f, ctx)?.items : undefined,
   },
 
   // Identity
-  { id: 'first_name', match: named(/first_?name$/, /^first name$/), resolve: (_, c) => c.profile.personal.first_name },
-  { id: 'last_name', match: named(/last_?name$|surname$/, /^(last name|surname|family name)$/), resolve: (_, c) => c.profile.personal.last_name },
-  { id: 'full_name', match: named(/full_?name$|(^|\.)name$/, /^(full name|name|your name)$/), resolve: (_, c) => c.profile.personal.full_name },
-  { id: 'email', match: named(/e?_?mail$/, /^e?\s?mail( address)?$/), resolve: (_, c) => c.profile.personal.email },
-  { id: 'phone', match: named(/phone|mobile|telephone/), resolve: (_, c) => c.profile.personal.phone },
-  { id: 'pronouns', match: named(/pronoun/), resolve: (_, c) => c.profile.personal.pronouns },
-  { id: 'headline', match: named(/headline|current_?title/, /^(headline|current title|job title)$/), resolve: (_, c) => c.profile.personal.headline },
+  {
+    id: 'first_name',
+    match: named(/first_?name$/, /^first name$/),
+    resolve: (_, c) => c.profile.personal.first_name,
+  },
+  {
+    id: 'last_name',
+    match: named(/last_?name$|surname$/, /^(last name|surname|family name)$/),
+    resolve: (_, c) => c.profile.personal.last_name,
+  },
+  {
+    id: 'full_name',
+    match: named(/full_?name$|(^|\.)name$/, /^(full name|name|your name)$/),
+    resolve: (_, c) => c.profile.personal.full_name,
+  },
+  {
+    id: 'email',
+    match: named(/e?_?mail$/, /^e?\s?mail( address)?$/),
+    resolve: (_, c) => c.profile.personal.email,
+  },
+  {
+    id: 'phone',
+    match: named(/phone|mobile|telephone/),
+    resolve: (_, c) => c.profile.personal.phone,
+  },
+  {
+    id: 'pronouns',
+    match: named(/pronoun/),
+    resolve: (_, c) => c.profile.personal.pronouns,
+  },
+  {
+    id: 'headline',
+    match: named(
+      /headline|current_?title/,
+      /^(headline|current title|job title)$/,
+    ),
+    resolve: (_, c) => c.profile.personal.headline,
+  },
 
   // Location
   {
@@ -342,53 +414,101 @@ const RULES: Rule[] = [
     match: named(/country/, /^country$/),
     resolve: (f, c) =>
       fieldOptions(f).length
-        ? matchOption(fieldOptions(f), [c.profile.location.country_code, c.profile.location.country_name])?.value
-        : (c.profile.location.country_name ?? c.profile.location.country_code)
+        ? matchOption(fieldOptions(f), [
+            c.profile.location.country_code,
+            c.profile.location.country_name,
+          ])?.value
+        : (c.profile.location.country_name ?? c.profile.location.country_code),
   },
   {
     id: 'region',
     match: named(/state|province|region/, /^(state|province|region|county)$/),
     resolve: (f, c) =>
-      fieldOptions(f).length ? matchOption(fieldOptions(f), [c.profile.location.region])?.value : c.profile.location.region
+      fieldOptions(f).length
+        ? matchOption(fieldOptions(f), [c.profile.location.region])?.value
+        : c.profile.location.region,
   },
-  { id: 'city', match: named(/city|locality/, /^(city|town)$/), resolve: (_, c) => c.profile.location.city },
-  { id: 'postal_code', match: named(/postal|zip/, /^(zip|postal)( code)?$/), resolve: (_, c) => c.profile.location.postal_code },
-  { id: 'address_line1', match: named(/address\.?line_?1|street/, /^(address|street address|address line 1)$/), resolve: (_, c) => c.profile.location.line1 },
-  { id: 'address_line2', match: named(/address\.?line_?2/, /address line 2/), resolve: (_, c) => c.profile.location.line2 },
-  { id: 'address_full', match: named(/(^|\.)address$/, /^(full address|mailing address)$/), resolve: (_, c) => fullAddress(c.profile) },
+  {
+    id: 'city',
+    match: named(/city|locality/, /^(city|town)$/),
+    resolve: (_, c) => c.profile.location.city,
+  },
+  {
+    id: 'postal_code',
+    match: named(/postal|zip/, /^(zip|postal)( code)?$/),
+    resolve: (_, c) => c.profile.location.postal_code,
+  },
+  {
+    id: 'address_line1',
+    match: named(
+      /address\.?line_?1|street/,
+      /^(address|street address|address line 1)$/,
+    ),
+    resolve: (_, c) => c.profile.location.line1,
+  },
+  {
+    id: 'address_line2',
+    match: named(/address\.?line_?2/, /address line 2/),
+    resolve: (_, c) => c.profile.location.line2,
+  },
+  {
+    id: 'address_full',
+    match: named(/(^|\.)address$/, /^(full address|mailing address)$/),
+    resolve: (_, c) => fullAddress(c.profile),
+  },
 
   // Links
-  { id: 'linkedin', match: named(/linkedin/), resolve: (_, c) => linkOf(c.profile, 'linkedin') },
-  { id: 'github', match: named(/github/), resolve: (_, c) => linkOf(c.profile, 'github') },
+  {
+    id: 'linkedin',
+    match: named(/linkedin/),
+    resolve: (_, c) => linkOf(c.profile, 'linkedin'),
+  },
+  {
+    id: 'github',
+    match: named(/github/),
+    resolve: (_, c) => linkOf(c.profile, 'github'),
+  },
   {
     id: 'portfolio',
-    match: named(/portfolio|website|personal_?site/, /^(portfolio|website|personal website)$/),
-    resolve: (_, c) => linkOf(c.profile, 'portfolio') ?? linkOf(c.profile, 'website')
+    match: named(
+      /portfolio|website|personal_?site/,
+      /^(portfolio|website|personal website)$/,
+    ),
+    resolve: (_, c) =>
+      linkOf(c.profile, 'portfolio') ?? linkOf(c.profile, 'website'),
   },
 
   // Work authorization — high-stakes, so only answered from explicit profile
-  // data. A null in the profile defers to the model rather than guessing.
+  // data. Missing authorization facts are never delegated to a model.
   {
     id: 'requires_sponsorship',
     match: named(/sponsor/),
     resolve: (f, c) => {
       const needs = c.profile.work_authorization.requires_sponsorship
       if (needs === null || needs === undefined) return undefined
-      return fieldOptions(f).length ? matchBooleanOption(fieldOptions(f), needs)?.value : needs
-    }
+      return fieldOptions(f).length
+        ? matchBooleanOption(fieldOptions(f), needs)?.value
+        : needs
+    },
   },
   {
     id: 'work_authorized',
-    match: named(/work_?authoriz|legally_?authoriz|right_?to_?work/, /legally authori[sz]ed|authori[sz]ed to work|right to work/),
+    match: named(
+      /work_?authoriz|legally_?authoriz|right_?to_?work/,
+      /legally authori[sz]ed|authori[sz]ed to work|right to work/,
+    ),
     resolve: (f, c) => {
       const codes = c.profile.work_authorization.authorized_country_codes
       if (!codes || codes.length === 0) return undefined
       // Only assert authorization when the posting's country is known and
       // matches. Otherwise this is a question for the model, or for a human.
-      const country = c.profile.location.country_code
-      const authorized = country ? codes.includes(country) : codes.length > 0
-      return fieldOptions(f).length ? matchBooleanOption(fieldOptions(f), authorized)?.value : authorized
-    }
+      const country = c.jobCountryCode
+      if (!country) return undefined
+      const authorized = codes.includes(country)
+      return fieldOptions(f).length
+        ? matchBooleanOption(fieldOptions(f), authorized)?.value
+        : authorized
+    },
   },
   {
     id: 'notice_period',
@@ -397,14 +517,17 @@ const RULES: Rule[] = [
       const days = c.profile.work_authorization.notice_period_days
       if (days === null || days === undefined) return undefined
       return f.type === 'number' ? days : `${days} days`
-    }
+    },
   },
 
   // Preferences
   {
     id: 'desired_salary',
-    match: named(/salary|compensation|expected_?pay/, /salary|compensation expectation/),
-    resolve: (_, c) => c.profile.preferences.desired_salary ?? undefined
+    match: named(
+      /salary|compensation|expected_?pay/,
+      /salary|compensation expectation/,
+    ),
+    resolve: (_, c) => c.profile.preferences.desired_salary ?? undefined,
   },
   {
     id: 'willing_to_relocate',
@@ -412,23 +535,33 @@ const RULES: Rule[] = [
     resolve: (f, c) => {
       const willing = c.profile.preferences.willing_to_relocate
       if (willing === null || willing === undefined) return undefined
-      return fieldOptions(f).length ? matchBooleanOption(fieldOptions(f), willing)?.value : willing
-    }
+      return fieldOptions(f).length
+        ? matchBooleanOption(fieldOptions(f), willing)?.value
+        : willing
+    },
   },
   {
     id: 'remote_preference',
-    match: named(/remote|work_?location_?preference/, /remote preference|work preference/),
+    match: named(
+      /remote|work_?location_?preference/,
+      /remote preference|work preference/,
+    ),
     resolve: (f, c) => {
       const preference = c.profile.preferences.remote_preference
       if (!preference) return undefined
-      return fieldOptions(f).length ? matchOption(fieldOptions(f), [preference])?.value : preference
-    }
+      return fieldOptions(f).length
+        ? matchOption(fieldOptions(f), [preference])?.value
+        : preference
+    },
   },
   {
     id: 'start_date',
-    match: named(/start_?date|available/, /start date|availability|available from/),
-    resolve: (_, c) => c.profile.preferences.earliest_start_date ?? undefined
-  }
+    match: named(
+      /start_?date|available/,
+      /start date|availability|available from/,
+    ),
+    resolve: (_, c) => c.profile.preferences.earliest_start_date ?? undefined,
+  },
 ]
 
 export interface DeterministicResult {
@@ -436,7 +569,10 @@ export interface DeterministicResult {
   /** Sensitive fields we deliberately declined, with the reason. */
   declined: Map<string, string>
   /** Group gaps to hand to the LLM, keyed by synthetic id. */
-  groupGaps: Map<string, { field: Field; index: number; key: string; itemField: GroupItemField }>
+  groupGaps: Map<
+    string,
+    { field: Field; index: number; key: string; itemField: GroupItemField }
+  >
   /** Items already built per group field, so gaps can be written back in. */
   groupItems: Map<string, Record<string, unknown>[]>
 }
@@ -452,12 +588,14 @@ export interface DeterministicResult {
  * example that quietly invented someone's demographic data to get a form
  * submitted would be teaching the wrong lesson.
  */
-function resolveSensitive(field: Field): { value?: unknown; reason: string } {
+function resolveSensitive(field: Field, profile: ResumeProfile): { value?: unknown; reason: string } {
+  if (profile.self_identification === 'leave_blank')
+    return { reason: 'candidate chose to leave voluntary self-identification unanswered' }
   const decline = findDeclineOption(fieldOptions(field))
   if (decline) {
     return {
       value: field.type === 'multi_select' ? [decline.value] : decline.value,
-      reason: 'declined to self-identify'
+      reason: 'declined to self-identify',
     }
   }
 
@@ -468,7 +606,10 @@ function resolveSensitive(field: Field): { value?: unknown; reason: string } {
  * Run the deterministic pass over a field list.
  * Anything absent from `resolved` and `declined` is the LLM's problem.
  */
-export function runDeterministic(fields: Field[], ctx: AnswerContext): DeterministicResult {
+export function runDeterministic(
+  fields: Field[],
+  ctx: AnswerContext,
+): DeterministicResult {
   const resolved = new Map<string, ResolvedAnswer>()
   const declined = new Map<string, string>()
   const groupGaps: DeterministicResult['groupGaps'] = new Map()
@@ -485,15 +626,18 @@ export function runDeterministic(fields: Field[], ctx: AnswerContext): Determini
     if (field.type === 'file' && !ctx.resumeUrl) {
       declined.set(
         field.field_id,
-        'file field skipped: PUBLIC_BASE_URL is not set, so there is no public HTTPS URL to serve the resume from'
+        'file field skipped: PUBLIC_BASE_URL is not set, so there is no public HTTPS URL to serve the resume from',
       )
       continue
     }
 
     if (field.sensitive) {
-      const outcome = resolveSensitive(field)
+      const outcome = resolveSensitive(field, ctx.profile)
       if (outcome.value !== undefined) {
-        resolved.set(field.field_id, { value: outcome.value, rule: `sensitive:${outcome.reason}` })
+        resolved.set(field.field_id, {
+          value: outcome.value,
+          rule: `sensitive:${outcome.reason}`,
+        })
       } else {
         declined.set(field.field_id, outcome.reason)
       }
@@ -503,7 +647,10 @@ export function runDeterministic(fields: Field[], ctx: AnswerContext): Determini
     if (field.type === 'repeating_group') {
       const built = buildGroup(field, ctx)
       if (built) {
-        resolved.set(field.field_id, { value: built.items, rule: 'repeating_group' })
+        resolved.set(field.field_id, {
+          value: built.items,
+          rule: 'repeating_group',
+        })
         groupItems.set(field.field_id, built.items)
         for (const gap of built.gaps) {
           // Synthetic id: the model answers group gaps in the same single call
@@ -512,7 +659,7 @@ export function runDeterministic(fields: Field[], ctx: AnswerContext): Determini
             field,
             index: gap.index,
             key: gap.key,
-            itemField: gap.itemField
+            itemField: gap.itemField,
           })
         }
       }
@@ -523,7 +670,14 @@ export function runDeterministic(fields: Field[], ctx: AnswerContext): Determini
     if (!rule) continue
 
     const raw = rule.resolve(field, ctx)
-    if (raw === undefined || raw === null || raw === '') continue
+    if (raw === undefined || raw === null || raw === '') {
+      if (rule.id === 'work_authorized' || rule.id === 'requires_sponsorship')
+        declined.set(
+          field.field_id,
+          'Missing explicit work authorization information',
+        )
+      continue
+    }
 
     // Everything goes through coercion, so a rule can return a natural value
     // (a boolean, a number, a country name) and still produce the exact wire

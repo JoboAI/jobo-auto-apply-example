@@ -1,54 +1,28 @@
+import { currentUser } from '@/lib/session'
 import { eq } from 'drizzle-orm'
 import { db } from '@/db/client'
 import { profiles } from '@/db/schema'
 import { readResume } from '@/lib/resume/storage'
-import { verifyResumeUrl } from '@/lib/signed-url'
-import { log } from '@/lib/logger'
 
-/**
- * Serves a resume PDF to Jobo.
- *
- * When an application form has a `file` field, the answer is not an upload —
- * it is a URL that Jobo fetches itself, from its own infrastructure, while the
- * step is open. That has consequences worth stating plainly:
- *
- *   - It must be reachable from the public internet over HTTPS on port 443
- *     (this is what PUBLIC_BASE_URL is for — and why it is optional: without
- *     it the answer engine simply skips file fields). `http://localhost:3000`
- *     cannot work — Jobo's SSRF guard rejects it before it ever makes the
- *     request.
- *   - It carries no credentials of ours, so the URL authenticates itself via a
- *     short-lived HMAC signature (lib/signed-url.ts).
- *   - The response's Content-Type must match what the field advertises in
- *     `constraints.accepted_file_types`, or the answer is rejected with
- *     `invalid_file_type`. Anything that intercepts the download and returns
- *     text/html (an auth proxy, an interstitial) fails exactly here.
- */
-
+/** Private profile PDF downloads. The worker uses application-specific signed snapshots. */
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 export async function GET(
   request: Request,
-  { params }: { params: Promise<{ profileId: string }> }
+  { params }: { params: Promise<{ profileId: string }> },
 ): Promise<Response> {
   const { profileId } = await params
-  const url = new URL(request.url)
 
-  const verification = verifyResumeUrl(
-    profileId,
-    url.searchParams.get('exp'),
-    url.searchParams.get('token')
-  )
-  if (!verification.ok) {
-    log.warn({ profileId, reason: verification.reason }, 'rejected resume download')
-    return new Response(verification.reason === 'expired' ? 'Link expired' : 'Invalid signature', {
-      status: verification.reason === 'expired' ? 410 : 403
-    })
-  }
-
-  const profile = db.select().from(profiles).where(eq(profiles.id, profileId)).get()
-  if (!profile) return new Response('Not found', { status: 404 })
+  const user = await currentUser()
+  if (!user) return new Response('Unauthorized', { status: 401 })
+  const profile = db
+    .select()
+    .from(profiles)
+    .where(eq(profiles.id, profileId))
+    .get()
+  if (!profile || profile.userId !== user.id || profile.archived)
+    return new Response('Not found', { status: 404 })
 
   let bytes: Buffer
   try {
@@ -65,7 +39,7 @@ export async function GET(
       // `inline` rather than `attachment`: Jobo is a machine, and some ATSes
       // preview the file in a browser context.
       'Content-Disposition': `inline; filename="${encodeURIComponent(profile.resumeFilename)}"`,
-      'Cache-Control': 'no-store'
-    }
+      'Cache-Control': 'no-store',
+    },
   })
 }

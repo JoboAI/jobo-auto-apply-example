@@ -8,10 +8,13 @@ import { GET } from '@/app/api/health/route'
  */
 
 const REQUIRED = {
+  BETTER_AUTH_SECRET: 'b'.repeat(32),
+  BETTER_AUTH_URL: 'https://example.com',
+  BREVO_API_KEY: 'test-brevo',
   JOBO_API_KEY: 'jbe_test_key',
   PUBLIC_BASE_URL: 'https://example.com',
   RESUME_URL_SIGNING_SECRET: 'a'.repeat(32),
-  OPENROUTER_API_KEY: 'sk-or-v1-test'
+  OPENROUTER_API_KEY: 'sk-or-v1-test',
 }
 
 function setEnv(values: Record<string, string | undefined>) {
@@ -46,11 +49,10 @@ describe('GET /api/health', () => {
     expect(response.status).toBe(503)
   })
 
-  it('is 200 without the optional PUBLIC_BASE_URL', async () => {
-    // Only file fields need a public origin; the loop itself does not.
+  it('requires a public resume origin for the consumer product', async () => {
     setEnv({ ...REQUIRED, PUBLIC_BASE_URL: undefined })
     const response = GET()
-    expect(response.status).toBe(200)
+    expect(response.status).toBe(503)
   })
 
   it('never leaks a value, only the variable name', async () => {

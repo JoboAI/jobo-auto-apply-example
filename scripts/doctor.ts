@@ -9,6 +9,7 @@
 
 import { readFileSync } from 'node:fs'
 import { configIssues } from '../lib/config'
+import { authConfigIssues } from '../lib/auth'
 
 loadEnv('.env.local')
 loadEnv('.env')
@@ -31,10 +32,24 @@ function loadEnv(file: string) {
 async function main() {
   console.log('\nJobo Auto Apply — preflight\n')
 
-  const issues = configIssues()
+  const issues = [
+    ...configIssues(),
+    ...authConfigIssues().map((key) => ({
+      key,
+      message: 'Required account configuration missing or invalid',
+    })),
+  ]
+  if (!process.env.PUBLIC_BASE_URL)
+    issues.push({
+      key: 'PUBLIC_BASE_URL',
+      message: 'Required for resume downloads',
+    })
   if (issues.length > 0) {
-    for (const issue of issues) console.log(`✗ env ${issue.key} — ${issue.message}`)
-    console.log('\nFix the environment first — the network checks depend on it.\n')
+    for (const issue of issues)
+      console.log(`✗ env ${issue.key} — ${issue.message}`)
+    console.log(
+      '\nFix the environment first — the network checks depend on it.\n',
+    )
     process.exit(1)
   }
   console.log('✓ Environment — all variables present and well-formed')
@@ -52,7 +67,7 @@ async function main() {
   console.log(
     `\n${failed === 0 ? 'Ready.' : `${failed} check${failed === 1 ? '' : 's'} failed.`}${
       warned ? ` ${warned} warning${warned === 1 ? '' : 's'}.` : ''
-    }\n`
+    }\n`,
   )
   process.exit(failed === 0 ? 0 : 1)
 }

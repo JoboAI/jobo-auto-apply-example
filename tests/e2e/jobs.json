@@ -1,0 +1,218 @@
+[
+  {
+    "slug": "all-field-types",
+    "title": "All field types",
+    "company": "Northwind Robotics",
+    "mark": "NR",
+    "role": "Senior Software Engineer",
+    "location": "Remote — Europe",
+    "department": "Engineering",
+    "employmentType": "Full-time",
+    "description": "Every supported field type on one page: text, email, textarea, number, date, month, select, multi-select, radio, checkbox, combobox, and a PDF resume upload.",
+    "about": "Northwind Robotics builds warehouse automation for mid-market logistics operators. The engineering team is twelve people across four countries and ships to production several times a day.",
+    "responsibilities": [
+      "Design and ship services that coordinate fleets of autonomous floor units.",
+      "Own features end to end, from the control-plane API through to the operator UI.",
+      "Work directly with the operations team that uses what you build."
+    ],
+    "appendSubmit": true
+  },
+  {
+    "slug": "multi-step",
+    "title": "Multi-step form",
+    "company": "Cascade Analytics",
+    "mark": "CA",
+    "role": "Data Engineer",
+    "location": "Amsterdam, NL",
+    "department": "Data",
+    "employmentType": "Full-time",
+    "description": "A two-step application: continue past step one, then submit on step two.",
+    "about": "Cascade Analytics runs the reporting layer for several European retail groups. Small team, large volumes, strong opinions about data modelling.",
+    "responsibilities": [
+      "Build and maintain the ingestion pipelines behind the customer-facing warehouse.",
+      "Keep a multi-tenant model honest as the tenant count grows.",
+      "Turn recurring analyst questions into modelled, tested datasets."
+    ],
+    "appendSubmit": false
+  },
+  {
+    "slug": "validation-errors",
+    "title": "Validation errors",
+    "company": "Helix Biotech",
+    "mark": "HB",
+    "role": "Research Associate",
+    "location": "Utrecht, NL",
+    "department": "Research",
+    "employmentType": "Full-time",
+    "description": "The form rejects everything except the exact invitation code ACCEPT, exercising correction rounds.",
+    "about": "Helix Biotech is a contract research organisation working on assay development for clinical partners across the Benelux.",
+    "responsibilities": [
+      "Run and document assay development work to protocol.",
+      "Maintain instrument calibration records and sample chain of custody.",
+      "Summarise results for the partner-facing scientific team."
+    ],
+    "appendSubmit": true
+  },
+  {
+    "slug": "education-and-work-history",
+    "title": "Education & work history",
+    "company": "Meridian Group",
+    "mark": "MG",
+    "role": "Operations Manager",
+    "location": "Rotterdam, NL",
+    "department": "Operations",
+    "employmentType": "Full-time",
+    "description": "Repeating sections: two education entries, three work entries, languages and skills — plus a one-time nested correction.",
+    "about": "Meridian Group manages port-side logistics for bulk shippers. Long-standing contracts, tight margins, and a strong preference for people who have run a floor themselves.",
+    "responsibilities": [
+      "Own the daily plan across three shifts and roughly ninety staff.",
+      "Hold the line on safety reporting and incident follow-through.",
+      "Work with terminal partners to keep turnaround inside contracted windows."
+    ],
+    "appendSubmit": true
+  },
+  {
+    "slug": "login-wall",
+    "title": "Login wall",
+    "company": "Vault Systems",
+    "mark": "VS",
+    "role": "Security Engineer",
+    "location": "The Hague, NL",
+    "department": "Security",
+    "employmentType": "Full-time",
+    "description": "The application demands credentials. The agent must fail safely with login_required — never type a password.",
+    "about": "Vault Systems provides key management and hardware-backed signing to public-sector customers.",
+    "responsibilities": [
+      "Review and harden the signing service and its supporting infrastructure.",
+      "Run the disclosure process and drive fixes to completion.",
+      "Support audit and certification work with real evidence, not narrative."
+    ],
+    "appendSubmit": false
+  },
+  {
+    "slug": "slow-page",
+    "title": "Slow page",
+    "company": "Glacier Freight",
+    "mark": "GF",
+    "role": "Logistics Planner",
+    "location": "Antwerp, BE",
+    "department": "Planning",
+    "employmentType": "Full-time",
+    "description": "The form mounts five seconds late behind a loading state, testing patience and quiescence detection.",
+    "about": "Glacier Freight moves temperature-controlled cargo across northern Europe. Planning sits between the customer desk and the drivers, and gets the final say on the schedule.",
+    "responsibilities": [
+      "Build the weekly plan across roughly two hundred temperature-controlled movements.",
+      "Re-plan around delays without breaking the cold chain.",
+      "Keep customers informed before they have to ask."
+    ],
+    "appendSubmit": false
+  },
+  {
+    "slug": "cancel-mid-run",
+    "title": "Cancel mid-run",
+    "company": "Glacier Freight",
+    "mark": "GF",
+    "role": "Logistics Planner",
+    "location": "Antwerp, BE",
+    "department": "Planning",
+    "employmentType": "Full-time",
+    "description": "Identical to the slow page — the difference is the customer canceling the application while it runs.",
+    "about": "Glacier Freight moves temperature-controlled cargo across northern Europe. Planning sits between the customer desk and the drivers, and gets the final say on the schedule.",
+    "responsibilities": [
+      "Build the weekly plan across roughly two hundred temperature-controlled movements.",
+      "Re-plan around delays without breaking the cold chain.",
+      "Keep customers informed before they have to ask."
+    ],
+    "appendSubmit": false
+  },
+  {
+    "slug": "submission-unconfirmed",
+    "title": "Submission unconfirmed",
+    "company": "Foxglove Media",
+    "mark": "FM",
+    "role": "Content Strategist",
+    "location": "Remote — Worldwide",
+    "department": "Marketing",
+    "employmentType": "Contract",
+    "description": "The submit button disables itself but never actually submits, so confirmation can never be observed.",
+    "about": "Foxglove Media is a small editorial studio producing long-form work for technology clients.",
+    "responsibilities": [
+      "Own the editorial calendar across three retained clients.",
+      "Brief and edit a pool of freelance writers.",
+      "Report on what actually moved, not on what was published."
+    ],
+    "appendSubmit": false
+  },
+  {
+    "slug": "conditional-fields",
+    "title": "Conditional fields",
+    "company": "Ardent Health",
+    "mark": "AH",
+    "role": "Clinical Data Manager",
+    "location": "Leuven, BE",
+    "department": "Clinical",
+    "employmentType": "Full-time",
+    "description": "Answering the first question reveals fields that were not in the DOM before, forcing the agent to re-discover mid-run.",
+    "about": "Ardent Health runs clinical data management for late-phase trials across Belgium and the Netherlands.",
+    "responsibilities": [
+      "Own database design and validation for assigned studies.",
+      "Reconcile external vendor data against the study database.",
+      "Keep the audit trail defensible from first entry to lock."
+    ],
+    "appendSubmit": true
+  },
+  {
+    "slug": "eeoc-demographics",
+    "title": "EEOC demographics",
+    "company": "Brightside Labs",
+    "mark": "BL",
+    "role": "Product Designer",
+    "location": "Berlin, DE",
+    "department": "Design",
+    "employmentType": "Full-time",
+    "description": "A voluntary self-identification block alongside the ordinary fields, exercising sensitive-field handling and decline-to-answer defaults.",
+    "about": "Brightside Labs designs and builds diagnostic tools for primary-care practices.",
+    "responsibilities": [
+      "Own end-to-end design for the practitioner-facing product.",
+      "Run research with clinicians and turn it into shipped changes.",
+      "Hold the accessibility bar for a product used under time pressure."
+    ],
+    "appendSubmit": true
+  },
+  {
+    "slug": "typeahead-location",
+    "title": "Typeahead location",
+    "company": "Lumen Transit",
+    "mark": "LT",
+    "role": "Network Planner",
+    "location": "Copenhagen, DK",
+    "department": "Network",
+    "employmentType": "Full-time",
+    "description": "An async combobox that fetches options after a short delay, exercising the typeahead escalation ladder and commit detection.",
+    "about": "Lumen Transit plans and operates regional bus networks under public-service contracts in Denmark and southern Sweden.",
+    "responsibilities": [
+      "Model network changes and their effect on contracted service levels.",
+      "Work with municipalities on timetable and route consultations.",
+      "Turn ridership data into concrete service proposals."
+    ],
+    "appendSubmit": true
+  },
+  {
+    "slug": "email-verification",
+    "title": "Email verification",
+    "company": "Kestrel Financial",
+    "mark": "KF",
+    "role": "Compliance Analyst",
+    "location": "Dublin, IE",
+    "department": "Compliance",
+    "employmentType": "Full-time",
+    "description": "Emails a one-time code after submit and will not finish until it is entered, exercising the verification round end to end.",
+    "about": "Kestrel Financial administers regulated savings products for credit unions across Ireland and the UK.",
+    "responsibilities": [
+      "Review onboarding files against current AML and KYC obligations.",
+      "Prepare the quarterly regulatory return and its supporting evidence.",
+      "Work with engineering on the controls that make the above routine."
+    ],
+    "appendSubmit": true
+  }
+]

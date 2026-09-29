@@ -54,7 +54,7 @@ async function checkJoboKey(): Promise<CheckResult> {
 
 async function checkSandbox(): Promise<CheckResult> {
   try {
-    const response = await fetch(`${config().JOBO_API_BASE_URL}/api/auto-apply/sandbox/scenarios`, {
+    const response = await fetch('https://sandbox.jobo.world/api/jobs', {
       signal: AbortSignal.timeout(10_000),
       cache: 'no-store'
     })
@@ -64,7 +64,7 @@ async function checkSandbox(): Promise<CheckResult> {
       status: 'info',
       name: 'Sandbox',
       detail:
-        'not available — application creation is gated off on this deployment (503 auto_apply_coming_soon). Reads and cancels still work.'
+        'Sandbox forms are currently unavailable. API account grants and quotas are checked separately on application creation.'
     }
   } catch {
     return { status: 'warn', name: 'Sandbox', detail: 'could not read the scenario catalogue' }

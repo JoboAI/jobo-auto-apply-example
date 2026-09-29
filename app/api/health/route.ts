@@ -1,3 +1,4 @@
+import { authConfigIssues } from '@/lib/auth'
 import { configIssues } from '@/lib/config'
 
 /**
@@ -16,16 +17,20 @@ export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 export function GET(): Response {
-  const issues = configIssues()
+  const issues = [
+    ...configIssues(),
+    ...authConfigIssues().map((key) => ({ key })),
+  ]
+  if (!process.env.PUBLIC_BASE_URL) issues.push({ key: 'PUBLIC_BASE_URL' })
   if (issues.length > 0) {
     return Response.json(
       {
         ok: false,
         service: 'jobo-auto-apply-nextjs',
         error: 'invalid_configuration',
-        missing: issues.map((issue) => issue.key)
+        missing: issues.map((issue) => issue.key),
       },
-      { status: 503 }
+      { status: 503 },
     )
   }
   return Response.json({ ok: true, service: 'jobo-auto-apply-nextjs' })

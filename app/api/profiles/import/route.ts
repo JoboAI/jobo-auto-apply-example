@@ -1,3 +1,5 @@
+import { currentUser } from '@/lib/session'
+import { and, eq } from 'drizzle-orm'
 import { randomUUID } from 'node:crypto'
 import { count } from 'drizzle-orm'
 import { db } from '@/db/client'
@@ -24,13 +26,39 @@ export const runtime = 'nodejs'
 export const maxDuration = 120
 
 export async function POST(request: Request): Promise<Response> {
+  const user = await currentUser()
+  if (!user)
+    return Response.json(
+      { error: 'Please sign in to upload your resume.' },
+      { status: 401 },
+    )
+  if (request.headers.get('origin') !== new URL(process.env.BETTER_AUTH_URL!).origin)
+    return Response.json({ error: 'Invalid request origin.' }, { status: 403 })
+  const owned = db
+    .select()
+    .from(profiles)
+    .where(eq(profiles.userId, user.id))
+    .all()
+  if (owned.filter((p) => p.createdAt > Date.now() - 3600000).length >= 10)
+    return Response.json(
+      { error: 'Please wait before uploading more resumes.' },
+      { status: 429 },
+    )
+  if (Number(request.headers.get('content-length')) > MAX_RESUME_BYTES + 65536)
+    return Response.json(
+      { error: 'The upload limit is 5 MB.' },
+      { status: 413 },
+    )
   let file: File | null = null
   try {
     const form = await request.formData()
     const candidate = form.get('resume')
     if (candidate instanceof File) file = candidate
   } catch {
-    return Response.json({ error: 'Expected a multipart form upload.' }, { status: 400 })
+    return Response.json(
+      { error: 'Expected a multipart form upload.' },
+      { status: 400 },
+    )
   }
 
   if (!file) {
@@ -38,8 +66,10 @@ export async function POST(request: Request): Promise<Response> {
   }
   if (file.size > MAX_RESUME_BYTES) {
     return Response.json(
-      { error: `That file is ${(file.size / 1024 / 1024).toFixed(1)} MB. The limit is 5 MB.` },
-      { status: 413 }
+      {
+        error: `That file is ${(file.size / 1024 / 1024).toFixed(1)} MB. The limit is 5 MB.`,
+      },
+      { status: 413 },
     )
   }
 
@@ -52,7 +82,10 @@ export async function POST(request: Request): Promise<Response> {
     if (error instanceof ResumeExtractionError) {
       // 422 rather than 400: the request was well-formed, the content was not
       // usable. The message is deliberately actionable — see extract.ts.
-      return Response.json({ error: error.message, code: error.code }, { status: 422 })
+      return Response.json(
+        { error: error.message, code: error.code },
+        { status: 422 },
+      )
     }
     throw error
   }
@@ -64,21 +97,26 @@ export async function POST(request: Request): Promise<Response> {
     log.error({ err: error }, 'resume structuring failed')
     return Response.json(
       {
-        error: `Could not structure that resume: ${
-          error instanceof Error ? error.message : String(error)
-        }`
+        error:
+          'We could not read your resume right now. Please try again shortly.',
       },
-      { status: 502 }
+      { status: 502 },
     )
   }
 
   const id = randomUUID()
   const sha256 = await saveResume(id, bytes)
-  const isFirst = (db.select({ value: count() }).from(profiles).get()?.value ?? 0) === 0
+  const isFirst =
+    (db
+      .select({ value: count() })
+      .from(profiles)
+      .where(and(eq(profiles.userId, user.id), eq(profiles.archived, false)))
+      .get()?.value ?? 0) === 0
 
   db.insert(profiles)
     .values({
       id,
+      userId: user.id,
       name: suggestProfileName(profile),
       isDefault: isFirst,
       data: profile,
@@ -89,7 +127,7 @@ export async function POST(request: Request): Promise<Response> {
       resumeContentType: 'application/pdf',
       resumeBytes: bytes.byteLength,
       resumeSha256: sha256,
-      resumeText: text
+      resumeText: text,
     })
     .run()
 

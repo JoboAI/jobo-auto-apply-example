@@ -4,7 +4,6 @@ import { migrate } from 'drizzle-orm/better-sqlite3/migrator'
 import { mkdirSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import * as schema from './schema'
-import { seedSampleProfiles } from './seed'
 
 /**
  * SQLite connection.
@@ -43,6 +42,21 @@ function create() {
   sqlite.pragma('busy_timeout = 5000')
   sqlite.pragma('foreign_keys = ON')
 
+  // Back up an existing database once before introducing accounts and ownership.
+  const hasProfiles = sqlite
+    .prepare(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name='profiles'",
+    )
+    .get()
+  if (
+    hasProfiles &&
+    !(
+      sqlite.prepare('PRAGMA table_info(profiles)').all() as { name: string }[]
+    ).some((c) => c.name === 'user_id')
+  ) {
+    const backup = join(dataDir, `before-accounts-${Date.now()}.db`)
+    sqlite.exec(`VACUUM INTO '${backup.replaceAll("'", "''")}'`)
+  }
   const database = drizzle(sqlite, { schema })
 
   // Migrate on first use, so `npm run dev` works with no separate setup step.
@@ -50,23 +64,17 @@ function create() {
   // and whichever loses the race just needs to wait for the winner to finish.
   for (let attempt = 0; ; attempt++) {
     try {
-      migrate(database, { migrationsFolder: join(process.cwd(), 'db/migrations') })
+      migrate(database, {
+        migrationsFolder: join(process.cwd(), 'db/migrations'),
+      })
       break
     } catch (error) {
-      const busy = error instanceof Error && /SQLITE_BUSY|database is locked/i.test(error.message)
+      const busy =
+        error instanceof Error &&
+        /SQLITE_BUSY|database is locked/i.test(error.message)
       if (!busy || attempt >= 10) throw error
       Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100)
     }
-  }
-
-  // Seed the sample profiles right behind the migration, at the one choke
-  // point every process passes through. Idempotent (fixed ids + ON CONFLICT
-  // DO NOTHING) and env-free. A failure degrades to an empty dropdown rather
-  // than a database that refuses to open.
-  try {
-    seedSampleProfiles(database, RESUME_DIR)
-  } catch (error) {
-    console.warn('sample profile seeding failed:', error)
   }
 
   return database
@@ -89,7 +97,7 @@ export const db = new Proxy({} as DrizzleDatabase, {
     const instance = getDb()
     const value = Reflect.get(instance, property, receiver)
     return typeof value === 'function' ? value.bind(instance) : value
-  }
+  },
 })
 
 export { schema }

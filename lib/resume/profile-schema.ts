@@ -28,6 +28,8 @@ export const linkTypes = ['linkedin', 'github', 'portfolio', 'website', 'other']
 export const remotePreferences = ['remote', 'hybrid', 'onsite', 'no_preference'] as const
 
 export const resumeProfileSchema = z.object({
+  // Chosen in onboarding, never extracted or inferred from a resume.
+  self_identification: z.enum(['decline', 'leave_blank']).optional(),
   personal: z.object({
     full_name: z.string(),
     first_name: z.string(),
@@ -256,6 +258,8 @@ export function normalizeYearMonth(input: string | null | undefined): string | n
 export function normalizeProfile(profile: ResumeProfile): ResumeProfile {
   return {
     ...profile,
+    personal: { ...profile.personal, full_name: profile.personal.full_name.trim(), email: profile.personal.email.trim(), phone: profile.personal.phone?.trim() || null },
+    links: profile.links.map((link) => ({ ...link, url: link.url.trim() })),
     work_experience: profile.work_experience.map((item) => ({
       ...item,
       start_date: normalizeYearMonth(item.start_date) ?? item.start_date,

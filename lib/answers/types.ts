@@ -40,6 +40,8 @@ export interface AnswerContext {
   /** Raw resume text, as fallback context for open-ended questions. */
   resumeText: string
   applyUrl: string
+  jobCountryCode?: string
+  jobDescription?: string
   providerName?: string
   /** Errors from the previous correction round, if this is a retry. */
   commandErrors: CommandError[]

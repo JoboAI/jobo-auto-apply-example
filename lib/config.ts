@@ -29,32 +29,35 @@ const publicOrigin = z
     try {
       url = new URL(value)
     } catch {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'must be a valid URL' })
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'must be a valid URL',
+      })
       return
     }
     if (url.protocol !== 'https:') {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: `must use https (got ${url.protocol.replace(':', '')}). Jobo rejects http file URLs.`
+        message: `must use https (got ${url.protocol.replace(':', '')}). Jobo rejects http file URLs.`,
       })
     }
     if (url.port && url.port !== '443') {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: `must be on port 443 (got :${url.port}). Jobo rejects any other port.`
+        message: `must be on port 443 (got :${url.port}). Jobo rejects any other port.`,
       })
     }
     if (url.pathname !== '/' && url.pathname !== '') {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: `must be an origin with no path (got "${url.pathname}")`
+        message: `must be an origin with no path (got "${url.pathname}")`,
       })
     }
     if (/^(localhost|127\.|0\.0\.0\.0|\[?::1)/i.test(url.hostname)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message:
-          'must be publicly resolvable — Jobo downloads resumes from its own infrastructure, so localhost can never work. Leave it unset to skip file fields instead.'
+          'must be publicly resolvable — Jobo downloads resumes from its own infrastructure, so localhost can never work. Leave it unset to skip file fields instead.',
       })
     }
   })
@@ -65,7 +68,7 @@ const schema = z.object({
     .min(1, 'required')
     .refine(
       (v) => v.startsWith('jbe_live_') || v.startsWith('jbe_test_'),
-      'must start with jbe_live_ or jbe_test_ (master keys are rejected on Auto Apply routes)'
+      'must start with jbe_live_ or jbe_test_ (master keys are rejected on Auto Apply routes)',
     ),
   JOBO_API_BASE_URL: z.string().url().default('https://connect.jobo.world'),
 
@@ -76,12 +79,18 @@ const schema = z.object({
    * the answer engine skips file fields and records why in the trace.
    */
   PUBLIC_BASE_URL: publicOrigin.optional(),
-  RESUME_URL_SIGNING_SECRET: z.string().min(16, 'must be at least 16 characters'),
+  RESUME_URL_SIGNING_SECRET: z
+    .string()
+    .min(16, 'must be at least 16 characters'),
 
   OPENROUTER_API_KEY: z.string().min(1, 'required'),
-  OPENROUTER_ANSWER_MODEL: z.string().default('deepseek/deepseek-v4-flash-0731'),
-  OPENROUTER_RESUME_MODEL: z.string().default('deepseek/deepseek-v4-flash-0731'),
-  OPENROUTER_APP_NAME: z.string().default('Jobo Auto Apply Example'),
+  OPENROUTER_ANSWER_MODEL: z
+    .string()
+    .default('~deepseek/deepseek-v4-flash-latest'),
+  OPENROUTER_RESUME_MODEL: z
+    .string()
+    .default('deepseek/deepseek-v4-flash-0731'),
+  OPENROUTER_APP_NAME: z.string().default('Jobo Auto Apply'),
   OPENROUTER_APP_URL: z.string().optional(),
 
   ANSWER_BUDGET_MS: z.coerce.number().int().positive().default(45_000),
@@ -115,7 +124,7 @@ const schema = z.object({
    * Default is the sandbox alone. Adding a real ATS means a visitor CAN submit
    * a genuine application to a genuine employer on this deployment's key.
    */
-  ALLOWED_APPLY_HOSTS: z.string().default('sandbox.jobo.world')
+  ALLOWED_APPLY_HOSTS: z.string().default('sandbox.jobo.world'),
 })
 
 export type Config = z.infer<typeof schema>
@@ -137,7 +146,7 @@ function raw() {
     DATA_DIR: process.env.DATA_DIR,
     RESTRICT_APPLY_HOSTS: process.env.RESTRICT_APPLY_HOSTS,
     ALLOWED_APPLY_HOSTS: process.env.ALLOWED_APPLY_HOSTS,
-    DEFAULT_SANDBOX: process.env.DEFAULT_SANDBOX
+    DEFAULT_SANDBOX: process.env.DEFAULT_SANDBOX,
   }
 }
 
@@ -146,9 +155,11 @@ export function config(): Config {
   if (cached) return cached
   const parsed = schema.safeParse(raw())
   if (!parsed.success) {
-    const lines = parsed.error.issues.map((i) => `  ${i.path.join('.')}: ${i.message}`)
+    const lines = parsed.error.issues.map(
+      (i) => `  ${i.path.join('.')}: ${i.message}`,
+    )
     throw new Error(
-      `Invalid environment configuration:\n${lines.join('\n')}\n\nCopy .env.example to .env.local and fill it in, then run \`npm run doctor\`.`
+      `Invalid environment configuration:\n${lines.join('\n')}\n\nCopy .env.example to .env.local and fill it in, then run \`npm run doctor\`.`,
     )
   }
   cached = parsed.data
@@ -166,10 +177,9 @@ export function configIssues(): ConfigIssue[] {
   if (parsed.success) return []
   return parsed.error.issues.map((i) => ({
     key: String(i.path[0] ?? 'env'),
-    message: i.message
+    message: i.message,
   }))
 }
-
 
 /**
  * Absolute URL on our public origin, used for the resume URLs Jobo downloads.
@@ -179,7 +189,9 @@ export function configIssues(): ConfigIssue[] {
 export function publicUrl(path: string): string {
   const origin = config().PUBLIC_BASE_URL
   if (!origin) {
-    throw new Error('PUBLIC_BASE_URL is not set — file fields are skipped without a public origin.')
+    throw new Error(
+      'PUBLIC_BASE_URL is not set — file fields are skipped without a public origin.',
+    )
   }
   const base = origin.replace(/\/+$/, '')
   return `${base}${path.startsWith('/') ? path : `/${path}`}`

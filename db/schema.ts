@@ -1,30 +1,107 @@
 import { sql } from 'drizzle-orm'
-import { index, integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core'
+import {
+  index,
+  integer,
+  primaryKey,
+  sqliteTable,
+  text,
+} from 'drizzle-orm/sqlite-core'
 import type { Answer, CommandError, Field } from '@jobo-ai/autoapply'
 import type { ResumeProfile, EeoAnswers } from '@/lib/resume/profile-schema'
+import type { Job } from '@/lib/jobs-types'
 import type { AnswerTrace } from '@/lib/answers/types'
 
 /**
- * The whole persistence layer. Three tables.
- *
- * SQLite is not the point of the example, but two of these choices are:
- *
- *  1. `applications.idempotency_key` is NOT NULL UNIQUE and is written BEFORE
- *     the network call. If the blocking create drops mid-hold you cannot know
- *     whether Jobo accepted it — the only safe retry is one that reuses this
- *     exact key (it re-attaches to the in-flight application and its wait),
- *     and it can only exist beforehand if you wrote it beforehand.
- *
- *  2. `steps` is keyed on (step_id, correction_round). A correction round
- *     re-issues the SAME step with the round incremented, and each round is a
- *     separate exchange worth auditing — what the ATS rejected, what was
- *     re-sent, what the model was told. One row per exchange.
+ * Account-owned product data. Nullable owner IDs preserve legacy demo records
+ * without exposing them to new accounts. Application snapshots and durable
+ * leases keep execution independent of browser sessions and profile edits.
  */
+
+export const user = sqliteTable('user', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  email: text('email').notNull().unique(),
+  emailVerified: integer('email_verified', { mode: 'boolean' })
+    .notNull()
+    .default(false),
+  image: text('image'),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+})
+export const session = sqliteTable('session', {
+  id: text('id').primaryKey(),
+  token: text('token').notNull().unique(),
+  userId: text('user_id')
+    .notNull()
+    .references(() => user.id, { onDelete: 'cascade' }),
+  expiresAt: integer('expires_at', { mode: 'timestamp_ms' }).notNull(),
+  ipAddress: text('ip_address'),
+  userAgent: text('user_agent'),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+})
+export const account = sqliteTable('account', {
+  id: text('id').primaryKey(),
+  accountId: text('account_id').notNull(),
+  providerId: text('provider_id').notNull(),
+  userId: text('user_id')
+    .notNull()
+    .references(() => user.id, { onDelete: 'cascade' }),
+  accessToken: text('access_token'),
+  refreshToken: text('refresh_token'),
+  idToken: text('id_token'),
+  scope: text('scope'),
+  password: text('password'),
+  accessTokenExpiresAt: integer('access_token_expires_at', {
+    mode: 'timestamp_ms',
+  }),
+  refreshTokenExpiresAt: integer('refresh_token_expires_at', {
+    mode: 'timestamp_ms',
+  }),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+})
+export const verification = sqliteTable('verification', {
+  id: text('id').primaryKey(),
+  identifier: text('identifier').notNull(),
+  value: text('value').notNull(),
+  expiresAt: integer('expires_at', { mode: 'timestamp_ms' }).notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+})
+export const savedJobs = sqliteTable(
+  'saved_jobs',
+  {
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    jobId: text('job_id').notNull(),
+    createdAt: integer('created_at')
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.jobId] })],
+)
+export const workerHealth = sqliteTable('worker_health', {
+  id: text('id').primaryKey(),
+  heartbeatAt: integer('heartbeat_at').notNull(),
+})
+export interface ProfileSnapshot {
+  data: ResumeProfile
+  resumeText: string
+  resumeFilename: string
+  resumeContentType: string
+}
 
 export const profiles = sqliteTable('profiles', {
   id: text('id').primaryKey(),
+  userId: text('user_id').references(() => user.id),
+  reviewedAt: integer('reviewed_at'),
+  archived: integer('archived', { mode: 'boolean' }).notNull().default(false),
   name: text('name').notNull(),
-  isDefault: integer('is_default', { mode: 'boolean' }).notNull().default(false),
+  isDefault: integer('is_default', { mode: 'boolean' })
+    .notNull()
+    .default(false),
 
   /**
    * The structured profile, as JSON. Deliberately NOT normalised into eight
@@ -51,8 +128,12 @@ export const profiles = sqliteTable('profiles', {
    */
   resumeText: text('resume_text').notNull(),
 
-  createdAt: integer('created_at').notNull().default(sql`(unixepoch() * 1000)`),
-  updatedAt: integer('updated_at').notNull().default(sql`(unixepoch() * 1000)`)
+  createdAt: integer('created_at')
+    .notNull()
+    .default(sql`(unixepoch() * 1000)`),
+  updatedAt: integer('updated_at')
+    .notNull()
+    .default(sql`(unixepoch() * 1000)`),
 })
 
 export const applications = sqliteTable(
@@ -62,6 +143,21 @@ export const applications = sqliteTable(
     id: text('id').primaryKey(),
 
     /** Written before the create call. See the note at the top of this file. */
+    userId: text('user_id').references(() => user.id),
+    jobId: text('job_id'),
+    jobSnapshot: text('job_snapshot', { mode: 'json' }).$type<Job>(),
+    profileSnapshot: text('profile_snapshot', {
+      mode: 'json',
+    }).$type<ProfileSnapshot>(),
+    leaseOwner: text('lease_owner'),
+    leaseUntil: integer('lease_until'),
+    attemptCount: integer('attempt_count').notNull().default(0),
+    nextAttemptAt: integer('next_attempt_at').notNull().default(0),
+    cancelRequested: integer('cancel_requested', { mode: 'boolean' })
+      .notNull()
+      .default(false),
+    stopReason: text('stop_reason'),
+    workerError: text('worker_error'),
     idempotencyKey: text('idempotency_key').notNull().unique(),
 
     /** Null until the blocking create returns. */
@@ -93,13 +189,17 @@ export const applications = sqliteTable(
     createErrorMessage: text('create_error_message'),
 
     lastSyncedAt: integer('last_synced_at'),
-    createdAt: integer('created_at').notNull().default(sql`(unixepoch() * 1000)`),
-    updatedAt: integer('updated_at').notNull().default(sql`(unixepoch() * 1000)`)
+    createdAt: integer('created_at')
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+    updatedAt: integer('updated_at')
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
   },
   (table) => [
     index('applications_status_idx').on(table.status),
-    index('applications_created_idx').on(table.createdAt)
-  ]
+    index('applications_created_idx').on(table.createdAt),
+  ],
 )
 
 /**
@@ -127,7 +227,9 @@ export const steps = sqliteTable(
     /** The complete answer snapshot this app submitted for this round. */
     answersJson: text('answers_json', { mode: 'json' }).$type<Answer[]>(),
     /** Why the PREVIOUS round was rejected — the ATS's own errors. */
-    commandErrorsJson: text('command_errors_json', { mode: 'json' }).$type<CommandError[]>(),
+    commandErrorsJson: text('command_errors_json', { mode: 'json' }).$type<
+      CommandError[]
+    >(),
 
     /** answering | submitted | canceled | error. Local, not a Jobo status. */
     status: text('status').notNull(),
@@ -142,14 +244,16 @@ export const steps = sqliteTable(
     error: text('error'),
 
     /** When the blocking call handed this round's fields to us. */
-    receivedAt: integer('received_at').notNull().default(sql`(unixepoch() * 1000)`),
+    receivedAt: integer('received_at')
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
     /** When submitAnswers accepted the snapshot. Null if never submitted. */
-    submittedAt: integer('submitted_at')
+    submittedAt: integer('submitted_at'),
   },
   (table) => [
     primaryKey({ columns: [table.stepId, table.correctionRound] }),
-    index('steps_application_idx').on(table.applicationId, table.receivedAt)
-  ]
+    index('steps_application_idx').on(table.applicationId, table.receivedAt),
+  ],
 )
 
 export type ProfileRow = typeof profiles.$inferSelect

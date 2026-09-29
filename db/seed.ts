@@ -9,25 +9,7 @@ import { emptyEeo, type ResumeProfile } from '@/lib/resume/profile-schema'
 import * as ada from './seed/ada-lovelace'
 import * as grace from './seed/grace-hopper'
 
-/**
- * Two sample profiles, seeded at first database open.
- *
- * They exist so the tutorial's profile dropdown always has something to
- * select — a fresh deployment (or a wiped volume) is runnable in one click,
- * and /profiles stays the place to add real candidates.
- *
- * Idempotency is the same lesson the schema teaches: the ids are FIXED
- * strings, so re-seeding is one `INSERT … ON CONFLICT DO NOTHING` against the
- * primary key — no check-then-act race. Deleting a sample sticks until the
- * next process start, when it reseeds; on the shared public demo that is a
- * feature (the tutorial self-heals), and locally the "Sample —" name explains
- * the reappearance. Applications that cascade-deleted with it stay gone.
- *
- * The persona data is checked in as TypeScript (not parsed from the PDFs at
- * runtime) so seeding needs no OpenRouter key and works in CI. The PDFs are
- * real, tiny, text-extractable files under db/seed/ — inside db/ on purpose,
- * because the Docker runner stage already ships that directory.
- */
+/** Explicit test fixtures only. Production database initialization never seeds profiles. */
 
 export interface SampleProfile {
   id: string
@@ -43,20 +25,20 @@ export const SAMPLE_PROFILES: SampleProfile[] = [
     name: 'Sample — Ada Lovelace',
     pdfFile: 'ada-lovelace.pdf',
     data: ada.profile,
-    resumeText: ada.resumeText
+    resumeText: ada.resumeText,
   },
   {
     id: 'sample-grace-hopper',
     name: 'Sample — Grace Hopper',
     pdfFile: 'grace-hopper.pdf',
     data: grace.profile,
-    resumeText: grace.resumeText
-  }
+    resumeText: grace.resumeText,
+  },
 ]
 
 export function seedSampleProfiles(
   database: BetterSQLite3Database<typeof schema>,
-  resumeDir: string
+  resumeDir: string,
 ): void {
   mkdirSync(resumeDir, { recursive: true })
 
@@ -88,7 +70,7 @@ export function seedSampleProfiles(
         resumeContentType: 'application/pdf',
         resumeBytes: bytes.byteLength,
         resumeSha256: createHash('sha256').update(bytes).digest('hex'),
-        resumeText: sample.resumeText
+        resumeText: sample.resumeText,
       })
       .onConflictDoNothing()
       .run()

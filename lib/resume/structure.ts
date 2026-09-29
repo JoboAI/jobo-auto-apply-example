@@ -37,7 +37,7 @@ export async function structureResume(text: string): Promise<ResumeProfile> {
     model: c.OPENROUTER_RESUME_MODEL,
     system: SYSTEM_PROMPT,
     user: `Extract a structured profile from this resume.\n\n<resume>\n${text.slice(0, 40_000)}\n</resume>`,
-    schema: resumeProfileSchema,
+    schema: resumeProfileSchema.omit({ self_identification: true }),
     schemaName: 'resume_profile',
     // Parsing, not composing. Keep it as literal as the model allows.
     temperature: 0.1,

@@ -24,31 +24,50 @@ function sign(profileId: string, expiresAt: number): string {
     .digest('hex')
 }
 
-export function signResumeUrl(profileId: string, ttlSeconds = DEFAULT_TTL_SECONDS): string {
+export function signResumeUrl(
+  profileId: string,
+  ttlSeconds = DEFAULT_TTL_SECONDS,
+): string {
   const expiresAt = Math.floor(Date.now() / 1000) + ttlSeconds
   const token = sign(profileId, expiresAt)
   return publicUrl(`/api/resumes/${profileId}?exp=${expiresAt}&token=${token}`)
 }
 
-export type ResumeUrlVerification = { ok: true } | { ok: false; reason: 'expired' | 'invalid' }
+export type ResumeUrlVerification =
+  { ok: true } | { ok: false; reason: 'expired' | 'invalid' }
 
 export function verifyResumeUrl(
   profileId: string,
   exp: string | null,
-  token: string | null
+  token: string | null,
 ): ResumeUrlVerification {
   if (!exp || !token) return { ok: false, reason: 'invalid' }
 
   const expiresAt = Number(exp)
   if (!Number.isInteger(expiresAt)) return { ok: false, reason: 'invalid' }
-  if (expiresAt < Math.floor(Date.now() / 1000)) return { ok: false, reason: 'expired' }
+  if (expiresAt < Math.floor(Date.now() / 1000))
+    return { ok: false, reason: 'expired' }
 
   const expected = sign(profileId, expiresAt)
   if (token.length !== expected.length) return { ok: false, reason: 'invalid' }
   try {
-    const matches = timingSafeEqual(Buffer.from(token, 'hex'), Buffer.from(expected, 'hex'))
+    const matches = timingSafeEqual(
+      Buffer.from(token, 'hex'),
+      Buffer.from(expected, 'hex'),
+    )
     return matches ? { ok: true } : { ok: false, reason: 'invalid' }
   } catch {
     return { ok: false, reason: 'invalid' }
   }
+}
+
+export function signApplicationResumeUrl(
+  id: string,
+  ttlSeconds = DEFAULT_TTL_SECONDS,
+): string {
+  const expiresAt = Math.floor(Date.now() / 1000) + ttlSeconds
+  const token = sign(`application:${id}`, expiresAt)
+  return publicUrl(
+    `/api/application-resumes/${id}?exp=${expiresAt}&token=${token}`,
+  )
 }

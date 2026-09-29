@@ -12,7 +12,7 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends python3 make g++ \
     && rm -rf /var/lib/apt/lists/*
 
-COPY package.json package-lock.json ./
+COPY package.json package-lock.json .npmrc ./
 RUN npm ci
 
 COPY . .
@@ -46,13 +46,10 @@ COPY --from=builder /app/next.config.ts ./next.config.ts
 # Migrations run on first query, from process.cwd()/db/migrations. The seed
 # assets (sample personas + resume PDFs) also live under db/.
 COPY --from=builder /app/db ./db
-# The notebook tutorial renders its code panels by reading these REAL source
-# files at request time (lib/snippets.ts). Without them the deployed pages
-# show "not readable" placeholders instead of the code they exist to teach.
-# The sources are already public verbatim via the examples mirror.
-COPY --from=builder /app/app ./app
+# Worker sources and TypeScript path aliases run in a separate container.
 COPY --from=builder /app/lib ./lib
-COPY --from=builder /app/components ./components
+COPY --from=builder /app/scripts ./scripts
+COPY --from=builder /app/tsconfig.json ./tsconfig.json
 
 RUN mkdir -p /data && chown -R node:node /data
 USER node
