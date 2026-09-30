@@ -117,17 +117,17 @@ test('account → resume → saved role → hands-free application, desktop and 
     page.getByRole('heading', { name: 'See Auto Apply in action.' }),
   ).toBeVisible()
   await expect(
-    page.getByText('Northwind Robotics', { exact: true }),
+    page.getByText('Tidewater Games', { exact: true }),
   ).toBeVisible()
   await page.screenshot({
     path: 'test-results/jobs-desktop.png',
     animations: 'disabled',
     fullPage: false,
   })
-  await page.getByLabel('Search jobs').fill('Cascade')
+  await page.getByLabel('Search jobs').fill('Data Engineer')
   await expect(page.locator('.job-card')).toHaveCount(1)
   await expect(page.locator('.job-card').getByRole('link', { name: /View Data Engineer on sandbox.jobo.world/ }))
-    .toHaveAttribute('href', 'https://sandbox.jobo.world/apply/multi-step')
+    .toHaveAttribute('href', 'https://sandbox.jobo.world/apply/cascade-analytics-data-engineer')
   await page.getByRole('button', { name: 'Save job', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Unsave job' })).toBeVisible()
   await page.getByRole('link', { name: 'Saved jobs', exact: true }).click()
@@ -240,7 +240,7 @@ test('account → resume → saved role → hands-free application, desktop and 
     fullPage: false,
   })
   // A canceled card exposes an explicit retry; progress survives navigation.
-  await tracker.getByLabel('Search jobs').fill('Northwind')
+  await tracker.getByLabel('Search jobs').fill('Senior Software Engineer')
   const mobileCard = tracker.locator('.job-card')
   await request.get('/__test__/worker/off')
   await mobileCard
@@ -268,7 +268,7 @@ test('account → resume → saved role → hands-free application, desktop and 
   await tracker
     .getByRole('link', { name: 'Discover jobs', exact: true })
     .click()
-  await tracker.getByLabel('Search jobs').fill('Northwind')
+  await tracker.getByLabel('Search jobs').fill('Senior Software Engineer')
   await expect(
     mobileCard.getByRole('button', {
       name: 'Retry with Auto Apply',

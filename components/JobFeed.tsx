@@ -60,15 +60,15 @@ export function JobFeed({
         <div>
           <div className="eyebrow">
             {savedOnly
-              ? 'SAVED SANDBOX SCENARIOS'
+              ? 'SAVED JOBS'
               : 'JOBO AUTO APPLY API · INTERACTIVE DEMO'}
           </div>
           <h1>
-            {savedOnly ? 'Saved test jobs.' : 'See Auto Apply in action.'}
+            {savedOnly ? 'Saved jobs.' : 'See Auto Apply in action.'}
           </h1>
           <p>
             {savedOnly
-              ? 'Return to saved jobs to test another application flow.'
+              ? 'Pick up where you left off and apply with one click.'
               : 'Click Apply on a sandbox job and watch the API complete its application flow.'}
           </p>
         </div>
@@ -119,7 +119,7 @@ export function JobFeed({
         <section>
           <div className="section-heading">
             <h2>
-              {savedOnly ? 'Saved scenarios' : 'Try a sandbox job'}{' '}
+              {savedOnly ? 'Saved jobs' : 'Open roles'}{' '}
               <span className="count">{filtered.length}</span>
             </h2>
             <span className="subtle">Fictional jobs · Real API flows</span>
@@ -227,12 +227,12 @@ export function JobFeed({
               <Bookmark size={30} />
               <h2>
                 {savedOnly && !savedIds.length
-                  ? 'Save a scenario to test later.'
-                  : 'No matching sandbox jobs.'}
+                  ? 'Save a job to apply later.'
+                  : 'No matching jobs.'}
               </h2>
               <p>
                 {savedOnly && !savedIds.length
-                  ? 'Bookmark a sandbox job to keep its application flow handy.'
+                  ? 'Bookmark a role to come back to it.'
                   : 'Try another keyword or clear your filters.'}
               </p>
               {savedOnly && (

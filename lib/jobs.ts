@@ -13,6 +13,9 @@ const metadata = z.object({
   available: z.boolean(),
   apply_url: z.string().nullable(),
 })
+// The sandbox feed lists fictional postings only. This guard keeps its test
+// scenarios (login walls, unconfirmable submits, …) out of the demo even if an
+// older sandbox that still served them is live.
 const excluded = new Set([
   'validation-errors',
   'login-wall',

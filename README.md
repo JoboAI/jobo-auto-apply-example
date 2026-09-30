@@ -18,7 +18,7 @@ node --env-file=.env.local --import tsx scripts/worker.ts
 
 `PUBLIC_BASE_URL` must be publicly reachable HTTPS for Jobo to download signed resume snapshots. A localhost-only app supports account/profile development, but cannot complete resume-required applications against the hosted service. New accounts require a verification email. Brevo is used for verification and password recovery; email failures are not replaced with fake success.
 
-The job feed combines `https://sandbox.jobo.world/api/jobs` with the Auto Apply scenario availability endpoint. Deploy the sandbox metadata endpoint alongside this app. Interactive and deliberately failing test cases remain in the sandbox testing catalog, outside the consumer feed. No live-employer URL can be submitted through this product.
+The job feed is a board of fictional postings served by `https://sandbox.jobo.world/api/jobs`. Each posting is a real application form on the sandbox (`/apply/{job}`), built on one of its tested form types — multi-step, repeating work history, conditional questions, async typeaheads and so on. Deploy the sandbox metadata endpoint alongside this app. The sandbox's test scenarios, including the deliberately failing ones, stay on their own `/apply/{scenario}` URLs and are never in this feed. No live-employer URL can be submitted through this product.
 
 ## Answer generation
 
@@ -65,7 +65,7 @@ After PDF extraction, a three-step review collects contact details, common appli
 
 Location, work authorization, sponsorship, availability, and relocation preferences are recommended and may remain unanswered. The engine stops if a required application fact is unavailable. EEO demographic data is not collected or inferred. Users choose either the form’s advertised “prefer not to answer” option (default), or leaving sensitive fields blank. This preference is saved with the profile and snapshotted per application; sensitive fields never go to the model.
 
-The demo reads job metadata, scenario availability, and application URLs from `https://sandbox.jobo.world/api/jobs`. The retired public API scenario endpoint is not used. Sandbox catalog availability describes the forms; the Auto Apply API separately enforces account access and quotas during creation.
+The demo reads job metadata, availability, and application URLs from `https://sandbox.jobo.world/api/jobs`. The retired public API scenario endpoint is not used. Sandbox catalog availability describes the forms; the Auto Apply API separately enforces account access and quotas during creation.
 
 ### API exchange preview
 

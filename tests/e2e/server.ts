@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createServer } from 'node:http'
 import next from 'next'
-import scenarios from './jobs.json'
+import jobs from './jobs.json'
 import { profile } from '../../db/seed/ada-lovelace'
 Object.assign(process.env, { NODE_ENV: 'test' })
 process.env.DATA_DIR = mkdtempSync(join(tmpdir(), 'jobo-browser-'))
@@ -21,13 +21,6 @@ const originalFetch = globalThis.fetch
 const emails: string[] = []
 const upstream = new Map<string, Record<string, unknown>>()
 let workerEnabled = true
-const excluded = new Set([
-  'validation-errors',
-  'login-wall',
-  'cancel-mid-run',
-  'submission-unconfirmed',
-  'email-verification',
-])
 globalThis.fetch = async (input, options) => {
   const url = new URL(
     typeof input === 'string'
@@ -44,7 +37,7 @@ globalThis.fetch = async (input, options) => {
   if (url.hostname === 'sandbox.jobo.world' && url.pathname === '/api/jobs')
     return Response.json({
       available: true,
-      jobs: scenarios.filter((s) => !excluded.has(s.slug)).map(s => ({ ...s, available: true, apply_url: `https://sandbox.jobo.world/apply/${s.slug}` })),
+      jobs: jobs.map(j => ({ ...j, available: true, apply_url: `https://sandbox.jobo.world/apply/${j.slug}` })),
     })
   if (url.hostname === 'openrouter.ai')
     return Response.json({
@@ -55,9 +48,9 @@ globalThis.fetch = async (input, options) => {
     if (url.pathname.endsWith('/sandbox/scenarios'))
       return Response.json({
         available: true,
-        scenarios: scenarios.map((s) => ({
-          slug: s.slug,
-          apply_url: `https://sandbox.jobo.world/apply/${s.slug}`,
+        scenarios: ['all-field-types', 'multi-step'].map((slug) => ({
+          slug,
+          apply_url: `https://sandbox.jobo.world/apply/${slug}`,
         })),
       })
     const id = url.pathname.split('/')[4]
