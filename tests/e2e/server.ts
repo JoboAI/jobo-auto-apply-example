@@ -35,32 +35,118 @@ const productionJobs = [
   {
     id: '7c9e6679-7425-40de-944b-e07fc1f90ae7',
     title: 'Platform Engineer',
-    company: { name: 'Globex Systems', logo_url: null },
+    company: {
+      id: '0b8c3f4e-6d1a-4c2b-9e7f-5a4d3c2b1a09',
+      name: 'Globex Systems',
+      logo_url: null,
+      website: 'globex.example',
+      industries: ['Software'],
+      categories: ['b2b', 'saas'],
+    },
     summary: 'Run the platform that runs everything else.',
     description: '<p>Kubernetes, Postgres and on-call you can live with.</p>',
     listing_url: 'https://jobs.lever.co/globex/7c9e6679',
     apply_url: 'https://jobs.lever.co/globex/7c9e6679/apply',
     locations: [{ location: 'Toronto, ON, Canada', city: 'Toronto', region: 'ON', country: 'CA' }],
     employment_type: 'full_time',
-    workplace_type: 'hybrid',
+    workplace_type: 'Hybrid',
+    experience_level: 'Senior',
+    compensation: { min: 150000, max: 190000, currency: 'CAD', period: 'yearly' },
     source: 'lever',
     responsibilities: ['Own the deploy pipeline', 'Keep Postgres fast'],
   },
   {
     id: '16fd2706-8baf-433b-82eb-8c7fada847da',
     title: 'Product Designer',
-    company: { name: 'Initech', logo_url: null },
+    company: {
+      id: '5e1d2c3b-4a59-4687-8f9e-0d1c2b3a4f5e',
+      name: 'Initech',
+      logo_url: null,
+      website: 'initech.example',
+      industries: ['Design'],
+      categories: ['b2c'],
+    },
     summary: 'Design the tools people use every day.',
     description: null,
     listing_url: 'https://job-boards.greenhouse.io/initech/jobs/42',
     apply_url: 'https://job-boards.greenhouse.io/initech/jobs/42',
     locations: [{ location: 'Remote — Europe', country: null }],
     employment_type: 'full_time',
-    workplace_type: 'remote',
+    workplace_type: 'Remote',
+    experience_level: 'Mid Level',
     source: 'greenhouse',
     responsibilities: [],
   },
 ]
+// The full profiles behind GET /api/companies/{id}.
+const companyProfiles: Record<string, Record<string, unknown>> = {
+  '0b8c3f4e-6d1a-4c2b-9e7f-5a4d3c2b1a09': {
+    id: '0b8c3f4e-6d1a-4c2b-9e7f-5a4d3c2b1a09',
+    name: 'Globex Systems',
+    website: 'globex.example',
+    company_size: '201-500',
+    founding_year: '2014',
+    headquarters_location: 'Toronto, Canada',
+    funding_stage: 'series_b',
+    funds_total_formatted: '$64M',
+    investors: ['Northwind Capital', 'Example Ventures'],
+    tech_stack: [{ name: 'Kubernetes' }, { name: 'Postgres' }],
+    industries: ['Software'],
+    categories: ['b2b', 'saas'],
+  },
+}
+/** A canonical facet key from a display value ("Mid Level" → "mid"). */
+const facetKey = (value: string) => value.toLowerCase().replace(/ level$/, '').replace(/-/g, '')
+/** What the stub search can filter on, and the facet counts it returns. */
+function stubSearch(body: Record<string, any>) {
+  const lower = (values?: string[]) => (values ?? []).map((v) => v.toLowerCase())
+  const q = (body.queries?.[0] ?? '').toLowerCase()
+  const matches = productionJobs.filter((j) => {
+    const industries = lower(j.company.industries)
+    const companyRefs = [j.company.id, j.company.name.toLowerCase(), j.company.website]
+    return (
+      (body.sources ?? []).includes(j.source) &&
+      `${j.title} ${j.company.name}`.toLowerCase().includes(q) &&
+      (!body.industries?.include || lower(body.industries.include).some((i) => industries.includes(i))) &&
+      !lower(body.industries?.exclude).some((i) => industries.includes(i)) &&
+      (!body.company_categories?.include || lower(body.company_categories.include).some((c) => j.company.categories.includes(c))) &&
+      (!body.companies?.include || lower(body.companies.include).some((c) => companyRefs.includes(c))) &&
+      (!body.work_models || body.work_models.includes(facetKey(j.workplace_type))) &&
+      (!body.experience_levels || body.experience_levels.includes(facetKey(j.experience_level)))
+    )
+  })
+  const count = (keys: string[]) =>
+    Object.entries(keys.reduce<Record<string, number>>((all, k) => ({ ...all, [k]: (all[k] ?? 0) + 1 }), {}))
+      .map(([key, n]) => ({ key, count: n }))
+  return {
+    jobs: matches,
+    total: matches.length,
+    page: 1,
+    page_size: 25,
+    total_pages: 1,
+    facets: {
+      work_model: count(matches.map((j) => facetKey(j.workplace_type))),
+      experience_level: count(matches.map((j) => facetKey(j.experience_level))),
+      employment_type: count(matches.map(() => 'full-time')),
+      sources: count(matches.map((j) => j.source)),
+      industries: count(matches.flatMap((j) => j.company.industries)),
+      company_categories: count(matches.flatMap((j) => j.company.categories)),
+      countries: count(matches.flatMap((j) => (j.locations[0].country === 'CA' ? ['canada'] : []))),
+    },
+    ...(body.companies?.include
+      ? {
+          filters: {
+            companies: {
+              matched: body.companies.include.flatMap((query: string) => {
+                const hit = productionJobs.find((j) => [j.company.id, j.company.website].includes(query.toLowerCase()))
+                return hit ? [{ query, companies: [{ id: hit.company.id, name: hit.company.name }] }] : []
+              }),
+            },
+          },
+        }
+      : {}),
+  }
+}
 const originalFetch = globalThis.fetch
 const emails: string[] = []
 const upstream = new Map<string, Record<string, unknown>>()
@@ -99,16 +185,14 @@ globalThis.fetch = async (input, options) => {
   if (url.hostname === 'connect.jobo.world' && url.pathname.startsWith('/api/jobs')) {
     if (new Headers(options?.headers).get('X-Api-Key') !== VISITOR_KEY)
       return Response.json({ error: 'Invalid or expired API key' }, { status: 401 })
-    if (url.pathname === '/api/jobs') {
-      const q = (url.searchParams.get('q') ?? '').toLowerCase()
-      const sources = (url.searchParams.get('sources') ?? '').split(',')
-      const matches = productionJobs.filter(
-        (j) => sources.includes(j.source) && `${j.title} ${j.company.name}`.toLowerCase().includes(q),
-      )
-      return Response.json({ jobs: matches, total: matches.length, page: 1, page_size: 25, total_pages: 1 })
-    }
+    if (url.pathname === '/api/jobs/search' && options?.method === 'POST')
+      return Response.json(stubSearch(body))
     const job = productionJobs.find((j) => url.pathname === `/api/jobs/${j.id}`)
     return job ? Response.json(job) : Response.json({ error: 'Not found' }, { status: 404 })
+  }
+  if (url.hostname === 'connect.jobo.world' && url.pathname.startsWith('/api/companies/')) {
+    const profile = companyProfiles[url.pathname.split('/')[3]]
+    return profile ? Response.json(profile) : Response.json({ error: 'Not found' }, { status: 404 })
   }
   if (
     url.hostname === 'connect.jobo.world' &&

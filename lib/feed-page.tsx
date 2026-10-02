@@ -11,20 +11,20 @@ import {
   getProductionJob,
   JobsApiError,
   searchProductionJobsCached,
+  type JobSearchResult,
 } from './jobo/jobs-api'
+import { parseFilters, type JobFilters, type SearchParams } from './jobo/job-filters'
+import { supportedAts } from './jobo/supported-ats'
 import { getDemoSettings, productionApiKey } from './user-settings'
 import { JobFeed } from '@/components/JobFeed'
+import { ExplorerSummary, JobExplorer } from '@/components/JobExplorer'
 import {
   applicationLabel,
   canRetry,
   type CardApplication,
 } from './presentation'
 import { isTerminal } from './status'
-export interface FeedSearch {
-  q?: string
-  location?: string
-  page?: string
-}
+export type FeedSearch = SearchParams
 
 export async function FeedPage({
   savedOnly = false,
@@ -75,7 +75,7 @@ export async function FeedPage({
     }
   }
   let jobs: Job[]
-  let paging: { total: number; page: number; totalPages: number } | undefined
+  let explored: { filters: JobFilters; result: JobSearchResult } | undefined
   try {
     if (production) {
       const apiKey = await productionApiKey(user.id)
@@ -93,14 +93,10 @@ export async function FeedPage({
         )
         jobs = found.filter((j): j is Job => !!j)
       } else {
-        const page = Math.max(1, Number.parseInt(search.page ?? '1', 10) || 1)
-        const result = await searchProductionJobsCached(apiKey, {
-          q: search.q,
-          location: search.location,
-          page,
-        })
+        const filters = parseFilters(search)
+        const result = await searchProductionJobsCached(apiKey, filters)
         jobs = result.jobs
-        paging = { total: result.total, page: result.page, totalPages: result.totalPages }
+        explored = { filters, result }
       }
     } else jobs = await getJobs()
   } catch (error) {
@@ -127,6 +123,7 @@ export async function FeedPage({
       </div>
     )
   }
+  const ats = explored ? await supportedAts() : []
   return (
     <JobFeed
       jobs={jobs}
@@ -135,9 +132,14 @@ export async function FeedPage({
       savedOnly={savedOnly}
       mode={settings.mode}
       search={
-        production && !savedOnly
-          ? { q: search.q ?? '', location: search.location ?? '', ...paging! }
-          : undefined
+        explored && {
+          filters: explored.filters,
+          total: explored.result.total,
+          page: explored.result.page,
+          totalPages: explored.result.totalPages,
+          explorer: <JobExplorer filters={explored.filters} result={explored.result} ats={ats} />,
+          summary: <ExplorerSummary filters={explored.filters} result={explored.result} ats={ats} />,
+        }
       }
       profileId={profile.find(isApplicationReady)?.id}
       applicationStates={applicationStates}

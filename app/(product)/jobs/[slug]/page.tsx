@@ -2,13 +2,19 @@ import { isApplicationReady } from '@/lib/resume/completeness'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { and, desc, eq } from 'drizzle-orm'
-import { ArrowLeft, MapPin, BriefcaseBusiness, Sparkles } from 'lucide-react'
+import { ArrowLeft, MapPin, BriefcaseBusiness, Sparkles, Clock, Banknote, Layers } from 'lucide-react'
 import { db } from '@/db/client'
 import { profiles, applications, savedJobs } from '@/db/schema'
 import { requireUser } from '@/lib/session'
 import { getJobs, isProductionJobId } from '@/lib/jobs'
 import type { Job } from '@/lib/jobs-types'
-import { getProductionJob, JobsApiError } from '@/lib/jobo/jobs-api'
+import {
+  getCompanyProfile,
+  getProductionJob,
+  JobsApiError,
+  type CompanyProfile,
+} from '@/lib/jobo/jobs-api'
+import { CompanyPanel } from '@/components/CompanyPanel'
 import { productionApiKey } from '@/lib/user-settings'
 import { ApplyButton, SaveButton } from '@/components/JobActions'
 import { ProductionJobLink, SandboxJobLink } from '@/components/SandboxJobLink'
@@ -20,6 +26,7 @@ export default async function JobPage({
   const user = await requireUser(),
     { slug } = await params
   let job: Job | undefined
+  let company: CompanyProfile | null = null
   if (isProductionJobId(slug)) {
     const apiKey = await productionApiKey(user.id)
     if (!apiKey)
@@ -34,6 +41,9 @@ export default async function JobPage({
       )
     try {
       job = await getProductionJob(apiKey, slug)
+      // A profile that fails to load costs the panel, never the page.
+      if (job.companyId)
+        company = await getCompanyProfile(apiKey, job.companyId).catch(() => null)
     } catch (error) {
       if (error instanceof JobsApiError && error.kind === 'not_found') notFound()
       return (
@@ -98,11 +108,41 @@ export default async function JobPage({
               <BriefcaseBusiness size={16} />
               {job.employmentType}
             </span>
+            {job.salary && (
+              <span>
+                <Banknote size={16} />
+                {job.salary}
+              </span>
+            )}
+            {(job.experienceLevel || job.workModel) && (
+              <span>
+                <Layers size={16} />
+                {[job.experienceLevel, job.workModel].filter(Boolean).join(' · ')}
+              </span>
+            )}
+            {job.postedAgo && (
+              <span>
+                <Clock size={16} />
+                Posted {job.postedAgo.toLowerCase()}
+              </span>
+            )}
             <span className="tag">{job.department}</span>
           </div>
           <hr />
           <h2>Meet {job.company}</h2>
           <p>{job.about}</p>
+          {!!job.skills?.length && (
+            <>
+              <h2>Must-have skills</h2>
+              <div className="tag-row skill-row">
+                {job.skills.map((skill) => (
+                  <Link key={skill} className="tag" href={`/jobs?skill=${encodeURIComponent(skill)}`}>
+                    {skill}
+                  </Link>
+                ))}
+              </div>
+            </>
+          )}
           {job.responsibilities.length > 0 && (
             <>
               <h2>What you’ll work on</h2>
@@ -153,6 +193,7 @@ export default async function JobPage({
               and let you know.
             </small>
           </div>
+          {company && <CompanyPanel company={company} />}
         </aside>
       </div>
     </>

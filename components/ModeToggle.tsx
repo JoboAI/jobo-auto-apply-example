@@ -27,6 +27,12 @@ export function ModeToggle(props: ModeProps) {
   const [open, setOpen] = useState(false)
   const [pending, start] = useBusy()
   const [error, setError] = useState('')
+  // The mode on screen, recorded after commit: the refresh below can render
+  // the new mode and never commit it (see components/ApplicationLive.tsx).
+  const rendered = useRef(props.mode)
+  useEffect(() => {
+    rendered.current = props.mode
+  }, [props.mode])
 
   const switchTo = (mode: 'sandbox' | 'production') => {
     if (mode === props.mode) return
@@ -43,6 +49,9 @@ export function ModeToggle(props: ModeProps) {
       }
       router.push('/jobs')
       router.refresh()
+      window.setTimeout(() => {
+        if (rendered.current !== mode) window.location.assign('/jobs')
+      }, 2500)
     })
   }
 

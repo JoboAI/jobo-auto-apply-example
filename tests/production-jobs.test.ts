@@ -1,11 +1,15 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
+  getCompanyProfile,
   getProductionJob,
   JobsApiError,
+  postedAgo,
+  salaryRange,
   searchProductionJobs,
   toJob,
   verifyApiKey,
 } from '@/lib/jobo/jobs-api'
+import { parseFilters } from '@/lib/jobo/job-filters'
 import { FALLBACK_ATS, resetSupportedAtsCache, supportedAts } from '@/lib/jobo/supported-ats'
 import { isProductionJobId, validProductionTarget } from '@/lib/jobs'
 
@@ -44,11 +48,16 @@ function dto(overrides: Record<string, unknown> = {}) {
   }
 }
 
-type Call = { url: string; key: string | null }
+type Call = { url: string; key: string | null; method: string; body: unknown }
 function fakeFetch(routes: Record<string, () => Response>, calls: Call[] = []) {
   return (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input)
-    calls.push({ url, key: new Headers(init?.headers).get('x-api-key') })
+    calls.push({
+      url,
+      key: new Headers(init?.headers).get('x-api-key'),
+      method: init?.method ?? 'GET',
+      body: init?.body ? JSON.parse(String(init.body)) : undefined,
+    })
     for (const [prefix, respond] of Object.entries(routes))
       if (url.startsWith(prefix)) return respond()
     return new Response('not found', { status: 404 })
@@ -93,26 +102,144 @@ describe('catalog jobs', () => {
     expect(toJob(dto({ apply_url: 'http://insecure.test' }), [{ id: 'greenhouse', name: 'Greenhouse' }]).available).toBe(false)
     expect(toJob(dto({ locations: [{ country: 'United Kingdom' }] }), []).countryCode).toBeUndefined()
   })
-  it('searches only supported ATSes, on the visitor’s key', async () => {
+  it('searches only supported ATSes with every filter, on the visitor’s key', async () => {
     const calls: Call[] = []
     const fetchImpl = fakeFetch(
       {
         'https://status.example.test': json(status),
-        'https://connect.example.test/api/jobs?': json({ jobs: [dto()], total: 40, page: 2, total_pages: 2 }),
+        'https://connect.example.test/api/jobs/search': json({
+          jobs: [dto()],
+          total: 40,
+          page: 2,
+          total_pages: 2,
+          facets: { industries: [{ key: 'Fintech', count: 812 }] },
+          warnings: [
+            { code: 'companies_unmatched', message: 'No company matched nope.example' },
+            { code: 'unknown_request_fields', message: 'Ignored unrecognised request fields: x.' },
+          ],
+          filters: {
+            companies: {
+              matched: [{ query: 'stripe.com', companies: [{ id: ID, name: 'Stripe' }] }],
+              unmatched: ['nope.example'],
+            },
+          },
+        }),
       },
       calls,
     )
     await supportedAts(fetchImpl)
-    const result = await searchProductionJobs(KEY, { q: ' rust ', location: 'Berlin', page: 2 }, fetchImpl)
-    const search = calls.find((c) => c.url.includes('/api/jobs?'))!
-    const params = new URL(search.url).searchParams
-    expect(params.get('sources')).toBe('greenhouse,lever')
-    expect(params.get('q')).toBe('rust')
-    expect(params.get('location')).toBe('Berlin')
-    expect(params.get('page')).toBe('2')
-    expect(params.get('page_size')).toBe('25')
+    const filters = parseFilters({
+      q: ' rust ',
+      loc: 'Berlin',
+      co: ['stripe.com', 'nope.example'],
+      ind: ['Fintech', '-HR & Staffing'],
+      cat: 'saas',
+      wm: 'remote',
+      page: '2',
+    })
+    const result = await searchProductionJobs(KEY, filters, fetchImpl)
+    const search = calls.find((c) => c.url.endsWith('/api/jobs/search'))!
+    expect(search.method).toBe('POST')
     expect(search.key).toBe(KEY)
-    expect(result).toMatchObject({ total: 40, page: 2, totalPages: 2 })
+    expect(search.body).toMatchObject({
+      queries: ['rust'],
+      locations: ['Berlin'],
+      sources: ['greenhouse', 'lever'],
+      companies: { include: ['stripe.com', 'nope.example'] },
+      industries: { include: ['Fintech'], exclude: ['HR & Staffing'] },
+      company_categories: { include: ['saas'] },
+      work_models: ['remote'],
+      page: 2,
+      page_size: 25,
+    })
+    expect(result).toMatchObject({
+      total: 40,
+      page: 2,
+      totalPages: 2,
+      facets: { industries: [{ key: 'Fintech', count: 812 }] },
+      companyNames: { 'stripe.com': 'Stripe' },
+      unmatchedCompanies: ['nope.example'],
+      warnings: ['Ignored unrecognised request fields: x.'],
+      request: { method: 'POST', url: 'https://connect.example.test/api/jobs/search' },
+    })
+  })
+  it('carries company and pay data onto production jobs', () => {
+    const job = toJob(
+      dto({
+        company: {
+          id: ID,
+          name: 'Acme Robotics',
+          industries: ['Robotics'],
+          categories: ['b2b', 'saas'],
+        },
+        workplace_type: 'Remote',
+        experience_level: 'Senior',
+        compensation: { min: 120000, max: 165000, currency: 'USD', period: 'yearly' },
+        qualifications: { must_have: { skills: [{ name: 'Rust' }, { name: 'gRPC' }] } },
+      }),
+      [{ id: 'greenhouse', name: 'Greenhouse' }],
+    )
+    expect(job).toMatchObject({
+      companyId: ID,
+      industries: ['Robotics'],
+      companyCategories: ['B2B', 'SaaS'],
+      workModel: 'Remote',
+      experienceLevel: 'Senior',
+      salary: '$120k–$165k/yr',
+      skills: ['Rust', 'gRPC'],
+    })
+  })
+  it('formats pay ranges and posting age compactly', () => {
+    expect(salaryRange({ min: 45, max: 60, currency: 'GBP', period: 'hourly' })).toBe('£45–£60/hr')
+    expect(salaryRange({ min: 95000, max: 95000, currency: 'EUR', period: 'yearly' })).toBe('€95k/yr')
+    expect(salaryRange({ min: null, max: null })).toBeUndefined()
+    const now = Date.parse('2026-10-02T12:00:00Z')
+    expect(postedAgo('2026-10-02T01:00:00Z', now)).toBe('Today')
+    expect(postedAgo('2026-09-29T12:00:00Z', now)).toBe('3d ago')
+    expect(postedAgo('2026-08-28T12:00:00Z', now)).toBe('5w ago')
+    expect(postedAgo(null, now)).toBeUndefined()
+  })
+  it('reads the free company profile into display facts', async () => {
+    const calls: Call[] = []
+    const fetchImpl = fakeFetch(
+      {
+        'https://connect.example.test/api/companies/': json({
+          id: ID,
+          name: 'Acme Robotics',
+          website: 'acme.example',
+          company_size: '201-500',
+          founding_year: '2015',
+          headquarters_location: 'London, United Kingdom',
+          funding_stage: 'series_b',
+          funds_total_formatted: '$84M',
+          investors: ['Index Ventures', 'Seedcamp'],
+          tech_stack: [{ name: 'Rust' }, { name: 'Postgres' }],
+          technologies: ['Rust', 'Kubernetes'],
+          categories: ['b2b'],
+          industries: ['Robotics'],
+        }),
+      },
+      calls,
+    )
+    const company = await getCompanyProfile(KEY, ID, fetchImpl)
+    expect(calls[0]).toMatchObject({ url: `https://connect.example.test/api/companies/${ID}`, key: KEY })
+    expect(company).toMatchObject({
+      name: 'Acme Robotics',
+      website: 'https://acme.example/',
+      categories: ['B2B'],
+      investors: ['Index Ventures', 'Seedcamp'],
+      techStack: ['Rust', 'Postgres', 'Kubernetes'],
+    })
+    expect(company!.facts).toEqual([
+      { label: 'Headcount', value: '201-500 employees' },
+      { label: 'Founded', value: '2015' },
+      { label: 'Headquarters', value: 'London, United Kingdom' },
+      { label: 'Funding stage', value: 'Series B' },
+      { label: 'Total raised', value: '$84M' },
+    ])
+    // Cached: a second job page for the same company costs no request.
+    await getCompanyProfile(KEY, ID, fetchImpl)
+    expect(calls).toHaveLength(1)
   })
   it('maps 401, 402 and 404 to typed errors', async () => {
     const expectKind = async (status: number, kind: string) => {

@@ -1,6 +1,6 @@
 'use client'
 import Link from 'next/link'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { ArrowUpRight, Check, LoaderCircle, Sparkles } from 'lucide-react'
 import { startApplicationAction } from '@/app/actions/applications'
@@ -41,11 +41,37 @@ export function CardApply({
         }
       : application
   const active = current?.active ?? false
+  // The status on screen, recorded after commit (see components/ApplicationLive.tsx):
+  // a refresh can render the new state and never commit it.
+  const renderedStatus = useRef(current?.status)
   useEffect(() => {
-    if (!active) return
-    const timer = setInterval(() => router.refresh(), 3000)
+    renderedStatus.current = current?.status
+  }, [current?.status])
+  const watchedId = current?.id
+  useEffect(() => {
+    if (!active || !watchedId) return
+    let stuck = 0
+    let busy = false
+    const timer = setInterval(async () => {
+      if (busy || document.visibilityState === 'hidden') return
+      busy = true
+      try {
+        router.refresh()
+        const response = await fetch(`/api/applications/${watchedId}/live`, { cache: 'no-store' })
+        if (!response.ok) return
+        const { version } = (await response.json()) as { version: string }
+        // The fingerprint leads with the status; a status the card has not
+        // shown for three polls in a row means the refreshes are not landing.
+        if (version.split(':')[0] === renderedStatus.current) stuck = 0
+        else if (++stuck >= 3) window.location.reload()
+      } catch {
+        // Offline or restarting; the next poll tries again.
+      } finally {
+        busy = false
+      }
+    }, 3000)
     return () => clearInterval(timer)
-  }, [active, router])
+  }, [active, watchedId, router])
   const submitted = current?.status === 'submitted'
   const queued = current?.status === 'queued'
   const retry = current?.retryable ?? false
