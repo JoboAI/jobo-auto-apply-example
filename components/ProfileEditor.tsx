@@ -1,5 +1,6 @@
 'use client'
-import { useRef, useState, useTransition } from 'react'
+import { useRef, useState } from 'react'
+import { pushWithFallback, useBusy } from '@/lib/use-busy'
 import { useRouter } from 'next/navigation'
 import { Check, Plus, Trash2, ArrowRight } from 'lucide-react'
 import type { ResumeProfile } from '@/lib/resume/profile-schema'
@@ -221,7 +222,7 @@ export function ProfileEditor({
   const [profile, setProfile] = useState(data),
     [profileName, setName] = useState(name),
     [error, setError] = useState(''),
-    [pending, start] = useTransition(),
+    [pending, start] = useBusy(),
     [saved, setSaved] = useState(false),
     [step, setStep] = useState(0),
     router = useRouter()
@@ -254,7 +255,7 @@ export function ProfileEditor({
           else if (step < 2) goTo(step + 1)
           else {
             setSaved(true)
-            if (!reviewed) router.push('/jobs')
+            if (!reviewed) pushWithFallback(router, '/jobs')
             else router.refresh()
           }
         } catch {

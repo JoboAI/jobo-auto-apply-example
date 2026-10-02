@@ -1,5 +1,6 @@
 'use client'
-import { useState, useTransition } from 'react'
+import { useState } from 'react'
+import { pushWithFallback, useBusy } from '@/lib/use-busy'
 import { useRouter } from 'next/navigation'
 import { ArrowUpRight, Bookmark, Sparkles } from 'lucide-react'
 import { saveJobAction } from '@/app/actions/jobs'
@@ -11,7 +12,7 @@ export function SaveButton({
   jobId: string
   saved: boolean
 }) {
-  const [pending, start] = useTransition(),
+  const [pending, start] = useBusy(),
     [error, setError] = useState('')
   return (
     <span className="save-control">
@@ -47,7 +48,7 @@ export function ApplyButton({
   retry?: boolean
 }) {
   const router = useRouter(),
-    [pending, start] = useTransition(),
+    [pending, start] = useBusy(),
     [error, setError] = useState('')
   return (
     <div>
@@ -71,7 +72,7 @@ export function ApplyButton({
                 profileId,
                 retry,
               })
-              if (result.ok) router.push(`/applications/${result.id}`)
+              if (result.ok) pushWithFallback(router, `/applications/${result.id}`)
               else setError(result.error)
             } catch {
               setError('Could not connect. Please try again.')

@@ -1,5 +1,6 @@
 'use client'
-import { useEffect, useRef, useState, useTransition } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { useBusy } from '@/lib/use-busy'
 import { useRouter } from 'next/navigation'
 import { ArrowUpRight, KeyRound, TriangleAlert, X } from 'lucide-react'
 import {
@@ -24,7 +25,7 @@ export type ModeProps = Pick<
 export function ModeToggle(props: ModeProps) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
-  const [pending, start] = useTransition()
+  const [pending, start] = useBusy()
   const [error, setError] = useState('')
 
   const switchTo = (mode: 'sandbox' | 'production') => {
@@ -113,7 +114,7 @@ export function ApiKeyDialog({
 }) {
   const ref = useRef<HTMLDialogElement>(null)
   const router = useRouter()
-  const [pending, start] = useTransition()
+  const [pending, start] = useBusy()
   const [error, setError] = useState('')
   const [agreed, setAgreed] = useState(false)
 

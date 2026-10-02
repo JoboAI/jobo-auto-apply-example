@@ -1,5 +1,6 @@
 'use client'
-import { useEffect, useRef, useState, useTransition } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { useBusy } from '@/lib/use-busy'
 import { useRouter } from 'next/navigation'
 import { cancelApplicationAction } from '@/app/actions/applications'
 const POLL_MS = 3000
@@ -86,7 +87,7 @@ export function CancelButton({
   id: string
   requested: boolean
 }) {
-  const [pending, start] = useTransition(),
+  const [pending, start] = useBusy(),
     [error, setError] = useState(''),
     router = useRouter()
   return (

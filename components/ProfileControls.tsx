@@ -1,5 +1,6 @@
 'use client'
-import { useTransition, useState } from 'react'
+import { useState } from 'react'
+import { useBusy } from '@/lib/use-busy'
 import { useRouter } from 'next/navigation'
 import {
   setDefaultProfileAction,
@@ -12,7 +13,7 @@ export function ProfileControls({
   id: string
   isDefault: boolean
 }) {
-  const [pending, start] = useTransition(),
+  const [pending, start] = useBusy(),
     [error, setError] = useState(''),
     router = useRouter()
   const run = (action: () => Promise<{ ok: boolean }>) =>
