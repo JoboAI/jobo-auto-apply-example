@@ -509,3 +509,76 @@ describe('job-specific work authorization', () => {
     ).toBe(true)
   })
 })
+
+describe('EU work authorization', () => {
+  const eu = field({
+    field_id: 'authorized',
+    type: 'select',
+    label: 'Are you authorized to work in the EU?',
+    options: options('Yes', 'No'),
+  })
+  const answer = (codes: string[], jobCountryCode?: string) =>
+    runDeterministic(
+      [eu],
+      context({
+        profile: profile({ work_authorization: { authorized_country_codes: codes, requires_sponsorship: false, notice_period_days: null } }),
+        jobCountryCode,
+      }),
+    ).resolved.get('authorized')?.value
+
+  it('counts any EU member state, not just the posting’s country', () => {
+    expect(answer(['DE'], 'NL')).toBe('Yes')
+    expect(answer(['DE'])).toBe('Yes')
+  })
+
+  it('says No for a candidate authorized only outside the EU', () => {
+    expect(answer(['GB', 'US'], 'BE')).toBe('No')
+  })
+})
+
+describe('rule matching stays on whole words', () => {
+  it('does not mistake look-alike labels for location or start-date fields', () => {
+    const fields = [
+      field({ field_id: 'q1', type: 'text', label: 'Are you authorized to work in the United States?' }),
+      field({ field_id: 'q2', type: 'text', label: 'Personal statement' }),
+      field({ field_id: 'q3', type: 'text', label: 'Ethnicity' }),
+      field({ field_id: 'q4', type: 'text', label: 'Team capacity you have managed' }),
+      field({ field_id: 'q5', type: 'text', label: 'Are you available to work weekends?' }),
+    ]
+    const { resolved } = runDeterministic(fields, context())
+    for (const id of ['q2', 'q3', 'q4', 'q5']) expect(resolved.has(id)).toBe(false)
+    expect(resolved.get('q1')?.rule).not.toBe('region')
+  })
+
+  it('still maps the real location and availability fields', () => {
+    const fields = [
+      field({ field_id: 'city', type: 'text', label: 'Current city' }),
+      field({ field_id: 'state', type: 'text', label: 'State or region' }),
+      field({ field_id: 'available', type: 'date', label: 'Available date' }),
+    ]
+    const ctx = context({
+      profile: profile({
+        location: { ...profile().location, region: 'North Holland' },
+        preferences: { ...profile().preferences, earliest_start_date: '2026-11-02' },
+      }),
+    })
+    const { resolved } = runDeterministic(fields, ctx)
+    expect(resolved.get('city')?.value).toBe('Amsterdam')
+    expect(resolved.get('state')?.value).toBe('North Holland')
+    expect(resolved.get('available')?.value).toBe('2026-11-02')
+  })
+
+  it('derives a start date from the notice period when none is saved', () => {
+    const ctx = context({
+      profile: profile({
+        work_authorization: { ...profile().work_authorization, notice_period_days: 30 },
+      }),
+    })
+    const { resolved } = runDeterministic(
+      [field({ field_id: 'available', type: 'date', label: 'Available date' })],
+      ctx,
+    )
+    const expected = new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10)
+    expect(resolved.get('available')?.value).toBe(expected)
+  })
+})

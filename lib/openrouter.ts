@@ -91,6 +91,13 @@ export async function complete<T extends z.ZodTypeAny>(
         // OpenRouter's unified control; `exclude` also keeps the reasoning
         // out of the response body for providers that always produce it.
         ...(options.reasoning === false ? { reasoning: { enabled: false, exclude: true } } : {}),
+        // Without `require_parameters`, OpenRouter may route to a host that
+        // ignores response_format and returns free text. Without `sort`, it
+        // routes by price, and the cheapest hosts are often the slowest.
+        provider: {
+          require_parameters: true,
+          ...(c.OPENROUTER_PROVIDER_SORT === 'price' ? {} : { sort: c.OPENROUTER_PROVIDER_SORT })
+        },
         response_format: responseFormat(options.schemaName, options.schema)
       })
     })

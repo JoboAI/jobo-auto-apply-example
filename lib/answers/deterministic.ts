@@ -58,6 +58,11 @@ function named(...patterns: RegExp[]) {
   }
 }
 
+const EU_QUESTION = /\b(eu|european union)\b/
+const EU_COUNTRIES = new Set(
+  'AT BE BG HR CY CZ DK EE FI FR DE GR HU IE IT LV LT LU MT NL PL PT RO SK SI ES SE'.split(' '),
+)
+
 function linkOf(profile: ResumeProfile, type: string): string | undefined {
   return profile.links.find((link) => link.type === type)?.url
 }
@@ -422,7 +427,12 @@ const RULES: Rule[] = [
   },
   {
     id: 'region',
-    match: named(/state|province|region/, /^(state|province|region|county)$/),
+    // Whole words only: a bare /state/ also caught "United States" and
+    // "statement", and the first matching rule wins.
+    match: named(
+      /\b(state|province|region|county)\b/,
+      /^(state|province|region|county)$/,
+    ),
     resolve: (f, c) =>
       fieldOptions(f).length
         ? matchOption(fieldOptions(f), [c.profile.location.region])?.value
@@ -430,7 +440,8 @@ const RULES: Rule[] = [
   },
   {
     id: 'city',
-    match: named(/city|locality/, /^(city|town)$/),
+    // A bare /city/ also caught "ethnicity" and "capacity".
+    match: named(/\b(city|locality|town)\b/, /^(city|town)$/),
     resolve: (_, c) => c.profile.location.city,
   },
   {
@@ -500,11 +511,16 @@ const RULES: Rule[] = [
     resolve: (f, c) => {
       const codes = c.profile.work_authorization.authorized_country_codes
       if (!codes || codes.length === 0) return undefined
-      // Only assert authorization when the posting's country is known and
-      // matches. Otherwise this is a question for the model, or for a human.
-      const country = c.jobCountryCode
-      if (!country) return undefined
-      const authorized = codes.includes(country)
+      // "Authorized to work in the EU?" is about the bloc, not the posting's
+      // own country: a German citizen may work in the Netherlands.
+      const authorized = EU_QUESTION.test(normalize(f.label))
+        ? codes.some((code) => EU_COUNTRIES.has(code.toUpperCase()))
+        : // Otherwise only assert authorization when the posting's country is
+          // known and matches. Anything else is for the model, or a human.
+          c.jobCountryCode
+          ? codes.includes(c.jobCountryCode)
+          : undefined
+      if (authorized === undefined) return undefined
       return fieldOptions(f).length
         ? matchBooleanOption(fieldOptions(f), authorized)?.value
         : authorized
@@ -556,11 +572,20 @@ const RULES: Rule[] = [
   },
   {
     id: 'start_date',
+    // Not a bare /available/: "available to work weekends" is not a date.
     match: named(
-      /start_?date|available/,
-      /start date|availability|available from/,
+      /start_?date/,
+      /\bstart date\b|when can you start|earliest (available )?start|^available( (date|from|month))?$|^availability( date)?$/,
     ),
-    resolve: (_, c) => c.profile.preferences.earliest_start_date ?? undefined,
+    resolve: (_, c) => {
+      const explicit = c.profile.preferences.earliest_start_date
+      if (explicit) return explicit
+      // Derived, not invented: someone with a known notice period can start
+      // once it has run.
+      const days = c.profile.work_authorization.notice_period_days
+      if (days === null || days === undefined) return undefined
+      return new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10)
+    },
   },
 ]
 

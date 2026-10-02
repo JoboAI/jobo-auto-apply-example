@@ -23,6 +23,19 @@ const excluded = new Set([
   'submission-unconfirmed',
   'email-verification',
 ])
+/**
+ * The ISO 3166 alpha-2 country of a posting, from its trailing location token
+ * ("Leeds, UK", "Austin, TX, US"). The catalog writes the United Kingdom as
+ * `UK`, which is not ISO: read raw, a GB-authorized candidate was answered
+ * "not authorized". A location with no country ("Remote — Europe") is
+ * undefined, so work-authorization questions are never guessed.
+ */
+export function jobCountryCode(location: string): string | undefined {
+  const code = location.trim().match(/,\s*([A-Z]{2})$/)?.[1]
+  if (!code) return undefined
+  return code === 'UK' ? 'GB' : code
+}
+
 export function validSandboxUrl(value: string, slug: string): boolean {
   try {
     const u = new URL(value)

@@ -156,12 +156,12 @@ describe('background application exchanges', () => {
       mocked.create.mock.calls[1][1],
     )
   })
-  it('stops missing facts or model failures without submitting', async () => {
+  it('stops when a required field has no answer, naming the model failure', async () => {
     mocked.build.mockResolvedValue({
       answers: [],
-      trace: [],
+      trace: [{ field_id: 'full_name', label: 'Full name', type: 'text', source: 'dropped', reason: 'model declined to answer' }],
       unanswerable: [{ label: 'Work authorization' }],
-      llmError: 'upstream failed',
+      llmError: 'OpenRouter timed out after 90000ms',
     })
     mocked.get.mockResolvedValue(
       snapshot({ status: 'canceled', current_step: null }),
@@ -169,6 +169,63 @@ describe('background application exchanges', () => {
     await engine.advanceApplication(id, 'worker')
     expect(mocked.submitAnswers).not.toHaveBeenCalled()
     expect(mocked.cancel).toHaveBeenCalled()
+    const stopReason = db
+      .select()
+      .from(schema.applications)
+      .where(eq(schema.applications.id, id))
+      .get()?.stopReason
+    expect(stopReason).toContain('OpenRouter timed out')
+    expect(stopReason).toContain('Work authorization')
+    // The trace survives the cancel, so the answers tab can explain it.
+    const step = db.select().from(schema.steps).get()!
+    expect(step.trace?.[0]?.reason).toBe('model declined to answer')
+    expect(step.answersJson).toBeNull()
+  })
+  it('names missing profile facts when the model was not at fault', async () => {
+    mocked.build.mockResolvedValue({
+      answers: [],
+      trace: [],
+      unanswerable: [{ label: 'Available date' }],
+    })
+    mocked.get.mockResolvedValue(
+      snapshot({ status: 'canceled', current_step: null }),
+    )
+    await engine.advanceApplication(id, 'worker')
+    expect(
+      db
+        .select()
+        .from(schema.applications)
+        .where(eq(schema.applications.id, id))
+        .get()?.stopReason,
+    ).toBe('Your profile is missing required information: Available date')
+  })
+  it('submits the profile answers when the model fails but nothing required is missing', async () => {
+    mocked.build.mockResolvedValue({
+      answers: [{ field_id: 'full_name', value: 'Ada Lovelace' }],
+      trace: [],
+      unanswerable: [],
+      llmError: 'OpenRouter timed out after 90000ms',
+    })
+    await engine.advanceApplication(id, 'worker')
+    expect(mocked.cancel).not.toHaveBeenCalled()
+    expect(mocked.submitAnswers).toHaveBeenCalledTimes(1)
+    expect(db.select().from(schema.steps).get()?.error).toBe(
+      'OpenRouter timed out after 90000ms',
+    )
+  })
+  it('stops when the answer service refuses its key', async () => {
+    mocked.build.mockResolvedValue({
+      answers: [{ field_id: 'full_name', value: 'Ada Lovelace' }],
+      trace: [],
+      unanswerable: [],
+      llmError: 'OpenRouter 402: Insufficient credits',
+      llmFatal: true,
+    })
+    mocked.get.mockResolvedValue(
+      snapshot({ status: 'canceled', current_step: null }),
+    )
+    await engine.advanceApplication(id, 'worker')
+    expect(mocked.submitAnswers).not.toHaveBeenCalled()
     expect(
       db
         .select()

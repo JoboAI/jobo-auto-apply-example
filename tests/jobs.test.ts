@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { getJobs, validSandboxUrl } from '@/lib/jobs'
+import { getJobs, jobCountryCode, validSandboxUrl } from '@/lib/jobs'
 const metadata = {
   slug: 'multi-step',
   company: 'Cascade',
@@ -57,5 +57,18 @@ describe('sandbox catalog', () => {
       vi.fn(async () => new Response('', { status: 503 })),
     )
     await expect(getJobs()).rejects.toThrow(/unavailable/)
+  })
+})
+
+describe('posting country', () => {
+  it.each([
+    ['Manchester, UK', 'GB'],
+    ['Austin, TX, US', 'US'],
+    ['Toronto, ON, CA', 'CA'],
+    ['Berlin, DE', 'DE'],
+    ['Remote — Europe', undefined],
+    ['NL', undefined],
+  ])('%s → %s', (location, expected) => {
+    expect(jobCountryCode(location)).toBe(expected)
   })
 })

@@ -33,6 +33,8 @@ describe('OpenRouter latest Flash', () => {
     expect(request).toMatchObject({
       model: options.model,
       reasoning: { enabled: false },
+      // Price routing landed on hosts that took 15-80 s; throughput held ~23 s.
+      provider: { require_parameters: true, sort: 'throughput' },
       response_format: { type: 'json_schema' },
     })
     expect(result.model).toBe('deepseek/deepseek-v4-flash-0731')

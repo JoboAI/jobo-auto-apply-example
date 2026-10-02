@@ -1,5 +1,6 @@
 import type { Answer, CommandError, Field } from '@jobo-ai/autoapply'
 import { log } from '@/lib/logger'
+import { OpenRouterError } from '@/lib/openrouter'
 import { coerceValue } from './coerce'
 import { asItemField } from './item-field'
 import { runDeterministic } from './deterministic'
@@ -116,6 +117,7 @@ export async function buildAnswers(
   let llmModel: string | undefined
   let llmMs: number | undefined
   let llmError: string | undefined
+  let llmFatal = false
 
   if ((pending.length > 0 || gaps.length > 0) && ctx.budgetMs > 1_000) {
     try {
@@ -187,6 +189,7 @@ export async function buildAnswers(
       // partial submission may still be valid. If it is not, the unanswerable
       // check below turns this into a clean cancel.
       llmError = error instanceof Error ? error.message : String(error)
+      llmFatal = error instanceof OpenRouterError && error.isAuthError
       log.warn({ err: error, budgetMs: ctx.budgetMs }, 'answer generation failed; using deterministic answers only')
     }
   } else if (pending.length > 0 && ctx.budgetMs <= 1_000) {
@@ -208,7 +211,7 @@ export async function buildAnswers(
     )
   }
 
-  return { answers, trace, unanswerable, llmModel, llmMs, llmError }
+  return { answers, trace, unanswerable, llmModel, llmMs, llmError, llmFatal }
 }
 
 function toAnswers(values: Map<string, unknown>): Answer[] {

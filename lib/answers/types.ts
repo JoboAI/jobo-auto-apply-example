@@ -60,4 +60,6 @@ export interface BuildResult {
   llmModel?: string
   llmMs?: number
   llmError?: string
+  /** The model call was refused for auth or billing; nothing will answer until that is fixed. */
+  llmFatal?: boolean
 }

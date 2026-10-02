@@ -13,7 +13,7 @@ import { buildAnswers, repairAnswers } from '@/lib/answers'
 import type { AnswerContext, BuildResult } from '@/lib/answers/types'
 import { signApplicationResumeUrl } from '@/lib/signed-url'
 import { isTerminal } from '@/lib/status'
-import { validSandboxUrl } from '@/lib/jobs'
+import { jobCountryCode, validSandboxUrl } from '@/lib/jobs'
 import { log } from '@/lib/logger'
 const RESERVE_MS = 20000
 const MAX_WAIT_SECONDS = 90
@@ -247,7 +247,9 @@ async function answerStep(
     resumeFilename: profile.resumeFilename,
     resumeContentType: profile.resumeContentType,
     resumeText: profile.resumeText,
-    jobCountryCode: local.jobSnapshot?.location.match(/, ([A-Z]{2})$/)?.[1],
+    jobCountryCode: local.jobSnapshot
+      ? jobCountryCode(local.jobSnapshot.location)
+      : undefined,
     jobDescription: local.jobSnapshot
       ? `${local.jobSnapshot.role} at ${local.jobSnapshot.company}\n${local.jobSnapshot.about}\n${local.jobSnapshot.responsibilities.join('\n')}`
       : undefined,
@@ -281,23 +283,26 @@ async function answerStep(
       }
     : await buildAnswers(step.fields, ctx)
 
-  if (result.llmError)
+  // A failed model call is not fatal: the deterministic answers may already
+  // cover every required field, and Jobo leaves unanswered optional fields
+  // alone. Only a refused key stops here, because no retry can succeed.
+  const traceExtras = {
+    trace: result.trace,
+    llmModel: result.llmModel ?? null,
+    llmMs: result.llmMs ?? null,
+  }
+  if (result.llmFatal)
     return cancelCleanly(
-      'The answer service could not complete this application. Please try again later.',
-      {
-        trace: result.trace,
-        llmModel: result.llmModel ?? null,
-        llmMs: result.llmMs ?? null,
-      },
+      'The answer service rejected its API key, so no questions could be answered. Please try again later.',
+      traceExtras,
     )
   if (result.unanswerable.length > 0) {
+    const missing = result.unanswerable.map((f) => f.label).join(', ')
     return cancelCleanly(
-      `Your profile is missing required information: ${result.unanswerable.map((f) => f.label).join(', ')}`,
-      {
-        trace: result.trace,
-        llmModel: result.llmModel ?? null,
-        llmMs: result.llmMs ?? null,
-      },
+      result.llmError
+        ? `The AI answer step failed (${result.llmError}), so these required questions have no answer: ${missing}. Please try again.`
+        : `Your profile is missing required information: ${missing}`,
+      traceExtras,
     )
   }
 

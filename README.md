@@ -24,7 +24,7 @@ The job feed is a board of fictional postings served by `https://sandbox.jobo.wo
 
 OpenRouter uses `~deepseek/deepseek-v4-flash-latest`, the official latest alias in the DeepSeek V4 Flash family. Name, email, dates, file URLs, repeating groups, and exact selections are filled deterministically; the remaining eligible fields go in a single structured model request per step. It sees the reviewed profile, resume text, and job description. The actual resolved model and duration are recorded per exchange.
 
-Reasoning is disabled. The model has a maximum 45-second budget, shortened to leave 20 seconds before the application step deadline. JSON and field values are validated, and one mechanical validation repair is allowed. Sensitive fields use only advertised decline options. Missing facts, verification codes, or model failures stop the application with an explanation. There is no fallback to a different model family.
+Reasoning is disabled. The model has a maximum 90-second budget, shortened to leave 20 seconds before the application step deadline, and OpenRouter is asked to route by throughput (`OPENROUTER_PROVIDER_SORT`) to hosts that honour the JSON schema: price routing reached hosts that took over a minute. JSON and field values are validated, and one mechanical validation repair is allowed. Sensitive fields use only advertised decline options. A failed model call is not fatal on its own: the profile answers are still sent when they cover every required field. A required field with no answer, a verification code, or a refused API key stops the application with an explanation, and the answers panel lists every field that was not answered and why. There is no fallback to a different model family.
 
 ## Accounts, files, and execution
 

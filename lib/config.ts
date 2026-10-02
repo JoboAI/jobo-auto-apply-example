@@ -92,8 +92,22 @@ const schema = z.object({
     .default('deepseek/deepseek-v4-flash-0731'),
   OPENROUTER_APP_NAME: z.string().default('Jobo Auto Apply'),
   OPENROUTER_APP_URL: z.string().optional(),
+  /**
+   * How OpenRouter picks a host for the answer model. Unset, it routes by
+   * price, and the cheapest DeepSeek hosts took 15-80 s on a 15-field form —
+   * past the answer budget, which cancelled the application. `throughput`
+   * held a steady ~23 s. `price` restores OpenRouter's default.
+   */
+  OPENROUTER_PROVIDER_SORT: z
+    .enum(['throughput', 'latency', 'price'])
+    .default('throughput'),
 
-  ANSWER_BUDGET_MS: z.coerce.number().int().positive().default(45_000),
+  /**
+   * Ceiling for the answer call. The real limit is answers_expire_at (~3
+   * minutes), which the engine also applies, so this only needs to leave room
+   * for submission.
+   */
+  ANSWER_BUDGET_MS: z.coerce.number().int().positive().default(90_000),
   DATA_DIR: z.string().default('./.data'),
   DEFAULT_SANDBOX: z
     .string()
@@ -142,6 +156,7 @@ function raw() {
     OPENROUTER_RESUME_MODEL: process.env.OPENROUTER_RESUME_MODEL,
     OPENROUTER_APP_NAME: process.env.OPENROUTER_APP_NAME,
     OPENROUTER_APP_URL: process.env.OPENROUTER_APP_URL || undefined,
+    OPENROUTER_PROVIDER_SORT: process.env.OPENROUTER_PROVIDER_SORT || undefined,
     ANSWER_BUDGET_MS: process.env.ANSWER_BUDGET_MS,
     DATA_DIR: process.env.DATA_DIR,
     RESTRICT_APPLY_HOSTS: process.env.RESTRICT_APPLY_HOSTS,
