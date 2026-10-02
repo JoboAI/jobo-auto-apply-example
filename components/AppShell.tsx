@@ -1,7 +1,7 @@
 'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { SourceLink } from '@/components/SourceLink'
+import { ApiDocsLink, SourceLink } from '@/components/SourceLink'
 import {
   BriefcaseBusiness,
   Bookmark,
@@ -91,6 +91,7 @@ export function AppShell({
               <span />
               Auto Apply Demo
             </span>
+            <ApiDocsLink compact />
             <SourceLink compact />
             <Link
               href="/settings"
@@ -106,7 +107,10 @@ export function AppShell({
         </main>
         <footer className="app-footer">
           <span>Jobo Auto Apply Demo · No real employers contacted.</span>
-          <SourceLink />
+          <div className="developer-links">
+            <ApiDocsLink />
+            <SourceLink />
+          </div>
         </footer>
       </div>
     </div>

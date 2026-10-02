@@ -1,14 +1,16 @@
 import { BookOpen, CodeXml } from 'lucide-react'
 
-export function ApiDocsLink() {
+export function ApiDocsLink({ compact = false }: { compact?: boolean }) {
   return (
     <a
-      className="source-link"
+      className={`source-link${compact ? ' source-link-compact' : ''}`}
       href="https://jobo.world/docs/api-reference/auto-apply/auto-apply"
       target="_blank"
       rel="noopener noreferrer"
+      aria-label="Auto Apply API documentation (opens in a new tab)"
     >
-      <BookOpen size={16} aria-hidden="true" /> API documentation
+      <BookOpen size={16} aria-hidden="true" />
+      <span>API documentation</span>
     </a>
   )
 }

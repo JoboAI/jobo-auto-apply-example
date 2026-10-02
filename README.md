@@ -1,78 +1,183 @@
 # Jobo Auto Apply Demo
 
-An interactive **Auto Apply API demo for developers** at **demo.jobo.world**, with private accounts and fictional sandbox jobs. Apply directly from job cards, follow persisted progress without leaving the catalog, and explore the implementation to integrate Auto Apply into your own app. No real employers are contacted. Sign up, verify your email, upload a PDF resume, complete contact details and common application answers, review your profile, discover sandbox roles, and apply. A durable worker finishes applications even after the browser closes.
+A working example of integrating the Jobo Auto Apply API into a Next.js app. Candidates create a private account, upload and review a resume, then apply to fictional jobs while a background worker handles the application loop. No real employers are contacted.
 
-Source: [JoboAI/jobo-auto-apply-example on GitHub](https://github.com/JoboAI/jobo-auto-apply-example).
+**[Try the live demo](https://demo.jobo.world)** · **[Read the Auto Apply docs](https://jobo.world/docs/api-reference/auto-apply/auto-apply)** · **[View the source](https://github.com/JoboAI/jobo-auto-apply-example)**
+
+## Try it without installing anything
+
+1. Open [demo.jobo.world](https://demo.jobo.world), sign up, and verify your email.
+2. Upload a text-based PDF resume, up to 5 MB.
+3. Review your contact details, common application answers, and resume. Full name, email, phone, and a personal LinkedIn `/in/` URL are required.
+4. Choose a fictional role and click **Apply**. Follow progress on the job card or application detail page.
+5. Expand **API requests & responses** to inspect the integration's recorded HTTP exchanges. Credentials and signed download tokens are redacted.
+
+The worker continues after the browser closes. Missing required information stops the application with an explanation. **Submitted** is shown only when the upstream API reports `submitted`.
+
+## What this example demonstrates
+
+| This app owns | Auto Apply handles |
+| --- | --- |
+| Accounts, consent, reviewed profiles, and resume files | Opening the supported application form |
+| Mapping candidate facts and generating eligible free-text answers | Discovering typed fields and validation constraints |
+| Saving progress and recovering worker interruptions | Filling answers, advancing pages, and reporting corrections |
+| Presenting results and handling uncertain submissions | Reporting `submitted`, `failed`, or `canceled` |
+
+The API does not store reusable candidate profiles or generate candidate answers. Those features live in this example. The integration uses `@jobo-ai/autoapply` and the synchronous create → fields → answers → next step loop. Long-running requests may return `202`; the worker re-attaches to the existing application. No webhook receiver is required.
+
+Read the [application loop](https://jobo.world/docs/api-reference/auto-apply/flow), [field schema](https://jobo.world/docs/api-reference/auto-apply/schema), and [optional email verification guide](https://jobo.world/docs/api-reference/auto-apply/mailboxes) when adapting it.
 
 ## Run locally
 
-Needs Docker for the local Postgres (`docker-compose.yml`, on `127.0.0.1:5433`), or any Postgres you point `DATABASE_URL` at.
+### Prerequisites
+
+- **Node.js 22+** and npm.
+- **Postgres**, either through Docker Compose or your own `DATABASE_URL`.
+- A **Jobo API key with Auto Apply beta access**. [Request access in the portal](https://enterprise.jobo.world/auto-apply/applications). Creating a demo account does not enable API access on your own key.
+- An **OpenRouter API key** for resume extraction and answer generation.
+- A **Brevo API key and configured sender** for verification and password recovery emails.
+- A **public HTTPS origin** pointing to your app for signed resume downloads when running applications.
+
+### 1. Clone and install
 
 ```sh
+git clone https://github.com/JoboAI/jobo-auto-apply-example.git
+cd jobo-auto-apply-example
 npm ci
 cp .env.example .env.local
-# Fill the server credentials, independent signing/auth secrets, and Brevo sender.
-# Set BETTER_AUTH_URL=http://localhost:3000 for local login.
-npm run db:up      # starts Postgres
-npm run dev        # applies migrations, then starts Next.js
-# In another terminal, load the same environment for the background worker:
+```
+
+### 2. Configure the environment
+
+Edit `.env.local`. All credentials stay server-side; do not prefix them with `NEXT_PUBLIC_`.
+
+| Variable | What to set |
+| --- | --- |
+| `JOBO_API_KEY` | An account API key with Auto Apply access (`jbe_live_…` or `jbe_test_…`) |
+| `JOBO_API_BASE_URL` | Keep `https://connect.jobo.world` for the hosted API |
+| `DATABASE_URL` | The example's default uses local Postgres on port `5433` |
+| `OPENROUTER_API_KEY` | Your OpenRouter credential |
+| `BREVO_API_KEY` | Your transactional email credential |
+| `AUTH_EMAIL_FROM` | A sender configured in your Brevo account |
+| `BETTER_AUTH_URL` | `http://localhost:3000` for local login, or your deployed app's origin |
+| `BETTER_AUTH_SECRET` | An independent random secret, at least 32 characters |
+| `RESUME_URL_SIGNING_SECRET` | A different random secret, at least 32 characters |
+| `PUBLIC_BASE_URL` | Your app's publicly reachable HTTPS origin on port 443, without a path |
+| `DATA_DIR` | A writable directory for PDFs; defaults to `./.data` |
+
+Generate each secret separately, for example with `openssl rand -hex 32`.
+Replace the `https://demo.jobo.world` origin values in the example environment;
+that hosted site cannot serve files from your local database.
+
+The browser can use localhost for account/profile development, but Jobo must be able to download resumes from `PUBLIC_BASE_URL`. Use your own deployed app or an HTTPS tunnel to the local web server. The worker and web server must share the same database, PDF directory, and signing secret. Email delivery must work for new accounts to verify; email failures are reported rather than treated as success.
+
+Keep the sandbox settings from `.env.example`. This product also enforces sandbox-only application targets in code; changing an environment flag does not enable live-employer applications.
+
+### 3. Start the web app
+
+```sh
+npm run db:up       # omit if using your own Postgres
+npm run dev         # applies migrations, then starts Next.js on port 3000
+```
+
+### 4. Start the worker
+
+In a second terminal, from the same directory:
+
+```sh
 node --env-file=.env.local --import tsx scripts/worker.ts
 ```
 
-`PUBLIC_BASE_URL` must be publicly reachable HTTPS for Jobo to download signed resume snapshots. A localhost-only app supports account/profile development, but cannot complete resume-required applications against the hosted service. New accounts require a verification email. Brevo is used for verification and password recovery; email failures are not replaced with fake success.
+The standalone worker needs its environment loaded explicitly. Starting only the web app leaves applications queued. In a service or container where variables are already injected, use `npm run worker`.
 
-The job feed is a board of fictional postings served by `https://sandbox.jobo.world/api/jobs`. Each posting is a real application form on the sandbox (`/apply/{job}`), built on one of its tested form types — multi-step, repeating work history, conditional questions, async typeaheads and so on. Deploy the sandbox metadata endpoint alongside this app. The sandbox's test scenarios, including the deliberately failing ones, stay on their own `/apply/{scenario}` URLs and are never in this feed. No live-employer URL can be submitted through this product.
+### 5. Check the setup
+
+With the web app running:
+
+```sh
+npm run doctor
+```
+
+The preflight checks configuration and service connectivity. Then open [localhost:3000](http://localhost:3000), verify a new account, and complete one sandbox application. Confirm it continues with the browser closed.
+
+## Find your way around the code
+
+| Path | Responsibility |
+| --- | --- |
+| [`lib/application-engine.ts`](lib/application-engine.ts) | Durable create, answer, wait, cancellation, and recovery logic |
+| [`lib/queue.ts`](lib/queue.ts), [`scripts/worker.ts`](scripts/worker.ts) | Worker claims, leases, concurrency, and execution |
+| [`lib/jobo/client.ts`](lib/jobo/client.ts) | Auto Apply SDK configuration |
+| [`lib/answers/`](lib/answers/) | Deterministic answers, model prompts, validation, and repair |
+| [`lib/resume/`](lib/resume/) | PDF extraction, reviewed profile data, and file storage |
+| [`lib/jobs.ts`](lib/jobs.ts) | Fictional job catalog from the sandbox |
+| [`lib/auth.ts`](lib/auth.ts), [`lib/session.ts`](lib/session.ts) | Account and session handling |
+| [`lib/jobo/api-preview.ts`](lib/jobo/api-preview.ts) | Redacted HTTP exchange previews |
+| [`db/schema.ts`](db/schema.ts), [`db/migrations/`](db/migrations/) | Database schema and forward migrations |
+| [`app/`](app/), [`components/`](components/) | Routes and candidate-facing UI |
 
 ## Answer generation
 
-OpenRouter uses `~deepseek/deepseek-v4-flash-latest`, the official latest alias in the DeepSeek V4 Flash family. Name, email, dates, file URLs, repeating groups, and exact selections are filled deterministically; the remaining eligible fields go in a single structured model request per step. It sees the reviewed profile, resume text, and job description. The actual resolved model and duration are recorded per exchange.
+Name, email, dates, file URLs, repeating groups, and exact selections are filled deterministically. Eligible remaining fields go in one structured OpenRouter request per step using the reviewed profile, resume text, and job description. The configured answer model defaults to `~deepseek/deepseek-v4-flash-latest`; see `.env.example` for both answer and resume model settings.
 
-Reasoning is disabled. The model has a maximum 90-second budget, shortened to leave 20 seconds before the application step deadline, and OpenRouter is asked to route by throughput (`OPENROUTER_PROVIDER_SORT`) to hosts that honour the JSON schema: price routing reached hosts that took over a minute. JSON and field values are validated, and one mechanical validation repair is allowed. Sensitive fields use only advertised decline options. A failed model call is not fatal on its own: the profile answers are still sent when they cover every required field. A required field with no answer, a verification code, or a refused API key stops the application with an explanation, and the answers panel lists every field that was not answered and why. There is no fallback to a different model family.
+Reasoning is disabled. The model call has a 90-second ceiling, shortened to leave 20 seconds before the reported step deadline. Responses are validated, with one mechanical repair allowed. If a model request fails, the app can still submit when deterministic answers cover every required field. Missing required facts, verification codes, or rejected API credentials stop the application with an explanation. There is no fallback to another model family.
 
-## Accounts, files, and execution
+Sensitive fields never go to the answer model. Users choose whether to use an advertised decline option or leave sensitive questions unanswered. The app does not collect or infer demographic answers. Optional location, authorization, sponsorship, availability, and relocation facts may remain unanswered; a form requiring a missing fact cannot be completed automatically.
 
-- Better Auth owns email/password accounts, verification, recovery, sessions, and auth rate limits. Every data action and protected route validates account ownership.
-- Postgres (`DATABASE_URL`) stores accounts, profiles, resume metadata, saved jobs, applications, and answer exchanges. `npm run db:migrate` applies `db/migrations`; regenerate them from `db/schema.ts` with `npm run db:generate`. PDF files live separately in `DATA_DIR/resumes`, because Jobo downloads them over HTTP. Production never seeds shared profiles.
-- Each Apply click snapshots the profile JSON and copies the PDF. Editing or archiving the profile cannot change a running application. Ordinary PDF downloads require ownership; the worker generates expiring signatures for application-specific PDF downloads.
-- The worker claims jobs with renewable leases, under a Postgres advisory lock so concurrent claims cannot exceed the caps. Defaults are two applications globally and one per user. The browser only refreshes progress; it does not advance execution.
-- Create idempotency keys are persisted before network calls. Answers are saved before submission and replayed after interruption. Confirmed successful and uncertain submissions cannot be started again by double-clicking or forcing retry.
-- Transient failures back off. After six failed exchanges, the worker switches to cancellation/reconciliation when an upstream ID is known; otherwise it pauses for operator review. The UI reports that the final state is being checked. Creation is never replayed beyond the safe 20-hour recovery window. Such unreconciled records remain blocked from duplicate submission and require operator investigation.
-- Submitted is displayed only for upstream `submitted`. A canceled application with a missing-information/model failure is shown as Couldn’t Complete. User-requested cancellations show Canceled.
+## Persistence and recovery
 
-## Deployment
+- Better Auth owns email/password accounts, verification, recovery, sessions, and authentication rate limits. Protected data actions check ownership.
+- Postgres stores profiles, resume metadata, saved jobs, applications, and exchanges. PDF contents live in `DATA_DIR/resumes`.
+- Every Apply click snapshots the reviewed profile and copies the PDF. Later edits do not change a running application. File downloads require ownership or an expiring application-specific signature.
+- Workers claim work with renewable leases and coordinated concurrency caps: two applications globally and one per user by default. The browser displays progress but does not advance execution.
+- Create idempotency keys are persisted before network calls, and answers before submission. Recovery reuses the existing attempt. Confirmed or uncertain submissions cannot be started again through ordinary retry.
+- After six failed exchanges, the worker moves to cancellation/reconciliation if an upstream ID is known; otherwise it pauses for operator review. Create recovery stops after a conservative 20-hour window, before the API's 24-hour idempotency expiry. Unreconciled records stay blocked from duplicate submission.
 
-The single-replica Kubernetes deployment runs an init migration container (`npm run db:migrate`), a Next.js web container, and a worker container against a dedicated Postgres, and shares a ReadWriteOnce volume for resume PDFs. Recreate deployment strategy is required while the PDFs live on that volume; do not scale replicas. Worker probes check its database heartbeat.
+The private API inspector captures up to 100 HTTP calls per application, with a 64K-character limit per JSON preview and visible truncation indicators. Older records have no historical capture. An absent response is never evidence that submission did not happen. A failure-triggered cancellation is displayed as **Couldn’t Complete**; a user cancellation as **Canceled**.
 
-Migrations are forward-only: restoring an older image does not roll back the schema. Back up the database and the PDF volume before upgrading.
+## Deploy your own instance
 
-The renderer reads `autoApplyDemo.authSecret` (or `JOBO_DEPLOY_AUTO_APPLY_AUTH_SECRET`) and the existing `brevoApiKey`. Production workflows pass the `mono-prod` environment secret `AUTO_APPLY_AUTH_SECRET` as this override. Provide an independent, random auth secret of at least 32 characters. The deployment sets the latest Flash alias explicitly, restricts the sandbox host, and uses `https://demo.jobo.world` for account links and resume downloads. Web readiness reports missing configuration names only. Do not send secrets to the frontend.
+Run the web process and background worker against one Postgres database and a shared persistent PDF directory. The repository includes a Dockerfile. Inject the environment variables above, apply migrations once before starting the new version, and use your own HTTPS origin for account links and resume downloads.
 
-`DATABASE_URL` comes from the same Secret, composed from `autoApplyDemo.postgresPassword`.
+```sh
+npm run build
+node --env-file=.env.local --import tsx scripts/migrate.ts
+# Run these as separate supervised processes with the same environment:
+node --env-file=.env.local node_modules/next/dist/bin/next start
+node --env-file=.env.local --import tsx scripts/worker.ts
+```
 
-Validate the catalog, a verified signup, PDF upload/review, and one sandbox-only application after deployment. Ensure the application finishes after the browser closes and the worker resumes after a restart. No deployment credentials or new auth secret are committed by this change.
+The hosted deployment uses a single replica with shared local PDF storage. Do not scale web replicas without making the files available to every instance. If using a ReadWriteOnce volume, use a recreate deployment strategy. `npm run worker:health` checks the worker's database heartbeat when run with its environment.
+
+Back up both Postgres and the PDF directory. Migrations are forward-only; restoring an older image does not undo schema changes. Verify signup, email delivery, resume access, a completed sandbox application, and worker restart recovery after deployment.
 
 ## Checks
 
 ```sh
-npm run db:up      # the tests create a throwaway database per file here
+npm run db:up
 npm run typecheck
 npm test
 npm run build
 npm run test:e2e
 ```
 
-Tests need Postgres: `npm run db:up`, or set `TEST_DATABASE_URL` to a login that may create databases. The browser suite uses an isolated test server, its own database, and fixture network responses. It never sends real email, invokes OpenRouter, or submits a real application. Unit/integration tests exercise the actual account lifecycle, ownership boundaries, snapshots, durable leases, answer validation, and signed resume access.
+Tests need Postgres. The default uses the Compose database; alternatively set `TEST_DATABASE_URL` to a Postgres login permitted to create databases. Tests create disposable databases. The browser suite starts an isolated test server with fixture responses and does not send real email, invoke OpenRouter, or submit real applications.
 
-PDF upload supports text-based files up to 5 MB. OCR, DOCX, billing, real-employer jobs, bulk application, mailbox connections, and native mobile apps are outside this release.
+## Troubleshooting
 
-### Profile onboarding
+| Symptom | Check |
+| --- | --- |
+| `403 auto_apply_not_enabled` | The account owning `JOBO_API_KEY` needs beta access |
+| Applications stay queued | Worker is running and shares the web app's database and environment |
+| Signup email does not arrive | Brevo credential, configured sender, and spam folder |
+| Resume download fails | `PUBLIC_BASE_URL` reaches this instance over public HTTPS; web and worker share PDFs and signing secret |
+| Profile cannot be used | Complete the required contact fields and final review |
+| Application could not complete | Read the missing-answer explanation and redacted API exchanges; do not retry an uncertain submission blindly |
+| Tests cannot connect to Postgres | Start `db:up`, or set `TEST_DATABASE_URL` with database-creation permission |
 
-After PDF extraction, a three-step review collects contact details, common application answers, and a final resume check. Full name, valid email, phone, and an HTTPS personal LinkedIn `/in/` URL are required. Client and server share validation; older reviewed profiles missing those details must be completed before a new application can start. Each Continue saves a draft; only final confirmation makes a new profile ready.
+## Scope and contributing
 
-Location, work authorization, sponsorship, availability, and relocation preferences are recommended and may remain unanswered. The engine stops if a required application fact is unavailable. EEO demographic data is not collected or inferred. Users choose either the form’s advertised “prefer not to answer” option (default), or leaving sensitive fields blank. This preference is saved with the profile and snapshotted per application; sensitive fields never go to the model.
+This demo supports text-based PDFs and fictional sandbox jobs from [sandbox.jobo.world/api/jobs](https://sandbox.jobo.world/api/jobs). OCR, DOCX, real-employer jobs, bulk applications, billing, mailbox connections, and native mobile apps are outside its scope. The API supports optional mailbox verification separately from this demo.
 
-The demo reads job metadata, availability, and application URLs from `https://sandbox.jobo.world/api/jobs`. The retired public API scenario endpoint is not used. Sandbox catalog availability describes the forms; the Auto Apply API separately enforces account access and quotas during creation.
+This repository is a public mirror of `Jobo.Examples/auto-apply` in Jobo's main repository. Contributions are made upstream; direct mirror changes are overwritten by the next sync. Report problems through [GitHub issues](https://github.com/JoboAI/jobo-auto-apply-example/issues).
 
-### API exchange preview
-
-Application details include a collapsed **API requests & responses** inspector. New worker calls capture the actual SDK HTTP requests, responses, errors, and retries in the application's private audit trail in Postgres. Authentication headers, cookies, known server secrets, and signed download tokens are removed before storage. Captures are limited to the first 100 calls per application and 64K characters per JSON preview; truncation is identified. Old applications have no historical HTTP capture. A missing response is never treated as proof of submission.
+Licensed under [MIT](LICENSE).

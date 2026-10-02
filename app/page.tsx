@@ -105,7 +105,10 @@ export default async function Home() {
         <span>
           Jobo Auto Apply Demo · Fictional jobs. Real application flows.
         </span>
-        <SourceLink />
+        <div className="developer-links">
+          <ApiDocsLink />
+          <SourceLink />
+        </div>
       </footer>
     </div>
   )
