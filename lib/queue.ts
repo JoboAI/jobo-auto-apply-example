@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto'
 import { copyFileSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
-import { and, asc, eq, sql } from 'drizzle-orm'
+import { and, asc, eq, isNotNull, notInArray, sql } from 'drizzle-orm'
+import { TERMINAL_STATUSES } from '@jobo-ai/autoapply'
 import { db, RESUME_DIR } from '@/db/client'
 import { applications, profiles } from '@/db/schema'
 import type { Job } from './jobs-types'
@@ -10,17 +11,32 @@ import { canRetry } from './presentation'
 import { validSandboxUrl } from './jobs'
 import { isApplicationReady } from './resume/completeness'
 
-export function enqueueApplication(
+/**
+ * Advisory lock keys. SQLite serialised every writer for free; Postgres does
+ * not, so the two read-then-write decisions below take an explicit lock as
+ * the FIRST statement of their transaction. Under READ COMMITTED (the
+ * default), every later statement then sees all commits made before the lock
+ * was granted. REPEATABLE READ would pin an older snapshot and break that.
+ */
+const LOCK_NAMESPACE = 727_002
+const CLAIM_LOCK = 1
+const ENQUEUE_LOCK_NAMESPACE = 727_003
+
+export async function enqueueApplication(
   userId: string,
   profileId: string,
   job: Job,
   retry = false,
 ) {
+  if (!validSandboxUrl(job.applyUrl, job.slug))
+    throw new Error('Invalid sandbox job.')
   return db.transaction(
-    (tx) => {
-      if (!validSandboxUrl(job.applyUrl, job.slug))
-        throw new Error('Invalid sandbox job.')
-      const previous = tx
+    async (tx) => {
+      // Per user: two tabs applying to the same job must not both insert.
+      await tx.execute(
+        sql`select pg_advisory_xact_lock(${ENQUEUE_LOCK_NAMESPACE}, hashtext(${userId}))`,
+      )
+      const previous = await tx
         .select()
         .from(applications)
         .where(
@@ -29,12 +45,11 @@ export function enqueueApplication(
             eq(applications.jobId, job.slug),
           ),
         )
-        .all()
       const duplicate = previous.find((a) => !canRetry(a))
       if (duplicate) return duplicate.id
       if (previous.length && !retry)
         return previous.sort((a, b) => b.createdAt - a.createdAt)[0].id
-      const profile = tx
+      const [profile] = await tx
         .select()
         .from(profiles)
         .where(
@@ -44,7 +59,7 @@ export function enqueueApplication(
             eq(profiles.archived, false),
           ),
         )
-        .get()
+        .limit(1)
       if (!profile || !isApplicationReady(profile))
         throw new Error('Review and confirm your contact details, including phone and LinkedIn, before applying.')
       if (!job.available)
@@ -55,7 +70,7 @@ export function enqueueApplication(
         join(RESUME_DIR, `${id}.pdf`),
       )
       try {
-        tx.insert(applications)
+        await tx.insert(applications)
           .values({
             id,
             userId,
@@ -74,37 +89,45 @@ export function enqueueApplication(
             scenarioSlug: job.slug,
             status: 'queued',
           })
-          .run()
       } catch (error) {
         unlinkSync(join(RESUME_DIR, `${id}.pdf`))
         throw error
       }
       return id
     },
-    { behavior: 'immediate' },
+    { isolationLevel: 'read committed' },
   )
 }
 
 export const LEASE_MS = 120000
-export function claimApplication(
+export async function claimApplication(
   owner: string,
   globalLimit = 2,
   userLimit = 1,
   now = Date.now(),
 ) {
   return db.transaction(
-    (tx) => {
-      const rows = tx
-        .select()
-        .from(applications)
-        .where(sql`${applications.userId} IS NOT NULL`)
-        .orderBy(asc(applications.createdAt))
-        .all()
-        .filter(
-          (a) =>
-            !isTerminal(a.status) &&
-            !(a.status === 'recovery_required' && !a.joboApplicationId),
-        )
+    async (tx) => {
+      // One claimer at a time, or two workers could both pass the caps below.
+      await tx.execute(
+        sql`select pg_advisory_xact_lock(${LOCK_NAMESPACE}, ${CLAIM_LOCK})`,
+      )
+      const rows = (
+        await tx
+          .select()
+          .from(applications)
+          .where(
+            and(
+              isNotNull(applications.userId),
+              notInArray(applications.status, [...TERMINAL_STATUSES, 'create_failed']),
+            ),
+          )
+          .orderBy(asc(applications.createdAt))
+      ).filter(
+        (a) =>
+          !isTerminal(a.status) &&
+          !(a.status === 'recovery_required' && !a.joboApplicationId),
+      )
       const busy = rows.filter((a) => (a.leaseUntil ?? 0) > now)
       if (busy.length >= globalLimit) return null
       const next = rows.find(
@@ -114,33 +137,33 @@ export function claimApplication(
           busy.filter((b) => b.userId === a.userId).length < userLimit,
       )
       if (!next) return null
-      tx.update(applications)
+      await tx
+        .update(applications)
         .set({ leaseOwner: owner, leaseUntil: now + LEASE_MS })
         .where(eq(applications.id, next.id))
-        .run()
       return next
     },
-    { behavior: 'immediate' },
+    { isolationLevel: 'read committed' },
   )
 }
-export function renewLease(id: string, owner: string) {
-  return (
-    db
-      .update(applications)
-      .set({ leaseUntil: Date.now() + LEASE_MS })
-      .where(and(eq(applications.id, id), eq(applications.leaseOwner, owner)))
-      .run().changes > 0
-  )
+export async function renewLease(id: string, owner: string) {
+  const renewed = await db
+    .update(applications)
+    .set({ leaseUntil: Date.now() + LEASE_MS })
+    .where(and(eq(applications.id, id), eq(applications.leaseOwner, owner)))
+    .returning({ id: applications.id })
+  return renewed.length > 0
 }
-export function releaseLease(id: string, owner: string, error?: string) {
-  const row = db
+export async function releaseLease(id: string, owner: string, error?: string) {
+  const [row] = await db
     .select()
     .from(applications)
     .where(and(eq(applications.id, id), eq(applications.leaseOwner, owner)))
-    .get()
+    .limit(1)
   if (!row) return
   const failures = error ? row.attemptCount + 1 : 0
-  db.update(applications)
+  await db
+    .update(applications)
     .set({
       leaseOwner: null,
       leaseUntil: null,
@@ -160,5 +183,4 @@ export function releaseLease(id: string, owner: string, error?: string) {
         : {}),
     })
     .where(and(eq(applications.id, id), eq(applications.leaseOwner, owner)))
-    .run()
 }

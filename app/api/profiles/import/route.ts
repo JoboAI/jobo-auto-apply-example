@@ -34,11 +34,10 @@ export async function POST(request: Request): Promise<Response> {
     )
   if (request.headers.get('origin') !== new URL(process.env.BETTER_AUTH_URL!).origin)
     return Response.json({ error: 'Invalid request origin.' }, { status: 403 })
-  const owned = db
+  const owned = await db
     .select()
     .from(profiles)
     .where(eq(profiles.userId, user.id))
-    .all()
   if (owned.filter((p) => p.createdAt > Date.now() - 3600000).length >= 10)
     return Response.json(
       { error: 'Please wait before uploading more resumes.' },
@@ -106,14 +105,13 @@ export async function POST(request: Request): Promise<Response> {
 
   const id = randomUUID()
   const sha256 = await saveResume(id, bytes)
-  const isFirst =
-    (db
-      .select({ value: count() })
-      .from(profiles)
-      .where(and(eq(profiles.userId, user.id), eq(profiles.archived, false)))
-      .get()?.value ?? 0) === 0
+  const [existing] = await db
+    .select({ value: count() })
+    .from(profiles)
+    .where(and(eq(profiles.userId, user.id), eq(profiles.archived, false)))
+  const isFirst = (existing?.value ?? 0) === 0
 
-  db.insert(profiles)
+  await db.insert(profiles)
     .values({
       id,
       userId: user.id,
@@ -129,7 +127,6 @@ export async function POST(request: Request): Promise<Response> {
       resumeSha256: sha256,
       resumeText: text,
     })
-    .run()
 
   log.info({ profileId: id, bytes: bytes.byteLength }, 'imported resume')
 

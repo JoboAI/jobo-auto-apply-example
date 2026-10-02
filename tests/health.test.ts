@@ -15,6 +15,7 @@ const REQUIRED = {
   PUBLIC_BASE_URL: 'https://example.com',
   RESUME_URL_SIGNING_SECRET: 'a'.repeat(32),
   OPENROUTER_API_KEY: 'sk-or-v1-test',
+  DATABASE_URL: process.env.DATABASE_URL ?? 'postgres://u:p@localhost:5432/db',
 }
 
 function setEnv(values: Record<string, string | undefined>) {

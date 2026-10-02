@@ -21,7 +21,7 @@ export async function updateProfileAction(
     eq(profiles.userId, user.id),
     eq(profiles.archived, false),
   )
-  const row = db.select().from(profiles).where(where).get()
+  const [row] = await db.select().from(profiles).where(where).limit(1)
   if (!row) return { ok: false, error: 'Profile not found.' }
   const parsed = resumeProfileSchema.safeParse(update.data ?? row.data)
   if (!parsed.success)
@@ -36,7 +36,7 @@ export async function updateProfileAction(
       ok: false,
       error: missing.join(' '),
     }
-  db.update(profiles)
+  await db.update(profiles)
     .set({
       name: update.name?.trim().slice(0, 100) || row.name,
       data,
@@ -44,7 +44,6 @@ export async function updateProfileAction(
       updatedAt: Date.now(),
     })
     .where(where)
-    .run()
   revalidatePath('/profiles')
   revalidatePath(`/profiles/${id}`)
   revalidatePath('/jobs')
@@ -53,7 +52,7 @@ export async function updateProfileAction(
 }
 export async function updateNotesAction(id: string, notes: string) {
   const user = await requireUser()
-  const row = db
+  const [row] = await db
     .select()
     .from(profiles)
     .where(
@@ -63,7 +62,7 @@ export async function updateNotesAction(id: string, notes: string) {
         eq(profiles.archived, false),
       ),
     )
-    .get()
+    .limit(1)
   if (!row) return { ok: false }
   return updateProfileAction(id, {
     data: {
@@ -74,8 +73,8 @@ export async function updateNotesAction(id: string, notes: string) {
 }
 export async function setDefaultProfileAction(id: string) {
   const user = await requireUser()
-  return db.transaction((tx) => {
-    const row = tx
+  const found = await db.transaction(async (tx) => {
+    const [row] = await tx
       .select()
       .from(profiles)
       .where(
@@ -85,37 +84,38 @@ export async function setDefaultProfileAction(id: string) {
           eq(profiles.archived, false),
         ),
       )
-      .get()
-    if (!row) return { ok: false }
-    tx.update(profiles)
+      .limit(1)
+    if (!row) return false
+    await tx
+      .update(profiles)
       .set({ isDefault: false })
       .where(eq(profiles.userId, user.id))
-      .run()
-    tx.update(profiles)
+    await tx
+      .update(profiles)
       .set({ isDefault: true })
       .where(eq(profiles.id, id))
-      .run()
-    revalidatePath('/profiles')
-    return { ok: true }
+    return true
   })
+  if (!found) return { ok: false }
+  revalidatePath('/profiles')
+  return { ok: true }
 }
 export async function deleteProfileAction(id: string) {
   const user = await requireUser()
-  db.transaction((tx) => {
-    tx.update(profiles)
+  await db.transaction(async (tx) => {
+    await tx
+      .update(profiles)
       .set({ archived: true, isDefault: false })
       .where(and(eq(profiles.id, id), eq(profiles.userId, user.id)))
-      .run()
-    const rows = tx
+    const rows = await tx
       .select()
       .from(profiles)
       .where(and(eq(profiles.userId, user.id), eq(profiles.archived, false)))
-      .all()
     if (rows.length && !rows.some((r) => r.isDefault))
-      tx.update(profiles)
+      await tx
+        .update(profiles)
         .set({ isDefault: true })
         .where(eq(profiles.id, rows[0].id))
-        .run()
   })
   revalidatePath('/profiles')
   return { ok: true }

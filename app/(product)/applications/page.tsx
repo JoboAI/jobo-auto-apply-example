@@ -14,12 +14,11 @@ export default async function Page({
 }) {
   const user = await requireUser(),
     { status } = await searchParams
-  const rows = db
+  const rows = await db
     .select()
     .from(applications)
     .where(eq(applications.userId, user.id))
     .orderBy(desc(applications.createdAt))
-    .all()
   const active = rows.filter((r) => !isTerminal(r.status)),
     submitted = rows.filter((r) => r.status === 'submitted')
   const filtered = rows.filter(

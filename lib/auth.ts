@@ -67,7 +67,7 @@ function createAuth() {
     // trusted Cloudflare address; clients cannot supply this header directly.
     advanced: { ipAddress: { ipAddressHeaders: ['x-real-ip'] } },
     database: drizzleAdapter(db, {
-      provider: 'sqlite',
+      provider: 'pg',
       schema: { user, session, account, verification },
     }),
     emailAndPassword: {

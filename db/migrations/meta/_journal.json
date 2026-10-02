@@ -1,33 +1,12 @@
 {
   "version": "7",
-  "dialect": "sqlite",
+  "dialect": "postgresql",
   "entries": [
     {
       "idx": 0,
-      "version": "6",
-      "when": 1785057189262,
-      "tag": "0000_neat_wild_child",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "6",
-      "when": 1786600976493,
-      "tag": "0001_lame_wendell_rand",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "6",
-      "when": 1790659940715,
-      "tag": "0002_accounts_and_worker",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "6",
-      "when": 1790669872176,
-      "tag": "0003_api_exchanges",
+      "version": "7",
+      "when": 1790851824557,
+      "tag": "0000_init",
       "breakpoints": true
     }
   ]

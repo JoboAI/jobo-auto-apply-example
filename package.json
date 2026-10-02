@@ -9,11 +9,12 @@
     "node": ">=22.0.0"
   },
   "scripts": {
-    "dev": "next dev",
+    "dev": "npm run db:migrate && next dev",
     "build": "next build",
     "start": "next start",
     "doctor": "tsx scripts/doctor.ts",
     "db:generate": "drizzle-kit generate",
+    "db:up": "docker compose up -d --wait postgres",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
@@ -25,10 +26,10 @@
   "dependencies": {
     "@jobo-ai/autoapply": "^2.0.0",
     "better-auth": "^1.7.6",
-    "better-sqlite3": "^11.10.0",
     "drizzle-orm": "^0.45.2",
     "lucide-react": "^1.48.0",
     "next": "^15.5.26",
+    "pg": "^8.23.1",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "server-only": "^0.0.1",
@@ -38,8 +39,8 @@
   "devDependencies": {
     "@playwright/test": "^1.63.0",
     "@tailwindcss/postcss": "^4.1.11",
-    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22.15.32",
+    "@types/pg": "^8.23.1",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "drizzle-kit": "^0.31.2",

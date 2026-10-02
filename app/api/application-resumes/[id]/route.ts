@@ -19,11 +19,11 @@ export async function GET(
     return new Response('Link expired or invalid', {
       status: check.reason === 'expired' ? 410 : 403,
     })
-  const row = db
+  const [row] = await db
     .select()
     .from(applications)
     .where(eq(applications.id, id))
-    .get()
+    .limit(1)
   if (!row?.userId || !row.profileSnapshot)
     return new Response('Not found', { status: 404 })
   try {

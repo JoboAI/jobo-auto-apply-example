@@ -15,14 +15,14 @@ beforeAll(async () => {
   ;({ recordingFetch } = await import('@/lib/jobo/recording-fetch'))
   const { seedSampleProfiles } = await import('@/db/seed')
   const { RESUME_DIR } = await import('@/db/client')
-  seedSampleProfiles(db, RESUME_DIR)
-  db.insert(schema.applications).values({
+  await seedSampleProfiles(db, RESUME_DIR)
+  await db.insert(schema.applications).values({
     id: 'captured', idempotencyKey: 'trace-idempotency', profileId: 'sample-ada-lovelace',
     applyUrl: 'https://sandbox.jobo.world/apply/multi-step', status: 'queued',
-  }).run()
+  })
 })
-beforeEach(() => db.delete(schema.apiExchanges).run())
-const rows = () => db.select().from(schema.apiExchanges).all()
+beforeEach(() => db.delete(schema.apiExchanges))
+const rows = async () => await db.select().from(schema.apiExchanges)
 
 describe('redacted API previews', () => {
   it('redacts nested credentials, known secret echoes, bearer values, and signed URLs without changing answers', () => {
@@ -53,10 +53,10 @@ describe('redacted API previews', () => {
     const response = await recordingFetch('captured', ['private-known-secret'], transport)('https://connect.jobo.world/api/auto-apply/applications/1/answers', options)
     expect(transport).toHaveBeenCalledWith('https://connect.jobo.world/api/auto-apply/applications/1/answers', options)
     expect(await response.json()).toEqual({ status: 'submitted', echo: 'private-known-secret' })
-    expect(rows()).toHaveLength(1)
-    expect(rows()[0]).toMatchObject({ applicationId: 'captured', method: 'POST', statusCode: 201, error: null })
-    expect(rows()[0].elapsedMs).toBeGreaterThanOrEqual(0)
-    const stored = JSON.stringify(rows())
+    expect((await rows())).toHaveLength(1)
+    expect((await rows())[0]).toMatchObject({ applicationId: 'captured', method: 'POST', statusCode: 201, error: null })
+    expect((await rows())[0].elapsedMs).toBeGreaterThanOrEqual(0)
+    const stored = JSON.stringify((await rows()))
     for (const secret of ['private-known-secret', 'private-cookie', 'download-secret', 'X-Api-Key']) expect(stored).not.toContain(secret)
   })
 
@@ -66,29 +66,29 @@ describe('redacted API previews', () => {
       .mockResolvedValueOnce(Response.json({ id: 'upstream', status: 'submitted' }))
     const sdk = createClient({ apiKey: 'jbe_test_hidden', fetch: recordingFetch('captured', ['jbe_test_hidden'], transport), maxRetries: 1 })
     await sdk.applications.create({ apply_url: 'https://sandbox.jobo.world/apply/multi-step' }, { idempotencyKey: 'same-request' })
-    expect(rows().map(row => row.statusCode)).toEqual([503, 200])
-    expect(rows().every(row => JSON.parse(row.requestJson).headers['idempotency-key'] === 'same-request')).toBe(true)
-    expect(rows()[0].responseJson).toContain('temporarily_unavailable')
+    expect((await rows()).map(row => row.statusCode)).toEqual([503, 200])
+    expect((await rows()).every(row => JSON.parse(row.requestJson).headers['idempotency-key'] === 'same-request')).toBe(true)
+    expect((await rows())[0].responseJson).toContain('temporarily_unavailable')
   })
 
   it('records a network failure without leaking its error text or pretending an HTTP response arrived', async () => {
     const error = new Error('secret-in-error')
     const transport = vi.fn<typeof fetch>().mockRejectedValue(error)
     await expect(recordingFetch('captured', [], transport)('https://connect.jobo.world/api/auto-apply/applications')).rejects.toBe(error)
-    expect(rows()[0]).toMatchObject({ statusCode: null, responseJson: null })
-    expect(rows()[0].error).toContain('No HTTP response received')
-    expect(JSON.stringify(rows())).not.toContain('secret-in-error')
+    expect((await rows())[0]).toMatchObject({ statusCode: null, responseJson: null })
+    expect((await rows())[0].error).toContain('No HTTP response received')
+    expect(JSON.stringify((await rows()))).not.toContain('secret-in-error')
   })
   it('bounds audit growth without stopping subsequent API calls', async () => {
-    db.insert(schema.apiExchanges).values(Array.from({ length: 100 }, (_, i) => ({
+    await db.insert(schema.apiExchanges).values(Array.from({ length: 100 }, (_, i) => ({
       id: `limit-${i}`, applicationId: 'captured', method: 'GET',
       url: 'https://connect.jobo.world/api/auto-apply/applications/1',
       requestJson: '{}', startedAt: i,
-    }))).run()
+    })))
     const transport = vi.fn<typeof fetch>().mockResolvedValue(Response.json({ status: 'submitted' }))
     const response = await recordingFetch('captured', [], transport)('https://connect.jobo.world/api/auto-apply/applications/1')
     expect(await response.json()).toEqual({ status: 'submitted' })
-    expect(rows()).toHaveLength(100)
+    expect((await rows())).toHaveLength(100)
   })
 
   it('does not turn a capture storage failure into a failed API request', async () => {
@@ -98,7 +98,7 @@ describe('redacted API previews', () => {
       const response = await recordingFetch('missing-application', [], transport)('https://connect.jobo.world/api/auto-apply/applications')
       expect(response.ok).toBe(true)
       expect(transport).toHaveBeenCalledTimes(1)
-      expect(rows()).toHaveLength(0)
+      expect((await rows())).toHaveLength(0)
     } finally { warning.mockRestore() }
   })
 

@@ -11,14 +11,12 @@ export async function saveJobAction(jobId: string, saved: boolean) {
     if (saved) {
       if (!(await getJobs()).some((j) => j.slug === jobId))
         return { ok: false, error: 'Job unavailable.' }
-      db.insert(savedJobs)
+      await db.insert(savedJobs)
         .values({ userId: user.id, jobId })
         .onConflictDoNothing()
-        .run()
     } else
-      db.delete(savedJobs)
+      await db.delete(savedJobs)
         .where(and(eq(savedJobs.userId, user.id), eq(savedJobs.jobId, jobId)))
-        .run()
     revalidatePath('/jobs')
     revalidatePath('/saved')
     return { ok: true }

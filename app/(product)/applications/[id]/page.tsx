@@ -20,27 +20,26 @@ export default async function Page({
 }) {
   const user = await requireUser(),
     { id } = await params
-  const row = db
+  const [row] = await db
     .select()
     .from(applications)
     .where(and(eq(applications.id, id), eq(applications.userId, user.id)))
-    .get()
+    .limit(1)
   if (!row) notFound()
-  const history = db
+  const history = await db
     .select()
     .from(steps)
     .where(eq(steps.applicationId, id))
     .orderBy(asc(steps.receivedAt))
-    .all()
-  const exchanges = db.select().from(apiExchanges)
-    .where(eq(apiExchanges.applicationId, id)).orderBy(asc(apiExchanges.startedAt)).limit(100).all()
-  const profile = db
-    .select()
-    .from(profiles)
-    .where(and(eq(profiles.userId, user.id), eq(profiles.archived, false)))
-    .orderBy(desc(profiles.isDefault))
-    .all()
-    .find(isApplicationReady)
+  const exchanges = await db.select().from(apiExchanges)
+    .where(eq(apiExchanges.applicationId, id)).orderBy(asc(apiExchanges.startedAt)).limit(100)
+  const profile = (
+    await db
+      .select()
+      .from(profiles)
+      .where(and(eq(profiles.userId, user.id), eq(profiles.archived, false)))
+      .orderBy(desc(profiles.isDefault))
+  ).find(isApplicationReady)
   const active = !isTerminal(row.status),
     label = applicationLabel(row),
     submitted = row.status === 'submitted'

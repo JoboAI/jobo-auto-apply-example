@@ -21,7 +21,7 @@ export async function startApplicationAction(input: {
         ok: false,
         error: 'This sandbox job is not accepting applications right now.',
       }
-    const id = enqueueApplication(
+    const id = await enqueueApplication(
       user.id,
       input.profileId,
       job,
@@ -41,17 +41,16 @@ export async function startApplicationAction(input: {
 }
 export async function cancelApplicationAction(id: string) {
   const user = await requireUser()
-  const row = db
+  const [row] = await db
     .select()
     .from(applications)
     .where(and(eq(applications.id, id), eq(applications.userId, user.id)))
-    .get()
+    .limit(1)
   if (!row) return { ok: false, error: 'Application not found.' }
   if (!isTerminal(row.status))
-    db.update(applications)
+    await db.update(applications)
       .set({ cancelRequested: true, updatedAt: Date.now() })
       .where(and(eq(applications.id, id), eq(applications.userId, user.id)))
-      .run()
   revalidatePath(`/applications/${id}`)
   return { ok: true }
 }

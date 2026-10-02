@@ -16,11 +16,11 @@ export async function GET(
 
   const user = await currentUser()
   if (!user) return new Response('Unauthorized', { status: 401 })
-  const profile = db
+  const [profile] = await db
     .select()
     .from(profiles)
     .where(eq(profiles.id, profileId))
-    .get()
+    .limit(1)
   if (!profile || profile.userId !== user.id || profile.archived)
     return new Response('Not found', { status: 404 })
 

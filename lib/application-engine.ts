@@ -17,12 +17,12 @@ import { jobCountryCode, validSandboxUrl } from '@/lib/jobs'
 import { log } from '@/lib/logger'
 const RESERVE_MS = 20000
 const MAX_WAIT_SECONDS = 90
-function assertLease(id: string, owner: string) {
-  const row = db
+async function assertLease(id: string, owner: string) {
+  const [row] = await db
     .select()
     .from(applications)
     .where(eq(applications.id, id))
-    .get()
+    .limit(1)
   if (row?.leaseOwner !== owner || (row.leaseUntil ?? 0) <= Date.now())
     throw new Error('Application lease lost')
 }
@@ -30,11 +30,11 @@ export async function advanceApplication(
   id: string,
   leaseOwner: string,
 ): Promise<void> {
-  const local = db
+  const [local] = await db
     .select()
     .from(applications)
     .where(eq(applications.id, id))
-    .get()
+    .limit(1)
   if (
     !local ||
     !local.userId ||
@@ -43,7 +43,7 @@ export async function advanceApplication(
     isTerminal(local.status)
   )
     return
-  assertLease(id, leaseOwner)
+  await assertLease(id, leaseOwner)
   if (!validSandboxUrl(local.applyUrl, local.jobId ?? ''))
     throw new Error('Application destination is not in the sandbox.')
   if (
@@ -75,20 +75,20 @@ export async function advanceApplication(
       )
     }
 
-    persistApplication(id, application, leaseOwner)
+    await persistApplication(id, application, leaseOwner)
 
-    const fresh = db
+    const [fresh] = await db
       .select()
       .from(applications)
       .where(eq(applications.id, id))
-      .get()!
-    if (fresh.cancelRequested && !isTerminal(application.status)) {
-      assertLease(id, leaseOwner)
+      .limit(1)
+    if (fresh!.cancelRequested && !isTerminal(application.status)) {
+      await assertLease(id, leaseOwner)
       await jobo(id).applications.cancel(application.id)
       application = await jobo(id).applications.get(application.id, {
         waitSeconds: MAX_WAIT_SECONDS,
       })
-      persistApplication(id, application, leaseOwner)
+      await persistApplication(id, application, leaseOwner)
       return
     }
     if (application.status === 'awaiting_answers' && application.current_step) {
@@ -98,7 +98,7 @@ export async function advanceApplication(
         application.current_step,
         leaseOwner,
       )
-      persistApplication(id, application, leaseOwner)
+      await persistApplication(id, application, leaseOwner)
     }
   } catch (error) {
     // A definitive intake refusal created no application. A lost response is
@@ -110,14 +110,15 @@ export async function advanceApplication(
       error.status < 500 &&
       ![408, 409, 429].includes(error.status)
     ) {
-      assertLease(id, leaseOwner)
-      const current = db
+      await assertLease(id, leaseOwner)
+      const [current] = await db
         .select()
         .from(applications)
         .where(eq(applications.id, id))
-        .get()
+        .limit(1)
       if (!current?.joboApplicationId) {
-        db.update(applications)
+        await db
+          .update(applications)
           .set({
             status: 'create_failed',
             createErrorCode: error.code,
@@ -126,7 +127,6 @@ export async function advanceApplication(
             updatedAt: Date.now(),
           })
           .where(eq(applications.id, id))
-          .run()
         return
       }
     }
@@ -151,7 +151,7 @@ async function answerStep(
 
   // If this exact round was already submitted (a second tab, a retried browser
   // request), do not answer it again — just re-attach to the wait.
-  const existing = db
+  const [existing] = await db
     .select()
     .from(steps)
     .where(
@@ -160,16 +160,16 @@ async function answerStep(
         eq(steps.correctionRound, step.correction_round),
       ),
     )
-    .get()
+    .limit(1)
   if (existing?.submittedAt) {
     return jobo(local.id).applications.get(joboId, { waitSeconds: MAX_WAIT_SECONDS })
   }
 
-  const completeStep = (
+  const completeStep = async (
     values: Partial<typeof steps.$inferInsert> & { status: string },
   ) => {
-    assertLease(local.id, leaseOwner)
-    return db
+    await assertLease(local.id, leaseOwner)
+    await db
       .update(steps)
       .set({ ...values, totalMs: Date.now() - startedAt })
       .where(
@@ -178,7 +178,6 @@ async function answerStep(
           eq(steps.correctionRound, step.correction_round),
         ),
       )
-      .run()
   }
 
   const cancelCleanly = async (
@@ -189,11 +188,11 @@ async function answerStep(
       { id: local.id, step: step.sequence, reason },
       'canceling application',
     )
-    completeStep({ status: 'canceled', error: reason, ...extra })
-    db.update(applications)
+    await completeStep({ status: 'canceled', error: reason, ...extra })
+    await db
+      .update(applications)
       .set({ stopReason: reason, cancelRequested: true })
       .where(eq(applications.id, local.id))
-      .run()
     await jobo(local.id).applications.cancel(joboId)
     // Cancels settle at the next safe checkpoint; wait for the terminal state.
     return jobo(local.id).applications.get(joboId, { waitSeconds: MAX_WAIT_SECONDS })
@@ -211,16 +210,18 @@ async function answerStep(
   // list comes back every round).
   const previousAnswers =
     step.correction_round > 0
-      ? (db
-          .select()
-          .from(steps)
-          .where(
-            and(
-              eq(steps.stepId, step.id),
-              eq(steps.correctionRound, step.correction_round - 1),
-            ),
-          )
-          .get()?.answersJson ?? [])
+      ? ((
+          await db
+            .select()
+            .from(steps)
+            .where(
+              and(
+                eq(steps.stepId, step.id),
+                eq(steps.correctionRound, step.correction_round - 1),
+              ),
+            )
+            .limit(1)
+        )[0]?.answersJson ?? [])
       : []
 
   // The budget is derived from the step deadline: a real browser is holding
@@ -352,14 +353,16 @@ async function answerStep(
   }
 
   async function submitAndRecord(): Promise<Application> {
-    assertLease(local.id, leaseOwner)
-    if (
-      db.select().from(applications).where(eq(applications.id, local.id)).get()
-        ?.cancelRequested
-    ) {
+    await assertLease(local.id, leaseOwner)
+    const [current] = await db
+      .select()
+      .from(applications)
+      .where(eq(applications.id, local.id))
+      .limit(1)
+    if (current?.cancelRequested) {
       return cancelCleanly('Canceled at your request.')
     }
-    completeStep({
+    await completeStep({
       status: 'answering',
       answersJson: answers,
       trace: result.trace,
@@ -371,7 +374,7 @@ async function answerStep(
       // snapshot was built for (409 stale_correction_round on mismatch).
       correctionRound: step.correction_round,
     })
-    completeStep({
+    await completeStep({
       status: 'submitted',
       answersJson: answers,
       trace: result.trace,
@@ -403,13 +406,14 @@ async function answerStep(
  * fails, and it is what makes the create response's fields visible in the UI
  * before the first advance runs.
  */
-function persistApplication(
+async function persistApplication(
   localId: string,
   application: Application,
   leaseOwner: string,
-): void {
-  assertLease(localId, leaseOwner)
-  db.update(applications)
+): Promise<void> {
+  await assertLease(localId, leaseOwner)
+  await db
+    .update(applications)
     .set({
       joboApplicationId: application.id,
       status: application.status,
@@ -422,12 +426,12 @@ function persistApplication(
       updatedAt: Date.now(),
     })
     .where(eq(applications.id, localId))
-    .run()
 
   const step =
     application.status === 'awaiting_answers' ? application.current_step : null
   if (step) {
-    db.insert(steps)
+    await db
+      .insert(steps)
       .values({
         stepId: step.id,
         correctionRound: step.correction_round,
@@ -438,7 +442,6 @@ function persistApplication(
         status: 'answering',
       })
       .onConflictDoNothing()
-      .run()
   }
 }
 

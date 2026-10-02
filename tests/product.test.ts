@@ -36,9 +36,9 @@ beforeAll(async () => {
   ;({ db } = await import('@/db/client'))
   schema = await import('@/db/schema')
   queue = await import('@/lib/queue')
-  expect(db.select().from(schema.profiles).all()).toHaveLength(0)
+  expect(await db.select().from(schema.profiles)).toHaveLength(0)
   for (const id of ['alice', 'bob'])
-    db.insert(schema.user)
+    await db.insert(schema.user)
       .values({
         id,
         name: id,
@@ -47,77 +47,72 @@ beforeAll(async () => {
         createdAt: new Date(),
         updatedAt: new Date(),
       })
-      .run()
   const { seedSampleProfiles } = await import('@/db/seed'),
     { RESUME_DIR } = await import('@/db/client')
-  seedSampleProfiles(db, RESUME_DIR)
-  for (const row of db.select().from(schema.profiles).all()) {
-    db.update(schema.profiles).set({ data: {
+  await seedSampleProfiles(db, RESUME_DIR)
+  for (const row of await db.select().from(schema.profiles)) {
+    await db.update(schema.profiles).set({ data: {
       ...row.data,
       links: [...row.data.links, { label: 'LinkedIn', type: 'linkedin', url: 'https://www.linkedin.com/in/jobo-test-candidate' }],
-    } }).where(eq(schema.profiles.id, row.id)).run()
+    } }).where(eq(schema.profiles.id, row.id))
   }
-  db.update(schema.profiles)
+  await db.update(schema.profiles)
     .set({ userId: 'alice', reviewedAt: Date.now() })
     .where(eq(schema.profiles.id, 'sample-ada-lovelace'))
-    .run()
-  db.update(schema.profiles)
+  await db.update(schema.profiles)
     .set({ userId: 'bob', reviewedAt: Date.now() })
     .where(eq(schema.profiles.id, 'sample-grace-hopper'))
-    .run()
 })
 describe('private profiles and durable applications', () => {
-  it('rejects another user’s resume and non-sandbox URLs', () => {
-    expect(() =>
+  it('rejects another user’s resume and non-sandbox URLs', async () => {
+    await expect(
       queue.enqueueApplication('bob', 'sample-ada-lovelace', job),
-    ).toThrow(/Review/)
-    expect(() =>
+    ).rejects.toThrow(/Review/)
+    await expect(
       queue.enqueueApplication('alice', 'sample-ada-lovelace', {
         ...job,
         applyUrl: 'https://example.com/apply/multi-step',
       }),
-    ).toThrow(/Invalid/)
+    ).rejects.toThrow(/Invalid/)
   })
-  it('requires confirmation before application creation', () => {
-    db.update(schema.profiles)
+  it('requires confirmation before application creation', async () => {
+    await db.update(schema.profiles)
       .set({ reviewedAt: null })
       .where(eq(schema.profiles.id, 'sample-ada-lovelace'))
-      .run()
-    expect(() =>
+    await expect(
       queue.enqueueApplication('alice', 'sample-ada-lovelace', job),
-    ).toThrow(/Review/)
-    db.update(schema.profiles)
+    ).rejects.toThrow(/Review/)
+    await db.update(schema.profiles)
       .set({ reviewedAt: Date.now() })
       .where(eq(schema.profiles.id, 'sample-ada-lovelace'))
-      .run()
   })
   it('saves incomplete drafts but requires LinkedIn and phone for confirmation and enqueue', async () => {
     const { updateProfileAction } = await import('@/app/actions/profiles')
     const where = eq(schema.profiles.id, 'sample-ada-lovelace')
-    const original = db.select().from(schema.profiles).where(where).get()!
+    const [original] = await db.select().from(schema.profiles).where(where).limit(1)
     const draft = { ...original.data, links: [], self_identification: 'leave_blank' as const }
-    db.update(schema.profiles).set({ reviewedAt: null }).where(where).run()
+    await db.update(schema.profiles).set({ reviewedAt: null }).where(where)
     expect(await updateProfileAction(original.id, { data: draft })).toEqual({ ok: true })
-    expect(db.select().from(schema.profiles).where(where).get()?.reviewedAt).toBeNull()
+    expect((await db.select().from(schema.profiles).where(where))[0]?.reviewedAt).toBeNull()
     expect((await updateProfileAction(original.id, { confirm: true })).error).toContain('LinkedIn')
     // A stale reviewed timestamp must not bypass current requirements.
-    db.update(schema.profiles).set({ reviewedAt: 1 }).where(where).run()
-    expect(() => queue.enqueueApplication('alice', original.id, job)).toThrow(/LinkedIn/)
+    await db.update(schema.profiles).set({ reviewedAt: 1 }).where(where)
+    await expect(queue.enqueueApplication('alice', original.id, job)).rejects.toThrow(/LinkedIn/)
     const noPhone = { ...original.data, personal: { ...original.data.personal, phone: null } }
     expect((await updateProfileAction(original.id, { data: noPhone, confirm: true })).error).toContain('phone')
     expect(await updateProfileAction(original.id, { data: { ...original.data, self_identification: 'leave_blank' }, confirm: true })).toEqual({ ok: true })
   })
   it('deduplicates clicks and preserves the original profile and PDF', async () => {
-    const id = queue.enqueueApplication('alice', 'sample-ada-lovelace', job)
-    expect(queue.enqueueApplication('alice', 'sample-ada-lovelace', job)).toBe(
+    const id = await queue.enqueueApplication('alice', 'sample-ada-lovelace', job)
+    expect(await queue.enqueueApplication('alice', 'sample-ada-lovelace', job)).toBe(
       id,
     )
-    const original = db
+    const [original] = await db
       .select()
       .from(schema.profiles)
       .where(eq(schema.profiles.id, 'sample-ada-lovelace'))
-      .get()!
-    db.update(schema.profiles)
+      .limit(1)
+    await db.update(schema.profiles)
       .set({
         data: {
           ...original.data,
@@ -126,12 +121,11 @@ describe('private profiles and durable applications', () => {
         },
       })
       .where(eq(schema.profiles.id, original.id))
-      .run()
-    const row = db
+    const [row] = await db
       .select()
       .from(schema.applications)
       .where(eq(schema.applications.id, id))
-      .get()!
+      .limit(1)
     expect(row.profileSnapshot?.data.personal.full_name).toBe(
       original.data.personal.full_name,
     )
@@ -141,52 +135,83 @@ describe('private profiles and durable applications', () => {
       readFileSync(join(RESUME_DIR, `${original.id}.pdf`)),
     )
   })
-  it('enforces global and per-user concurrency and recovers expired leases', () => {
+  it('enforces global and per-user concurrency and recovers expired leases', async () => {
     const otherJob = {
       ...job,
       slug: 'all-field-types',
       applyUrl: 'https://sandbox.jobo.world/apply/all-field-types',
     }
-    queue.enqueueApplication('alice', 'sample-ada-lovelace', otherJob)
-    queue.enqueueApplication('bob', 'sample-grace-hopper', job)
+    await queue.enqueueApplication('alice', 'sample-ada-lovelace', otherJob)
+    await queue.enqueueApplication('bob', 'sample-grace-hopper', job)
     const now = Date.now(),
-      a = queue.claimApplication('worker-a', 2, 1, now)!,
-      b = queue.claimApplication('worker-b', 2, 1, now)!
+      a = (await queue.claimApplication('worker-a', 2, 1, now))!,
+      b = (await queue.claimApplication('worker-b', 2, 1, now))!
     expect(a.userId).not.toBe(b.userId)
-    expect(queue.claimApplication('worker-c', 2, 1, now)).toBeNull()
-    const recovered = queue.claimApplication(
+    expect(await queue.claimApplication('worker-c', 2, 1, now)).toBeNull()
+    const recovered = (await queue.claimApplication(
       'worker-c',
       2,
       1,
       now + queue.LEASE_MS + 1,
-    )!
+    ))!
     expect(recovered.id).toBe(a.id)
-    expect(queue.renewLease(recovered.id, 'worker-a')).toBe(false)
-    queue.releaseLease(recovered.id, 'worker-c')
-    queue.releaseLease(b.id, 'worker-b')
+    expect(await queue.renewLease(recovered.id, 'worker-a')).toBe(false)
+    expect(await queue.renewLease(recovered.id, 'worker-c')).toBe(true)
+    await queue.releaseLease(recovered.id, 'worker-c')
+    await queue.releaseLease(b.id, 'worker-b')
   })
-  it('does not retry ambiguous or confirmed submitted applications', () => {
-    const id = queue.enqueueApplication('alice', 'sample-ada-lovelace', job)
-    db.update(schema.applications)
+  it('never exceeds the caps when workers claim at the same moment', async () => {
+    // SQLite serialised these for free. Here the advisory lock does, and
+    // without it two claimers both pass the cap check on the same snapshot.
+    const now = Date.now()
+    const claims = await Promise.all(
+      Array.from({ length: 8 }, (_, i) =>
+        queue.claimApplication(`racer-${i}`, 2, 1, now),
+      ),
+    )
+    const won = claims.filter((c) => c !== null)
+    expect(won).toHaveLength(2)
+    expect(new Set(won.map((c) => c!.userId)).size).toBe(2)
+    for (const [i, c] of claims.entries())
+      if (c) await queue.releaseLease(c.id, `racer-${i}`)
+  })
+  it('creates one application when the same job is applied to twice at once', async () => {
+    const racingJob = {
+      ...job,
+      slug: 'education-and-work-history',
+      applyUrl: 'https://sandbox.jobo.world/apply/education-and-work-history',
+    }
+    const ids = await Promise.all(
+      Array.from({ length: 5 }, () =>
+        queue.enqueueApplication('alice', 'sample-ada-lovelace', racingJob),
+      ),
+    )
+    expect(new Set(ids).size).toBe(1)
+    const rows = await db
+      .select()
+      .from(schema.applications)
+      .where(eq(schema.applications.jobId, racingJob.slug))
+    expect(rows).toHaveLength(1)
+  })
+  it('does not retry ambiguous or confirmed submitted applications', async () => {
+    const id = await queue.enqueueApplication('alice', 'sample-ada-lovelace', job)
+    await db.update(schema.applications)
       .set({ status: 'submitted' })
       .where(eq(schema.applications.id, id))
-      .run()
     expect(
-      queue.enqueueApplication('alice', 'sample-ada-lovelace', job, true),
+      await queue.enqueueApplication('alice', 'sample-ada-lovelace', job, true),
     ).toBe(id)
-    db.update(schema.applications)
+    await db.update(schema.applications)
       .set({ status: 'failed', failureCode: 'submission_unconfirmed' })
       .where(eq(schema.applications.id, id))
-      .run()
     expect(
-      queue.enqueueApplication('alice', 'sample-ada-lovelace', job, true),
+      await queue.enqueueApplication('alice', 'sample-ada-lovelace', job, true),
     ).toBe(id)
-    db.update(schema.applications)
+    await db.update(schema.applications)
       .set({ status: 'failed', failureCode: 'answers_timeout' })
       .where(eq(schema.applications.id, id))
-      .run()
     expect(
-      queue.enqueueApplication('alice', 'sample-ada-lovelace', job, true),
+      await queue.enqueueApplication('alice', 'sample-ada-lovelace', job, true),
     ).not.toBe(id)
   })
   it('rejects cross-user edits, deletion, default selection, downloads, and cancellation', async () => {
@@ -203,11 +228,12 @@ describe('private profiles and durable applications', () => {
     ).toBe(false)
     await actions.deleteProfileAction('sample-grace-hopper')
     expect(
-      db
-        .select()
-        .from(schema.profiles)
-        .where(eq(schema.profiles.id, 'sample-grace-hopper'))
-        .get()?.archived,
+      (
+        await db
+          .select()
+          .from(schema.profiles)
+          .where(eq(schema.profiles.id, 'sample-grace-hopper'))
+      )[0]?.archived,
     ).toBe(false)
     const { GET } = await import('@/app/api/resumes/[profileId]/route')
     expect(
@@ -220,33 +246,35 @@ describe('private profiles and durable applications', () => {
         )
       ).status,
     ).toBe(404)
-    const other = db
+    const [other] = await db
       .select()
       .from(schema.applications)
       .where(eq(schema.applications.userId, 'bob'))
-      .get()!
+      .limit(1)
     const { cancelApplicationAction } =
       await import('@/app/actions/applications')
     expect((await cancelApplicationAction(other.id)).ok).toBe(false)
     expect(
-      db
-        .select()
-        .from(schema.applications)
-        .where(eq(schema.applications.id, other.id))
-        .get()?.cancelRequested,
+      (
+        await db
+          .select()
+          .from(schema.applications)
+          .where(eq(schema.applications.id, other.id))
+      )[0]?.cancelRequested,
     ).toBe(false)
   })
   it('archives profiles without deleting application history', async () => {
     const { deleteProfileAction } = await import('@/app/actions/profiles')
-    const count = db.select().from(schema.applications).all().length
+    const count = (await db.select().from(schema.applications)).length
     await deleteProfileAction('sample-ada-lovelace')
     expect(
-      db
-        .select()
-        .from(schema.profiles)
-        .where(eq(schema.profiles.id, 'sample-ada-lovelace'))
-        .get()?.archived,
+      (
+        await db
+          .select()
+          .from(schema.profiles)
+          .where(eq(schema.profiles.id, 'sample-ada-lovelace'))
+      )[0]?.archived,
     ).toBe(true)
-    expect(db.select().from(schema.applications).all()).toHaveLength(count)
+    expect(await db.select().from(schema.applications)).toHaveLength(count)
   })
 })

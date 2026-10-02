@@ -2,8 +2,7 @@ import { createHash } from 'node:crypto'
 import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { count, eq } from 'drizzle-orm'
-import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
-import * as schema from './schema'
+import type { Database } from './client'
 import { profiles } from './schema'
 import { emptyEeo, type ResumeProfile } from '@/lib/resume/profile-schema'
 import * as ada from './seed/ada-lovelace'
@@ -36,20 +35,19 @@ export const SAMPLE_PROFILES: SampleProfile[] = [
   },
 ]
 
-export function seedSampleProfiles(
-  database: BetterSQLite3Database<typeof schema>,
+export async function seedSampleProfiles(
+  database: Database,
   resumeDir: string,
-): void {
+): Promise<void> {
   mkdirSync(resumeDir, { recursive: true })
 
   // Only claim the default slot when nobody holds it — a user-made default
   // (or a surviving sample) is never displaced by a reseed.
-  const hasDefault =
-    (database
-      .select({ value: count() })
-      .from(profiles)
-      .where(eq(profiles.isDefault, true))
-      .get()?.value ?? 0) > 0
+  const [defaults] = await database
+    .select({ value: count() })
+    .from(profiles)
+    .where(eq(profiles.isDefault, true))
+  const hasDefault = (defaults?.value ?? 0) > 0
 
   for (const [index, sample] of SAMPLE_PROFILES.entries()) {
     const source = join(process.cwd(), 'db', 'seed', sample.pdfFile)
@@ -58,7 +56,7 @@ export function seedSampleProfiles(
     const destination = join(resumeDir, `${sample.id}.pdf`)
     if (!existsSync(destination)) copyFileSync(source, destination)
 
-    database
+    await database
       .insert(profiles)
       .values({
         id: sample.id,
@@ -73,6 +71,5 @@ export function seedSampleProfiles(
         resumeText: sample.resumeText,
       })
       .onConflictDoNothing()
-      .run()
   }
 }

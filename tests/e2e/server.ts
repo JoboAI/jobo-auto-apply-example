@@ -6,8 +6,18 @@ import { createServer } from 'node:http'
 import next from 'next'
 import jobs from './jobs.json'
 import { profile } from '../../db/seed/ada-lovelace'
+import { runMigrations } from '../../db/migrate'
+import { createDatabase, databaseUrl, dropDatabase } from '../support/postgres'
 Object.assign(process.env, { NODE_ENV: 'test' })
 process.env.DATA_DIR = mkdtempSync(join(tmpdir(), 'jobo-browser-'))
+// A throwaway database on the `npm run db:up` server (or TEST_DATABASE_URL).
+// Playwright may stop this server before SIGTERM cleanup finishes, so every run
+// also drops whatever the previous one left behind.
+const database = 'aa_e2e'
+await dropDatabase(database)
+await createDatabase(database)
+process.env.DATABASE_URL = databaseUrl(database)
+await runMigrations(process.env.DATABASE_URL)
 process.env.BETTER_AUTH_URL = 'http://127.0.0.1:3311'
 process.env.BETTER_AUTH_SECRET =
   'browser-fixture-independent-auth-secret-32-characters'
@@ -127,23 +137,31 @@ const { advanceApplication } = await import('../../lib/application-engine')
 let running = false
 const timer = setInterval(async () => {
   if (!workerEnabled || running) return
-  const row = claimApplication('browser-fixture-worker')
-  if (!row) return
   running = true
+  const row = await claimApplication('browser-fixture-worker').catch((e) => {
+    console.error('Fixture claim failed', e)
+    return null
+  })
+  if (!row) {
+    running = false
+    return
+  }
   try {
-    renewLease(row.id, 'browser-fixture-worker')
+    await renewLease(row.id, 'browser-fixture-worker')
     await advanceApplication(row.id, 'browser-fixture-worker')
-    releaseLease(row.id, 'browser-fixture-worker')
+    await releaseLease(row.id, 'browser-fixture-worker')
   } catch (e) {
     console.error('Fixture worker failed', e)
-    releaseLease(row.id, 'browser-fixture-worker', 'Fixture exchange failed')
+    await releaseLease(row.id, 'browser-fixture-worker', 'Fixture exchange failed')
   } finally {
     running = false
   }
 }, 500)
-process.on('SIGTERM', () => {
+process.on('SIGTERM', async () => {
   clearInterval(timer)
   server.close()
+  await globalThis.__joboDb?.pool.end()
+  await dropDatabase(database).catch(() => {})
   process.exit(0)
 })
 console.log('Isolated browser test server ready')

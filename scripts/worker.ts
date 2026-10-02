@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { eq } from 'drizzle-orm'
-import { db } from '../db/client'
+import { closeDb, db } from '../db/client'
 import { applications, workerHealth } from '../db/schema'
 import { advanceApplication } from '../lib/application-engine'
 import { claimApplication, renewLease, releaseLease } from '../lib/queue'
@@ -25,14 +25,21 @@ process.on('SIGINT', () => {
 })
 
 async function run(id: string) {
-  const heartbeat = setInterval(() => renewLease(id, owner), 10000)
+  const heartbeat = setInterval(() => {
+    // A rejected promise in a timer would crash the worker; a missed renewal
+    // is recovered by the next one, or by the lease expiring.
+    renewLease(id, owner).catch((error) =>
+      console.error('Lease renewal failed', { id, error: String(error) }),
+    )
+  }, 10000)
   let failure: string | undefined
   try {
-    const row = db
+    const [row] = await db
       .select()
       .from(applications)
       .where(eq(applications.id, id))
-      .get()!
+      .limit(1)
+    if (!row) return
     // Only a never-attempted local queue entry can be canceled without reconciling upstream.
     if (
       row.cancelRequested &&
@@ -41,16 +48,16 @@ async function run(id: string) {
       row.status === 'queued' &&
       row.attemptCount === 0
     ) {
-      db.update(applications)
+      await db
+        .update(applications)
         .set({ status: 'canceled', updatedAt: Date.now() })
         .where(eq(applications.id, id))
-        .run()
     } else {
       if (!row.joboApplicationId)
-        db.update(applications)
+        await db
+          .update(applications)
           .set({ status: 'creating' })
           .where(eq(applications.id, id))
-          .run()
       await advanceApplication(id, owner)
     }
   } catch (error) {
@@ -63,23 +70,32 @@ async function run(id: string) {
       'The application service is temporarily unavailable. Retrying safely.'
   } finally {
     clearInterval(heartbeat)
-    releaseLease(id, owner, failure)
+    await releaseLease(id, owner, failure).catch((error) =>
+      console.error('Lease release failed', { id, error: String(error) }),
+    )
   }
 }
 while (!stopping) {
-  db.insert(workerHealth)
-    .values({ id: 'main', heartbeatAt: Date.now() })
-    .onConflictDoUpdate({
-      target: workerHealth.id,
-      set: { heartbeatAt: Date.now() },
-    })
-    .run()
-  while (running.size < globalLimit) {
-    const job = claimApplication(owner, globalLimit, userLimit)
-    if (!job) break
-    const task = run(job.id).finally(() => running.delete(task))
-    running.add(task)
+  try {
+    await db
+      .insert(workerHealth)
+      .values({ id: 'main', heartbeatAt: Date.now() })
+      .onConflictDoUpdate({
+        target: workerHealth.id,
+        set: { heartbeatAt: Date.now() },
+      })
+    while (running.size < globalLimit) {
+      const job = await claimApplication(owner, globalLimit, userLimit)
+      if (!job) break
+      const task = run(job.id).finally(() => running.delete(task))
+      running.add(task)
+    }
+  } catch (error) {
+    // One database blip must not kill the loop. A lasting outage stops the
+    // heartbeat, and the health probe restarts the container.
+    console.error('Worker loop iteration failed', { error: String(error) })
   }
   await new Promise((resolve) => setTimeout(resolve, 1000))
 }
 await Promise.allSettled([...running])
+await closeDb()

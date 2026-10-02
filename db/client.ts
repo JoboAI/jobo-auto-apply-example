@@ -1,104 +1,77 @@
-import Database from 'better-sqlite3'
-import { drizzle } from 'drizzle-orm/better-sqlite3'
-import { migrate } from 'drizzle-orm/better-sqlite3/migrator'
-import { mkdirSync } from 'node:fs'
-import { dirname, join, resolve } from 'node:path'
+import { Pool } from 'pg'
+import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres'
+import { join, resolve } from 'node:path'
 import * as schema from './schema'
 
 /**
- * SQLite connection.
+ * Postgres connection.
  *
  * Two things here are not incidental:
  *
- *  1. **Initialisation is lazy.** Opening the database at module import time
- *     breaks `next build`: the build spawns several worker processes which each
- *     import every route to collect its configuration, and they then race each
- *     other running `migrate()` — producing `SQLITE_BUSY: database is locked`
- *     and a failed build. Deferring the connection to the first actual query
- *     means importing a route costs nothing, and only real requests open it.
+ *  1. **Initialisation is lazy.** `next build` imports every route to collect
+ *     its configuration, and the build has no database. Reading DATABASE_URL
+ *     on the first query, not at import, keeps the build env-free.
  *
- *  2. **The instance is cached on globalThis.** Next.js hot-reloads server
- *     modules on every edit, and a module-scoped connection would leak a file
- *     handle per reload until SQLite refuses to open another.
+ *  2. **The pool is cached on globalThis.** Next.js hot-reloads server modules
+ *     on every edit, and a module-scoped pool would leak connections per
+ *     reload until Postgres refuses new ones.
+ *
+ * Migrations are not run here: `npm run db:migrate` runs them (an init
+ * container in production, `npm run dev` locally).
  */
 
 const dataDir = resolve(process.env.DATA_DIR ?? './.data')
-const dbPath = join(dataDir, 'app.db')
 
-type DrizzleDatabase = ReturnType<typeof create>
+export type Database = NodePgDatabase<typeof schema>
 
 declare global {
   // eslint-disable-next-line no-var
-  var __joboDb: DrizzleDatabase | undefined
+  var __joboDb: { db: Database; pool: Pool } | undefined
 }
 
 function create() {
-  mkdirSync(dirname(dbPath), { recursive: true })
-  const sqlite = new Database(dbPath)
-
-  // WAL lets the UI read while the advance loop is mid-write. Without it,
-  // loading a page during answer generation blocks on the writer.
-  sqlite.pragma('journal_mode = WAL')
-  sqlite.pragma('busy_timeout = 5000')
-  sqlite.pragma('foreign_keys = ON')
-
-  // Back up an existing database once before introducing accounts and ownership.
-  const hasProfiles = sqlite
-    .prepare(
-      "SELECT name FROM sqlite_master WHERE type='table' AND name='profiles'",
+  const url = process.env.DATABASE_URL
+  if (!url) {
+    throw new Error(
+      'DATABASE_URL is not set. Run `npm run db:up` and copy .env.example to .env.local.',
     )
-    .get()
-  if (
-    hasProfiles &&
-    !(
-      sqlite.prepare('PRAGMA table_info(profiles)').all() as { name: string }[]
-    ).some((c) => c.name === 'user_id')
-  ) {
-    const backup = join(dataDir, `before-accounts-${Date.now()}.db`)
-    sqlite.exec(`VACUUM INTO '${backup.replaceAll("'", "''")}'`)
   }
-  const database = drizzle(sqlite, { schema })
-
-  // Migrate on first use, so `npm run dev` works with no separate setup step.
-  // Retry on a lock: several server processes may reach this simultaneously,
-  // and whichever loses the race just needs to wait for the winner to finish.
-  for (let attempt = 0; ; attempt++) {
-    try {
-      migrate(database, {
-        migrationsFolder: join(process.cwd(), 'db/migrations'),
-      })
-      break
-    } catch (error) {
-      const busy =
-        error instanceof Error &&
-        /SQLITE_BUSY|database is locked/i.test(error.message)
-      if (!busy || attempt >= 10) throw error
-      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100)
-    }
-  }
-
-  return database
+  const pool = new Pool({
+    connectionString: url,
+    max: Number(process.env.DATABASE_POOL_MAX ?? 10),
+    idleTimeoutMillis: 30_000,
+    connectionTimeoutMillis: 10_000,
+  })
+  // An idle client dying (a Postgres restart) emits here. Unhandled, it would
+  // crash the process; the pool already discards the client.
+  pool.on('error', (error) => console.error('idle postgres client error', error))
+  return { pool, db: drizzle(pool, { schema }) }
 }
 
-function getDb(): DrizzleDatabase {
-  if (globalThis.__joboDb) return globalThis.__joboDb
-  const created = create()
-  globalThis.__joboDb = created
-  return created
+function getDb() {
+  return (globalThis.__joboDb ??= create())
 }
 
 /**
- * Behaves exactly like a Drizzle instance, but opens the connection on first
+ * Behaves exactly like a Drizzle instance, but opens the pool on first
  * property access rather than at import. The proxy is the price of keeping the
  * familiar `db.select()...` call sites while staying lazy.
  */
-export const db = new Proxy({} as DrizzleDatabase, {
-  get(_target, property, receiver) {
-    const instance = getDb()
-    const value = Reflect.get(instance, property, receiver)
+export const db = new Proxy({} as Database, {
+  get(_target, property) {
+    const instance = getDb().db
+    const value = Reflect.get(instance, property, instance)
     return typeof value === 'function' ? value.bind(instance) : value
   },
 })
 
+/** Close the pool, so scripts and test files can exit cleanly. */
+export async function closeDb() {
+  const current = globalThis.__joboDb
+  globalThis.__joboDb = undefined
+  await current?.pool.end()
+}
+
 export { schema }
+/** Resume PDFs stay on disk: Jobo downloads them over HTTP for file fields. */
 export const RESUME_DIR = join(dataDir, 'resumes')

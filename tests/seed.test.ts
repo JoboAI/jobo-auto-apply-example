@@ -2,12 +2,9 @@ import { createHash } from 'node:crypto'
 import { existsSync, mkdtempSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import Database from 'better-sqlite3'
-import { drizzle } from 'drizzle-orm/better-sqlite3'
-import { migrate } from 'drizzle-orm/better-sqlite3/migrator'
 import { eq } from 'drizzle-orm'
-import { describe, expect, it } from 'vitest'
-import * as schema from '@/db/schema'
+import { beforeEach, describe, expect, it } from 'vitest'
+import { db as database } from '@/db/client'
 import { profiles } from '@/db/schema'
 import { SAMPLE_PROFILES, seedSampleProfiles } from '@/db/seed'
 import { emptyEeo, resumeProfileSchema } from '@/lib/resume/profile-schema'
@@ -20,13 +17,10 @@ import { emptyEeo, resumeProfileSchema } from '@/lib/resume/profile-schema'
  * described invariants.
  */
 
-function freshDb() {
-  const sqlite = new Database(':memory:')
-  sqlite.pragma('foreign_keys = ON')
-  const database = drizzle(sqlite, { schema })
-  migrate(database, { migrationsFolder: join(process.cwd(), 'db/migrations') })
-  return database
-}
+// This file's own database (tests/support/database.ts), emptied per test.
+beforeEach(async () => {
+  await database.delete(profiles)
+})
 
 describe('sample personas', () => {
   it.each(SAMPLE_PROFILES)('$id satisfies the profile schema', (sample) => {
@@ -42,14 +36,13 @@ describe('sample personas', () => {
 })
 
 describe('seedSampleProfiles', () => {
-  it('is idempotent and copies the resume PDFs', () => {
-    const database = freshDb()
+  it('is idempotent and copies the resume PDFs', async () => {
     const resumeDir = mkdtempSync(join(tmpdir(), 'jobo-seed-'))
 
-    seedSampleProfiles(database, resumeDir)
-    seedSampleProfiles(database, resumeDir)
+    await seedSampleProfiles(database, resumeDir)
+    await seedSampleProfiles(database, resumeDir)
 
-    const rows = database.select().from(profiles).all()
+    const rows = await database.select().from(profiles)
     expect(rows).toHaveLength(SAMPLE_PROFILES.length)
     expect(rows.filter((row) => row.isDefault)).toHaveLength(1)
 
@@ -67,11 +60,10 @@ describe('seedSampleProfiles', () => {
     }
   })
 
-  it('never displaces an existing default profile', () => {
-    const database = freshDb()
+  it('never displaces an existing default profile', async () => {
     const resumeDir = mkdtempSync(join(tmpdir(), 'jobo-seed-'))
 
-    database
+    await database
       .insert(profiles)
       .values({
         id: 'user-profile',
@@ -85,11 +77,10 @@ describe('seedSampleProfiles', () => {
         resumeSha256: 'abc',
         resumeText: 'real resume'
       })
-      .run()
 
-    seedSampleProfiles(database, resumeDir)
+    await seedSampleProfiles(database, resumeDir)
 
-    const defaults = database.select().from(profiles).where(eq(profiles.isDefault, true)).all()
+    const defaults = await database.select().from(profiles).where(eq(profiles.isDefault, true))
     expect(defaults).toHaveLength(1)
     expect(defaults[0].id).toBe('user-profile')
   })

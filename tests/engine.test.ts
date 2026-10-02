@@ -56,7 +56,7 @@ beforeAll(async () => {
   schema = await import('@/db/schema')
   queue = await import('@/lib/queue')
   engine = await import('@/lib/application-engine')
-  db.insert(schema.user)
+  await db.insert(schema.user)
     .values({
       id: 'alice',
       name: 'Alice',
@@ -65,24 +65,22 @@ beforeAll(async () => {
       createdAt: new Date(),
       updatedAt: new Date(),
     })
-    .run()
   const { seedSampleProfiles } = await import('@/db/seed'),
     { RESUME_DIR } = await import('@/db/client')
-  seedSampleProfiles(db, RESUME_DIR)
-  for (const row of db.select().from(schema.profiles).all()) {
-    db.update(schema.profiles).set({ data: {
+  await seedSampleProfiles(db, RESUME_DIR)
+  for (const row of (await db.select().from(schema.profiles))) {
+    await db.update(schema.profiles).set({ data: {
       ...row.data,
       links: [...row.data.links, { label: 'LinkedIn', type: 'linkedin', url: 'https://www.linkedin.com/in/jobo-test-candidate' }],
-    } }).where(eq(schema.profiles.id, row.id)).run()
+    } }).where(eq(schema.profiles.id, row.id))
   }
-  db.update(schema.profiles)
+  await db.update(schema.profiles)
     .set({ userId: 'alice', reviewedAt: Date.now() })
     .where(eq(schema.profiles.id, 'sample-ada-lovelace'))
-    .run()
 })
-beforeEach(() => {
-  db.delete(schema.steps).run()
-  db.delete(schema.applications).run()
+beforeEach(async () => {
+  await db.delete(schema.steps)
+  await db.delete(schema.applications)
   vi.clearAllMocks()
   const job = {
     slug: 'multi-step',
@@ -97,8 +95,8 @@ beforeEach(() => {
     applyUrl: 'https://sandbox.jobo.world/apply/multi-step',
     available: true,
   }
-  id = queue.enqueueApplication('alice', 'sample-ada-lovelace', job)
-  queue.claimApplication('worker')
+  id = await queue.enqueueApplication('alice', 'sample-ada-lovelace', job)
+  await queue.claimApplication('worker')
   mocked.create.mockResolvedValue(snapshot())
   mocked.get.mockResolvedValue(snapshot())
   mocked.submitAnswers.mockResolvedValue(
@@ -117,13 +115,13 @@ describe('background application exchanges', () => {
   it('submits from snapshots and records the actual model and authoritative status', async () => {
     await engine.advanceApplication(id, 'worker')
     expect(
-      db
+      (await db
         .select()
         .from(schema.applications)
-        .where(eq(schema.applications.id, id))
-        .get()?.status,
+        .where(eq(schema.applications.id, id)))[0]?.status,
     ).toBe('submitted')
-    const step = db.select().from(schema.steps).get()!
+    const [step] = await db.select().from(schema.steps)
+      .limit(1)
     expect(step.llmModel).toBe('deepseek/deepseek-v4-flash-0731')
     expect(step.submittedAt).toBeTruthy()
     const context = mocked.build.mock.calls[0][1]
@@ -136,11 +134,11 @@ describe('background application exchanges', () => {
     await expect(engine.advanceApplication(id, 'worker')).rejects.toThrow(
       'Connection lost',
     )
-    expect(db.select().from(schema.steps).get()?.answersJson).toEqual([
+    expect((await db.select().from(schema.steps))[0]?.answersJson).toEqual([
       { field_id: 'full_name', value: 'Ada Lovelace' },
     ])
-    queue.releaseLease(id, 'worker')
-    queue.claimApplication('replacement')
+    await queue.releaseLease(id, 'worker')
+    await queue.claimApplication('replacement')
     await engine.advanceApplication(id, 'replacement')
     expect(mocked.create).toHaveBeenCalledTimes(1)
     expect(mocked.build).toHaveBeenCalledTimes(1)
@@ -169,15 +167,15 @@ describe('background application exchanges', () => {
     await engine.advanceApplication(id, 'worker')
     expect(mocked.submitAnswers).not.toHaveBeenCalled()
     expect(mocked.cancel).toHaveBeenCalled()
-    const stopReason = db
+    const [{ stopReason }] = await db
       .select()
       .from(schema.applications)
       .where(eq(schema.applications.id, id))
-      .get()?.stopReason
     expect(stopReason).toContain('OpenRouter timed out')
     expect(stopReason).toContain('Work authorization')
     // The trace survives the cancel, so the answers tab can explain it.
-    const step = db.select().from(schema.steps).get()!
+    const [step] = await db.select().from(schema.steps)
+      .limit(1)
     expect(step.trace?.[0]?.reason).toBe('model declined to answer')
     expect(step.answersJson).toBeNull()
   })
@@ -192,11 +190,10 @@ describe('background application exchanges', () => {
     )
     await engine.advanceApplication(id, 'worker')
     expect(
-      db
+      (await db
         .select()
         .from(schema.applications)
-        .where(eq(schema.applications.id, id))
-        .get()?.stopReason,
+        .where(eq(schema.applications.id, id)))[0]?.stopReason,
     ).toBe('Your profile is missing required information: Available date')
   })
   it('submits the profile answers when the model fails but nothing required is missing', async () => {
@@ -209,7 +206,7 @@ describe('background application exchanges', () => {
     await engine.advanceApplication(id, 'worker')
     expect(mocked.cancel).not.toHaveBeenCalled()
     expect(mocked.submitAnswers).toHaveBeenCalledTimes(1)
-    expect(db.select().from(schema.steps).get()?.error).toBe(
+    expect((await db.select().from(schema.steps))[0]?.error).toBe(
       'OpenRouter timed out after 90000ms',
     )
   })
@@ -227,11 +224,10 @@ describe('background application exchanges', () => {
     await engine.advanceApplication(id, 'worker')
     expect(mocked.submitAnswers).not.toHaveBeenCalled()
     expect(
-      db
+      (await db
         .select()
         .from(schema.applications)
-        .where(eq(schema.applications.id, id))
-        .get()?.stopReason,
+        .where(eq(schema.applications.id, id)))[0]?.stopReason,
     ).toContain('answer service')
   })
   it('stops verification without asking the model to invent a code', async () => {
@@ -259,10 +255,9 @@ describe('background application exchanges', () => {
     expect(mocked.submitAnswers).not.toHaveBeenCalled()
   })
   it('honors cancellation before generating or submitting answers', async () => {
-    db.update(schema.applications)
+    await db.update(schema.applications)
       .set({ cancelRequested: true })
       .where(eq(schema.applications.id, id))
-      .run()
     mocked.get.mockResolvedValue(
       snapshot({ status: 'canceled', current_step: null }),
     )
@@ -274,10 +269,9 @@ describe('background application exchanges', () => {
     await expect(
       engine.advanceApplication(id, 'not-the-owner'),
     ).rejects.toThrow(/lease/)
-    db.update(schema.applications)
+    await db.update(schema.applications)
       .set({ createdAt: Date.now() - 21 * 3600000 })
       .where(eq(schema.applications.id, id))
-      .run()
     await expect(engine.advanceApplication(id, 'worker')).rejects.toThrow(
       /idempotency/,
     )
@@ -310,27 +304,25 @@ describe('correction and retry recovery', () => {
       correctionRound: 1,
       previousAnswers: [{ field_id: 'full_name', value: 'Ada Lovelace' }],
     })
-    expect(db.select().from(schema.steps).all()).toHaveLength(2)
+    expect((await db.select().from(schema.steps))).toHaveLength(2)
     expect(mocked.submitAnswers.mock.calls[1][2]).toMatchObject({
       correctionRound: 1,
     })
   })
-  it('pauses unknown intake after six failures instead of repeatedly creating applications', () => {
+  it('pauses unknown intake after six failures instead of repeatedly creating applications', async () => {
     for (let attempt = 0; attempt < 6; attempt++) {
-      queue.releaseLease(id, 'worker', 'Network failure')
-      db.update(schema.applications)
+      await queue.releaseLease(id, 'worker', 'Network failure')
+      await db.update(schema.applications)
         .set({ nextAttemptAt: 0 })
         .where(eq(schema.applications.id, id))
-        .run()
-      if (attempt < 5) expect(queue.claimApplication('worker')?.id).toBe(id)
+      if (attempt < 5) expect((await queue.claimApplication('worker'))?.id).toBe(id)
     }
     expect(
-      db
+      (await db
         .select()
         .from(schema.applications)
-        .where(eq(schema.applications.id, id))
-        .get()?.status,
+        .where(eq(schema.applications.id, id)))[0]?.status,
     ).toBe('recovery_required')
-    expect(queue.claimApplication('worker')).toBeNull()
+    expect(await queue.claimApplication('worker')).toBeNull()
   })
 })

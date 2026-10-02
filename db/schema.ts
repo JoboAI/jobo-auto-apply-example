@@ -1,15 +1,30 @@
 import { sql } from 'drizzle-orm'
 import {
+  bigint,
+  boolean,
   index,
   integer,
+  jsonb,
+  pgTable,
   primaryKey,
-  sqliteTable,
   text,
-} from 'drizzle-orm/sqlite-core'
+  timestamp,
+} from 'drizzle-orm/pg-core'
 import type { Answer, CommandError, Field } from '@jobo-ai/autoapply'
 import type { ResumeProfile, EeoAnswers } from '@/lib/resume/profile-schema'
 import type { Job } from '@/lib/jobs-types'
 import type { AnswerTrace } from '@/lib/answers/types'
+
+/**
+ * Wall-clock milliseconds, as a JavaScript number. App code compares these
+ * with Date.now() throughout; int4 would overflow, and a timestamp column would
+ * turn every one of those comparisons into a Date.
+ */
+const epochMs = (name: string) => bigint(name, { mode: 'number' })
+const nowMs = sql`(extract(epoch from now()) * 1000)::bigint`
+/** better-auth's own columns are real timestamps. */
+const authTime = (name: string) =>
+  timestamp(name, { mode: 'date', withTimezone: true })
 
 /**
  * Account-owned product data. Nullable owner IDs preserve legacy demo records
@@ -17,30 +32,30 @@ import type { AnswerTrace } from '@/lib/answers/types'
  * leases keep execution independent of browser sessions and profile edits.
  */
 
-export const user = sqliteTable('user', {
+export const user = pgTable('user', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
   email: text('email').notNull().unique(),
-  emailVerified: integer('email_verified', { mode: 'boolean' })
+  emailVerified: boolean('email_verified')
     .notNull()
     .default(false),
   image: text('image'),
-  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
-  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+  createdAt: authTime('created_at').notNull(),
+  updatedAt: authTime('updated_at').notNull(),
 })
-export const session = sqliteTable('session', {
+export const session = pgTable('session', {
   id: text('id').primaryKey(),
   token: text('token').notNull().unique(),
   userId: text('user_id')
     .notNull()
     .references(() => user.id, { onDelete: 'cascade' }),
-  expiresAt: integer('expires_at', { mode: 'timestamp_ms' }).notNull(),
+  expiresAt: authTime('expires_at').notNull(),
   ipAddress: text('ip_address'),
   userAgent: text('user_agent'),
-  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
-  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+  createdAt: authTime('created_at').notNull(),
+  updatedAt: authTime('updated_at').notNull(),
 })
-export const account = sqliteTable('account', {
+export const account = pgTable('account', {
   id: text('id').primaryKey(),
   accountId: text('account_id').notNull(),
   providerId: text('provider_id').notNull(),
@@ -52,39 +67,35 @@ export const account = sqliteTable('account', {
   idToken: text('id_token'),
   scope: text('scope'),
   password: text('password'),
-  accessTokenExpiresAt: integer('access_token_expires_at', {
-    mode: 'timestamp_ms',
-  }),
-  refreshTokenExpiresAt: integer('refresh_token_expires_at', {
-    mode: 'timestamp_ms',
-  }),
-  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
-  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+  accessTokenExpiresAt: authTime('access_token_expires_at'),
+  refreshTokenExpiresAt: authTime('refresh_token_expires_at'),
+  createdAt: authTime('created_at').notNull(),
+  updatedAt: authTime('updated_at').notNull(),
 })
-export const verification = sqliteTable('verification', {
+export const verification = pgTable('verification', {
   id: text('id').primaryKey(),
   identifier: text('identifier').notNull(),
   value: text('value').notNull(),
-  expiresAt: integer('expires_at', { mode: 'timestamp_ms' }).notNull(),
-  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
-  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+  expiresAt: authTime('expires_at').notNull(),
+  createdAt: authTime('created_at').notNull(),
+  updatedAt: authTime('updated_at').notNull(),
 })
-export const savedJobs = sqliteTable(
+export const savedJobs = pgTable(
   'saved_jobs',
   {
     userId: text('user_id')
       .notNull()
       .references(() => user.id, { onDelete: 'cascade' }),
     jobId: text('job_id').notNull(),
-    createdAt: integer('created_at')
+    createdAt: epochMs('created_at')
       .notNull()
-      .default(sql`(unixepoch() * 1000)`),
+      .default(nowMs),
   },
   (t) => [primaryKey({ columns: [t.userId, t.jobId] })],
 )
-export const workerHealth = sqliteTable('worker_health', {
+export const workerHealth = pgTable('worker_health', {
   id: text('id').primaryKey(),
-  heartbeatAt: integer('heartbeat_at').notNull(),
+  heartbeatAt: epochMs('heartbeat_at').notNull(),
 })
 export interface ProfileSnapshot {
   data: ResumeProfile
@@ -93,13 +104,13 @@ export interface ProfileSnapshot {
   resumeContentType: string
 }
 
-export const profiles = sqliteTable('profiles', {
+export const profiles = pgTable('profiles', {
   id: text('id').primaryKey(),
   userId: text('user_id').references(() => user.id),
-  reviewedAt: integer('reviewed_at'),
-  archived: integer('archived', { mode: 'boolean' }).notNull().default(false),
+  reviewedAt: epochMs('reviewed_at'),
+  archived: boolean('archived').notNull().default(false),
   name: text('name').notNull(),
-  isDefault: integer('is_default', { mode: 'boolean' })
+  isDefault: boolean('is_default')
     .notNull()
     .default(false),
 
@@ -108,14 +119,14 @@ export const profiles = sqliteTable('profiles', {
    * tables: it is read whole, written whole, and never queried by field.
    * Normalising it would triple the schema and teach nothing about Auto Apply.
    */
-  data: text('data', { mode: 'json' }).$type<ResumeProfile>().notNull(),
+  data: jsonb('data').$type<ResumeProfile>().notNull(),
 
   /**
    * Retained so existing local databases remain readable without a migration.
    * The answer pipeline never reads or submits these values: sensitive fields
    * use only an advertised decline option or remain unanswered.
    */
-  eeo: text('eeo', { mode: 'json' }).$type<EeoAnswers>(),
+  eeo: jsonb('eeo').$type<EeoAnswers>(),
 
   resumeFilename: text('resume_filename').notNull(),
   resumeContentType: text('resume_content_type').notNull(),
@@ -128,15 +139,15 @@ export const profiles = sqliteTable('profiles', {
    */
   resumeText: text('resume_text').notNull(),
 
-  createdAt: integer('created_at')
+  createdAt: epochMs('created_at')
     .notNull()
-    .default(sql`(unixepoch() * 1000)`),
-  updatedAt: integer('updated_at')
+    .default(nowMs),
+  updatedAt: epochMs('updated_at')
     .notNull()
-    .default(sql`(unixepoch() * 1000)`),
+    .default(nowMs),
 })
 
-export const applications = sqliteTable(
+export const applications = pgTable(
   'applications',
   {
     /** Our local id — the one in the browser URL. */
@@ -145,15 +156,13 @@ export const applications = sqliteTable(
     /** Written before the create call. See the note at the top of this file. */
     userId: text('user_id').references(() => user.id),
     jobId: text('job_id'),
-    jobSnapshot: text('job_snapshot', { mode: 'json' }).$type<Job>(),
-    profileSnapshot: text('profile_snapshot', {
-      mode: 'json',
-    }).$type<ProfileSnapshot>(),
+    jobSnapshot: jsonb('job_snapshot').$type<Job>(),
+    profileSnapshot: jsonb('profile_snapshot').$type<ProfileSnapshot>(),
     leaseOwner: text('lease_owner'),
-    leaseUntil: integer('lease_until'),
+    leaseUntil: epochMs('lease_until'),
     attemptCount: integer('attempt_count').notNull().default(0),
-    nextAttemptAt: integer('next_attempt_at').notNull().default(0),
-    cancelRequested: integer('cancel_requested', { mode: 'boolean' })
+    nextAttemptAt: epochMs('next_attempt_at').notNull().default(0),
+    cancelRequested: boolean('cancel_requested')
       .notNull()
       .default(false),
     stopReason: text('stop_reason'),
@@ -168,7 +177,7 @@ export const applications = sqliteTable(
       .references(() => profiles.id, { onDelete: 'cascade' }),
 
     applyUrl: text('apply_url').notNull(),
-    sandbox: integer('sandbox', { mode: 'boolean' }).notNull().default(false),
+    sandbox: boolean('sandbox').notNull().default(false),
     scenarioSlug: text('scenario_slug'),
 
     /**
@@ -182,19 +191,19 @@ export const applications = sqliteTable(
 
     failureCode: text('failure_code'),
     failureMessage: text('failure_message'),
-    failureRetryable: integer('failure_retryable', { mode: 'boolean' }),
+    failureRetryable: boolean('failure_retryable'),
 
     /** e.g. `unsupported_ats` — distinct from a post-creation failure. */
     createErrorCode: text('create_error_code'),
     createErrorMessage: text('create_error_message'),
 
-    lastSyncedAt: integer('last_synced_at'),
-    createdAt: integer('created_at')
+    lastSyncedAt: epochMs('last_synced_at'),
+    createdAt: epochMs('created_at')
       .notNull()
-      .default(sql`(unixepoch() * 1000)`),
-    updatedAt: integer('updated_at')
+      .default(nowMs),
+    updatedAt: epochMs('updated_at')
       .notNull()
-      .default(sql`(unixepoch() * 1000)`),
+      .default(nowMs),
   },
   (table) => [
     index('applications_status_idx').on(table.status),
@@ -209,7 +218,7 @@ export const applications = sqliteTable(
  * the ATS rejected. It also outlives the data upstream: Jobo purges sandbox
  * applications after 24 hours.
  */
-export const steps = sqliteTable(
+export const steps = pgTable(
   'steps',
   {
     /** Jobo's step id. Stable across correction rounds of the same step. */
@@ -223,11 +232,11 @@ export const steps = sqliteTable(
     sequence: integer('sequence').notNull(),
 
     /** The full field list Jobo sent for this round. */
-    fieldsJson: text('fields_json', { mode: 'json' }).$type<Field[]>(),
+    fieldsJson: jsonb('fields_json').$type<Field[]>(),
     /** The complete answer snapshot this app submitted for this round. */
-    answersJson: text('answers_json', { mode: 'json' }).$type<Answer[]>(),
+    answersJson: jsonb('answers_json').$type<Answer[]>(),
     /** Why the PREVIOUS round was rejected — the ATS's own errors. */
-    commandErrorsJson: text('command_errors_json', { mode: 'json' }).$type<
+    commandErrorsJson: jsonb('command_errors_json').$type<
       CommandError[]
     >(),
 
@@ -235,7 +244,7 @@ export const steps = sqliteTable(
     status: text('status').notNull(),
 
     /** Per-field provenance: deterministic rule id, LLM reasoning, repairs. */
-    trace: text('trace', { mode: 'json' }).$type<AnswerTrace[]>(),
+    trace: jsonb('trace').$type<AnswerTrace[]>(),
 
     llmModel: text('llm_model'),
     llmMs: integer('llm_ms'),
@@ -244,11 +253,11 @@ export const steps = sqliteTable(
     error: text('error'),
 
     /** When the blocking call handed this round's fields to us. */
-    receivedAt: integer('received_at')
+    receivedAt: epochMs('received_at')
       .notNull()
-      .default(sql`(unixepoch() * 1000)`),
+      .default(nowMs),
     /** When submitAnswers accepted the snapshot. Null if never submitted. */
-    submittedAt: integer('submitted_at'),
+    submittedAt: epochMs('submitted_at'),
   },
   (table) => [
     primaryKey({ columns: [table.stepId, table.correctionRound] }),
@@ -261,7 +270,7 @@ export type ApplicationRow = typeof applications.$inferSelect
 export type StepRow = typeof steps.$inferSelect
 
 /** Redacted HTTP exchanges; access is inherited from the owning application. */
-export const apiExchanges = sqliteTable('api_exchanges', {
+export const apiExchanges = pgTable('api_exchanges', {
   id: text('id').primaryKey(),
   applicationId: text('application_id').notNull().references(() => applications.id, { onDelete: 'cascade' }),
   method: text('method').notNull(),
@@ -270,8 +279,8 @@ export const apiExchanges = sqliteTable('api_exchanges', {
   responseJson: text('response_json'),
   statusCode: integer('status_code'),
   error: text('error'),
-  startedAt: integer('started_at').notNull(),
-  finishedAt: integer('finished_at'),
+  startedAt: epochMs('started_at').notNull(),
+  finishedAt: epochMs('finished_at'),
   elapsedMs: integer('elapsed_ms'),
 }, t => [index('api_exchanges_application_idx').on(t.applicationId, t.startedAt)])
 export type ApiExchangeRow = typeof apiExchanges.$inferSelect

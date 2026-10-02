@@ -18,24 +18,24 @@ export default async function JobPage({
     { slug } = await params
   const job = (await getJobs()).find((j) => j.slug === slug)
   if (!job) notFound()
-  const profile = db
-    .select()
-    .from(profiles)
-    .where(and(eq(profiles.userId, user.id), eq(profiles.archived, false)))
-    .orderBy(desc(profiles.isDefault), desc(profiles.createdAt))
-    .all()
-    .find(isApplicationReady)
-  const existing = db
+  const profile = (
+    await db
+      .select()
+      .from(profiles)
+      .where(and(eq(profiles.userId, user.id), eq(profiles.archived, false)))
+      .orderBy(desc(profiles.isDefault), desc(profiles.createdAt))
+  ).find(isApplicationReady)
+  const [existing] = await db
     .select()
     .from(applications)
     .where(and(eq(applications.userId, user.id), eq(applications.jobId, slug)))
     .orderBy(desc(applications.createdAt))
-    .get()
-  const saved = db
+    .limit(1)
+  const [saved] = await db
     .select()
     .from(savedJobs)
     .where(and(eq(savedJobs.userId, user.id), eq(savedJobs.jobId, slug)))
-    .get()
+    .limit(1)
   return (
     <>
       <Link href="/jobs" className="back-link">

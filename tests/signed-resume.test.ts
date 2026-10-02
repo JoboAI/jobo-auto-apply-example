@@ -13,7 +13,7 @@ let id: string
 beforeAll(async () => {
   const { db, RESUME_DIR } = await import('@/db/client')
   const { user, profiles } = await import('@/db/schema')
-  db.insert(user)
+  await db.insert(user)
     .values({
       id: 'owner',
       name: 'Owner',
@@ -22,21 +22,19 @@ beforeAll(async () => {
       createdAt: new Date(),
       updatedAt: new Date(),
     })
-    .run()
   const { seedSampleProfiles } = await import('@/db/seed')
-  seedSampleProfiles(db, RESUME_DIR)
-  for (const row of db.select().from(profiles).all()) {
-    db.update(profiles).set({ data: {
+  await seedSampleProfiles(db, RESUME_DIR)
+  for (const row of (await db.select().from(profiles))) {
+    await db.update(profiles).set({ data: {
       ...row.data,
       links: [...row.data.links, { label: 'LinkedIn', type: 'linkedin', url: 'https://www.linkedin.com/in/jobo-test-candidate' }],
-    } }).where(eq(profiles.id, row.id)).run()
+    } }).where(eq(profiles.id, row.id))
   }
-  db.update(profiles)
+  await db.update(profiles)
     .set({ userId: 'owner', reviewedAt: Date.now() })
     .where(eq(profiles.id, 'sample-ada-lovelace'))
-    .run()
   const { enqueueApplication } = await import('@/lib/queue')
-  id = enqueueApplication('owner', 'sample-ada-lovelace', {
+  id = await enqueueApplication('owner', 'sample-ada-lovelace', {
     slug: 'multi-step',
     company: 'Cascade',
     mark: 'CA',

@@ -13,7 +13,7 @@ export default async function Page({
 }) {
   const user = await requireUser(),
     { id } = await params
-  const row = db
+  const [row] = await db
     .select()
     .from(profiles)
     .where(
@@ -23,7 +23,7 @@ export default async function Page({
         eq(profiles.archived, false),
       ),
     )
-    .get()
+    .limit(1)
   if (!row) notFound()
   return (
     <div className="profile-editor">

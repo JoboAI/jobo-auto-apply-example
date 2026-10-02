@@ -15,34 +15,30 @@ import {
 import { isTerminal } from './status'
 export async function FeedPage({ savedOnly = false }: { savedOnly?: boolean }) {
   const user = await requireUser()
-  const saved = db
+  const saved = await db
     .select()
     .from(savedJobs)
     .where(eq(savedJobs.userId, user.id))
-    .all()
-  const profile = db
+  const profile = await db
     .select()
     .from(profiles)
     .where(and(eq(profiles.userId, user.id), eq(profiles.archived, false)))
     .orderBy(desc(profiles.isDefault), desc(profiles.createdAt))
-    .all()
   if (!savedOnly && !profile.length) redirect('/onboarding')
-  const apps = db
+  const apps = await db
     .select()
     .from(applications)
     .where(eq(applications.userId, user.id))
     .orderBy(desc(applications.createdAt))
-    .all()
-  const completed = db
+  const completed = await db
     .select({
       id: steps.applicationId,
-      count: sql<number>`count(distinct case when ${steps.submittedAt} is not null then ${steps.stepId} end)`,
+      count: sql<number>`count(distinct case when ${steps.submittedAt} is not null then ${steps.stepId} end)`.mapWith(Number),
     })
     .from(steps)
     .innerJoin(applications, eq(steps.applicationId, applications.id))
     .where(eq(applications.userId, user.id))
     .groupBy(steps.applicationId)
-    .all()
   const applicationStates: Record<string, CardApplication> = {}
   for (const app of apps) {
     if (!app.jobId || applicationStates[app.jobId]) continue

@@ -107,7 +107,13 @@ const schema = z.object({
    * minutes), which the engine also applies, so this only needs to leave room
    * for submission.
    */
+  /** postgres://user:password@host:port/database. Required: there is no embedded fallback. */
+  DATABASE_URL: z
+    .string()
+    .regex(/^postgres(ql)?:\/\//, 'must be a postgres:// connection URL'),
+
   ANSWER_BUDGET_MS: z.coerce.number().int().positive().default(90_000),
+  /** Resume PDFs only. Jobo downloads them over HTTP for file fields. */
   DATA_DIR: z.string().default('./.data'),
   DEFAULT_SANDBOX: z
     .string()
@@ -157,6 +163,7 @@ function raw() {
     OPENROUTER_APP_NAME: process.env.OPENROUTER_APP_NAME,
     OPENROUTER_APP_URL: process.env.OPENROUTER_APP_URL || undefined,
     OPENROUTER_PROVIDER_SORT: process.env.OPENROUTER_PROVIDER_SORT || undefined,
+    DATABASE_URL: process.env.DATABASE_URL,
     ANSWER_BUDGET_MS: process.env.ANSWER_BUDGET_MS,
     DATA_DIR: process.env.DATA_DIR,
     RESTRICT_APPLY_HOSTS: process.env.RESTRICT_APPLY_HOSTS,

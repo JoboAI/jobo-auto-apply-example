@@ -1,23 +1,16 @@
 # syntax=docker/dockerfile:1
 
-# Node 22, not 20: package.json declares engines.node >=22, and better-sqlite3
-# compiles a native binding against whichever Node builds it — the builder and
-# the runner have to agree, or the binding fails to load at boot.
+# Node 22, not 20: package.json declares engines.node >=22.
 FROM node:22-slim AS builder
 WORKDIR /app
-
-# better-sqlite3 has no prebuild for every platform, so keep a toolchain around
-# for the fallback source build.
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends python3 make g++ \
-    && rm -rf /var/lib/apt/lists/*
 
 COPY package.json package-lock.json .npmrc ./
 RUN npm ci
 
 COPY . .
-# No env is read at build time — every route is server-rendered on demand — so
-# this needs no secrets. Keep it that way: a build that needs a key cannot be
+# No env is read at build time — every route is server-rendered on demand and
+# the database pool opens on first query — so this needs no secrets and no
+# DATABASE_URL. Keep it that way: a build that needs a key cannot be
 # verified in CI.
 RUN npm run build
 
@@ -28,13 +21,13 @@ ENV NODE_ENV=production
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 
-# Where SQLite and the uploaded resumes live. Mount a volume here — without one
-# every restart starts from an empty database.
+# Uploaded resume PDFs. Mount a volume here: Jobo downloads them over HTTP for
+# file fields. The data itself lives in Postgres (DATABASE_URL).
 ENV DATA_DIR=/data
 
-# next start needs the built app plus its dependencies. better-sqlite3 is in
+# next start needs the built app plus its dependencies. pg is in
 # serverExternalPackages, so Next does not bundle it and the real node_modules
-# must come along; the native binding is already compiled for this Node major.
+# must come along.
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/.next ./.next
 # public/ carries the brand assets (logo, favicons). It genuinely did not exist
@@ -43,8 +36,8 @@ COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/next.config.ts ./next.config.ts
-# Migrations run on first query, from process.cwd()/db/migrations. The seed
-# assets (sample personas + resume PDFs) also live under db/.
+# `npm run db:migrate` applies process.cwd()/db/migrations. The seed assets
+# (sample personas + resume PDFs) also live under db/.
 COPY --from=builder /app/db ./db
 # Worker sources and TypeScript path aliases run in a separate container.
 COPY --from=builder /app/lib ./lib

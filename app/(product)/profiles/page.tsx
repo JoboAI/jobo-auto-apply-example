@@ -9,12 +9,11 @@ import { ResumeUpload } from '@/components/ResumeUpload'
 import { ProfileControls } from '@/components/ProfileControls'
 export default async function ProfilesPage() {
   const user = await requireUser()
-  const rows = db
+  const rows = await db
     .select()
     .from(profiles)
     .where(and(eq(profiles.userId, user.id), eq(profiles.archived, false)))
     .orderBy(desc(profiles.isDefault), desc(profiles.createdAt))
-    .all()
   return (
     <>
       <div className="page-heading">

@@ -1,0 +1,21 @@
+# Local Postgres for development and tests: `npm run db:up`.
+# Port 5433 on loopback, so it never clashes with a Postgres already on 5432.
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: auto_apply
+      POSTGRES_PASSWORD: auto_apply
+      POSTGRES_DB: auto_apply
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U auto_apply -d auto_apply"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  postgres-data:
