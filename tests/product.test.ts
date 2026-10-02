@@ -16,6 +16,10 @@ process.env.OPENROUTER_API_KEY = 'test-fixture'
 process.env.PUBLIC_BASE_URL = 'https://demo.jobo.world'
 process.env.RESUME_URL_SIGNING_SECRET =
   'test-signing-secret-that-is-long-enough'
+process.env.API_KEY_ENCRYPTION_SECRET =
+  'test-encryption-secret-that-is-long-enough'
+process.env.JOBO_API_BASE_URL = 'https://connect.example.test'
+process.env.JOBO_STATUS_URL = 'https://status.example.test/uptime'
 let db: typeof import('@/db/client').db
 let schema: typeof import('@/db/schema')
 let queue: typeof import('@/lib/queue')
@@ -262,6 +266,76 @@ describe('private profiles and durable applications', () => {
           .where(eq(schema.applications.id, other.id))
       )[0]?.cancelRequested,
     ).toBe(false)
+  })
+  it('applies to real jobs only in production mode, on the visitor’s sealed key', async () => {
+    const realId = '9d1c2b3a-4e5f-4a6b-8c7d-0e1f2a3b4c5d'
+    const visitorKey = 'jbe_live_abcdefghijklmnopqrstu_0123456789abcdefghijklmnopqrstuvwxyzABCDEFG'
+    const seen: { url: string; key: string | null }[] = []
+    vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      seen.push({ url, key: new Headers(init?.headers).get('x-api-key') })
+      if (url.startsWith('https://status.example.test'))
+        return Response.json({ auto_apply_providers: [{ provider_id: 'lever', display_name: 'Lever' }] })
+      if (url === `https://connect.example.test/api/jobs/${realId}`)
+        return Response.json({
+          id: realId,
+          title: 'Platform Engineer',
+          company: { name: 'Globex' },
+          apply_url: 'https://jobs.lever.co/globex/1/apply',
+          locations: [{ location: 'Toronto, ON, Canada', country: 'CA' }],
+          source: 'lever',
+        })
+      return new Response('not found', { status: 404 })
+    })
+    try {
+      identity.id = 'alice'
+      const { startApplicationAction } = await import('@/app/actions/applications')
+      const refused = await startApplicationAction({ jobId: realId, profileId: 'sample-ada-lovelace' })
+      expect(refused).toMatchObject({ ok: false, error: expect.stringMatching(/production mode/) })
+      expect(seen).toHaveLength(0)
+
+      const { connectApiKey } = await import('@/lib/user-settings')
+      await connectApiKey('alice', visitorKey)
+      const started = await startApplicationAction({ jobId: realId, profileId: 'sample-ada-lovelace' })
+      expect(started.ok).toBe(true)
+      expect(seen.find((c) => c.url.includes(realId))?.key).toBe(visitorKey)
+      const [row] = await db
+        .select()
+        .from(schema.applications)
+        .where(eq(schema.applications.id, (started as { id: string }).id))
+      expect(row).toMatchObject({
+        jobId: realId,
+        sandbox: false,
+        scenarioSlug: null,
+        applyUrl: 'https://jobs.lever.co/globex/1/apply',
+      })
+      expect(row.apiKeyCiphertext).toBeTruthy()
+      expect(row.apiKeyCiphertext).not.toContain(visitorKey)
+      expect(row.jobSnapshot?.countryCode).toBe('CA')
+
+      // Back in sandbox, the same real job is refused again.
+      const { setDemoMode } = await import('@/lib/user-settings')
+      await setDemoMode('alice', 'sandbox')
+      expect(
+        (await startApplicationAction({ jobId: realId, profileId: 'sample-ada-lovelace', retry: true })).ok,
+      ).toBe(false)
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+  it('never queues a production job without a key, or a sandbox job with one', async () => {
+    const realJob: Job = {
+      ...job,
+      slug: '1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d',
+      applyUrl: 'https://jobs.lever.co/globex/2',
+      production: true,
+    }
+    await expect(
+      queue.enqueueApplication('alice', 'sample-ada-lovelace', realJob),
+    ).rejects.toThrow(/API key/)
+    await expect(
+      queue.enqueueApplication('alice', 'sample-ada-lovelace', job, false, { apiKeyCiphertext: 'x' }),
+    ).rejects.toThrow(/Invalid sandbox job/)
   })
   it('archives profiles without deleting application history', async () => {
     const { deleteProfileAction } = await import('@/app/actions/profiles')

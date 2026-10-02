@@ -73,6 +73,23 @@ const schema = z.object({
   JOBO_API_BASE_URL: z.string().url().default('https://connect.jobo.world'),
 
   /**
+   * OPTIONAL. Turns on production mode, where a visitor connects their own
+   * Jobo API key, browses real jobs and applies on that key. The key is
+   * stored encrypted with this secret because the background worker needs it
+   * after the browser has gone. Unset, the toggle says production mode is not
+   * configured and the demo stays sandbox-only.
+   */
+  API_KEY_ENCRYPTION_SECRET: z
+    .string()
+    .min(32, 'must be at least 32 characters')
+    .optional(),
+  /** Public list of the ATSes Auto Apply can route to (no key needed). */
+  JOBO_STATUS_URL: z
+    .string()
+    .url()
+    .default('https://enterprise.jobo.world/api/v1/public/status/uptime'),
+
+  /**
    * OPTIONAL. Everything in the synchronous loop works without a public
    * origin — the one thing that needs it is `file` fields, because Jobo
    * downloads the resume from a public HTTPS URL this app serves. When unset,
@@ -155,6 +172,8 @@ function raw() {
   return {
     JOBO_API_KEY: process.env.JOBO_API_KEY,
     JOBO_API_BASE_URL: process.env.JOBO_API_BASE_URL,
+    API_KEY_ENCRYPTION_SECRET: process.env.API_KEY_ENCRYPTION_SECRET || undefined,
+    JOBO_STATUS_URL: process.env.JOBO_STATUS_URL || undefined,
     PUBLIC_BASE_URL: process.env.PUBLIC_BASE_URL || undefined,
     RESUME_URL_SIGNING_SECRET: process.env.RESUME_URL_SIGNING_SECRET,
     OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,

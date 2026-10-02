@@ -88,7 +88,7 @@ export default async function Page({
               {row.jobSnapshot?.mark ?? 'JB'}
             </span>
             <div className="application-role">
-              <strong>{row.jobSnapshot?.role ?? 'Sandbox application'}</strong>
+              <strong>{row.jobSnapshot?.role ?? (row.sandbox ? 'Sandbox application' : 'Application')}</strong>
               <span>
                 {row.jobSnapshot?.company} · {row.jobSnapshot?.location}
               </span>

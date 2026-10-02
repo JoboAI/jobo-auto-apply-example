@@ -4,7 +4,9 @@ import { and, eq } from 'drizzle-orm'
 import { db } from '@/db/client'
 import { applications } from '@/db/schema'
 import { requireUser } from '@/lib/session'
-import { getJobs, validSandboxUrl } from '@/lib/jobs'
+import { getJobs, isProductionJobId, validProductionTarget, validSandboxUrl } from '@/lib/jobs'
+import { getProductionJob, JobsApiError } from '@/lib/jobo/jobs-api'
+import { openApiKey, productionKeyCiphertext } from '@/lib/user-settings'
 import { enqueueApplication } from '@/lib/queue'
 import { isTerminal } from '@/lib/status'
 
@@ -15,18 +17,50 @@ export async function startApplicationAction(input: {
 }): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
   const user = await requireUser()
   try {
-    const job = (await getJobs()).find((j) => j.slug === input.jobId)
-    if (!job?.available || !validSandboxUrl(job.applyUrl, job.slug))
-      return {
-        ok: false,
-        error: 'This sandbox job is not accepting applications right now.',
+    let id: string
+    if (isProductionJobId(input.jobId)) {
+      // A real job: only in production mode, on the visitor's own key, and
+      // re-read from Jobo here rather than trusting anything from the browser.
+      const apiKeyCiphertext = await productionKeyCiphertext(user.id)
+      if (!apiKeyCiphertext)
+        return {
+          ok: false,
+          error: 'Switch to production mode with your Jobo API key to apply to real jobs.',
+        }
+      let job
+      try {
+        job = await getProductionJob(openApiKey(apiKeyCiphertext), input.jobId)
+      } catch (error) {
+        return {
+          ok: false,
+          error:
+            error instanceof JobsApiError
+              ? error.message
+              : 'We could not load this job from Jobo. Please try again.',
+        }
       }
-    const id = await enqueueApplication(
-      user.id,
-      input.profileId,
-      job,
-      input.retry === true,
-    )
+      if (!job.available || !validProductionTarget(job.slug, job.applyUrl))
+        return {
+          ok: false,
+          error: 'Auto Apply does not support this job’s application system.',
+        }
+      id = await enqueueApplication(user.id, input.profileId, job, input.retry === true, {
+        apiKeyCiphertext,
+      })
+    } else {
+      const job = (await getJobs()).find((j) => j.slug === input.jobId)
+      if (!job?.available || !validSandboxUrl(job.applyUrl, job.slug))
+        return {
+          ok: false,
+          error: 'This sandbox job is not accepting applications right now.',
+        }
+      id = await enqueueApplication(
+        user.id,
+        input.profileId,
+        job,
+        input.retry === true,
+      )
+    }
     revalidatePath('/applications')
     revalidatePath('/jobs')
     revalidatePath('/saved')

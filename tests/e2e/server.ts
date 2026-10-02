@@ -27,6 +27,40 @@ process.env.OPENROUTER_API_KEY = 'fixture-openrouter'
 process.env.PUBLIC_BASE_URL = 'https://demo.jobo.world'
 process.env.RESUME_URL_SIGNING_SECRET =
   'fixture-resume-signing-secret-32-characters'
+process.env.API_KEY_ENCRYPTION_SECRET =
+  'fixture-api-key-encryption-secret-32-characters'
+// Production mode: the only visitor key the stubbed Jobo API accepts.
+const VISITOR_KEY = 'jbe_live_e2eVisitorFixture0000_000000000000000000000000000000000000000'
+const productionJobs = [
+  {
+    id: '7c9e6679-7425-40de-944b-e07fc1f90ae7',
+    title: 'Platform Engineer',
+    company: { name: 'Globex Systems', logo_url: null },
+    summary: 'Run the platform that runs everything else.',
+    description: '<p>Kubernetes, Postgres and on-call you can live with.</p>',
+    listing_url: 'https://jobs.lever.co/globex/7c9e6679',
+    apply_url: 'https://jobs.lever.co/globex/7c9e6679/apply',
+    locations: [{ location: 'Toronto, ON, Canada', city: 'Toronto', region: 'ON', country: 'CA' }],
+    employment_type: 'full_time',
+    workplace_type: 'hybrid',
+    source: 'lever',
+    responsibilities: ['Own the deploy pipeline', 'Keep Postgres fast'],
+  },
+  {
+    id: '16fd2706-8baf-433b-82eb-8c7fada847da',
+    title: 'Product Designer',
+    company: { name: 'Initech', logo_url: null },
+    summary: 'Design the tools people use every day.',
+    description: null,
+    listing_url: 'https://job-boards.greenhouse.io/initech/jobs/42',
+    apply_url: 'https://job-boards.greenhouse.io/initech/jobs/42',
+    locations: [{ location: 'Remote — Europe', country: null }],
+    employment_type: 'full_time',
+    workplace_type: 'remote',
+    source: 'greenhouse',
+    responsibilities: [],
+  },
+]
 const originalFetch = globalThis.fetch
 const emails: string[] = []
 const upstream = new Map<string, Record<string, unknown>>()
@@ -54,6 +88,34 @@ globalThis.fetch = async (input, options) => {
       model: 'deepseek/deepseek-v4-flash-0731',
       choices: [{ message: { content: JSON.stringify(profile) } }],
     })
+  if (url.hostname === 'enterprise.jobo.world' && url.pathname === '/api/v1/public/status/uptime')
+    return Response.json({
+      auto_apply_providers: [
+        { provider_id: 'greenhouse', display_name: 'Greenhouse' },
+        { provider_id: 'jobosandbox', display_name: 'Sandbox' },
+        { provider_id: 'lever', display_name: 'Lever' },
+      ],
+    })
+  if (url.hostname === 'connect.jobo.world' && url.pathname.startsWith('/api/jobs')) {
+    if (new Headers(options?.headers).get('X-Api-Key') !== VISITOR_KEY)
+      return Response.json({ error: 'Invalid or expired API key' }, { status: 401 })
+    if (url.pathname === '/api/jobs') {
+      const q = (url.searchParams.get('q') ?? '').toLowerCase()
+      const sources = (url.searchParams.get('sources') ?? '').split(',')
+      const matches = productionJobs.filter(
+        (j) => sources.includes(j.source) && `${j.title} ${j.company.name}`.toLowerCase().includes(q),
+      )
+      return Response.json({ jobs: matches, total: matches.length, page: 1, page_size: 25, total_pages: 1 })
+    }
+    const job = productionJobs.find((j) => url.pathname === `/api/jobs/${j.id}`)
+    return job ? Response.json(job) : Response.json({ error: 'Not found' }, { status: 404 })
+  }
+  if (
+    url.hostname === 'connect.jobo.world' &&
+    url.pathname === '/api/auto-apply/applications' &&
+    (options?.method ?? 'GET').toUpperCase() === 'GET'
+  )
+    return Response.json({ data: [], has_more: false, next_cursor: null })
   if (url.hostname === 'connect.jobo.world') {
     if (url.pathname.endsWith('/sandbox/scenarios'))
       return Response.json({

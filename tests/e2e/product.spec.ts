@@ -211,6 +211,9 @@ test('account → resume → saved role → hands-free application, desktop and 
   await expect(apiPreview.getByRole('region', { name: 'Response 1', exact: true })).toContainText('awaiting_answers')
   await expect(apiPreview).not.toContainText('jbe_test_fixture')
   await expect(apiPreview).not.toContainText('fixture-openrouter')
+  await expect(apiPreview.getByRole('button', { name: 'Copy request 1 as cURL' })).toBeVisible()
+  await expect(apiPreview.getByRole('button', { name: 'Copy: Request 1 headers' })).toBeVisible()
+  await apiPreview.locator('.api-exchange').first().screenshot({ path: 'test-results/api-exchange-desktop.png', animations: 'disabled' })
   await tracker.screenshot({
     path: 'test-results/application-desktop.png',
     animations: 'disabled',
@@ -336,6 +339,57 @@ test('account → resume → saved role → hands-free application, desktop and 
     animations: 'disabled',
     fullPage: true,
   })
+  // Production mode: the visitor's own key, real (stubbed) jobs, real apply.
+  await tracker.goto('/jobs')
+  await tracker.getByRole('button', { name: 'Production', exact: true }).click()
+  const dialog = tracker.getByRole('dialog')
+  await expect(dialog.getByRole('heading', { name: 'Apply to real jobs with your API key' })).toBeVisible()
+  const connect = dialog.getByRole('button', { name: 'Connect and switch' })
+  await expect(connect).toBeDisabled()
+  await dialog.getByLabel('I understand').check()
+  await dialog.getByLabel('Jobo API key').fill('jbe_live_notTheRightKey000000_0000000000000000')
+  await connect.click()
+  await expect(dialog.getByRole('alert')).toContainText('rejected')
+  await dialog.getByLabel('Jobo API key').fill('jbe_live_e2eVisitorFixture0000_000000000000000000000000000000000000000')
+  await tracker.screenshot({ path: 'test-results/production-dialog-desktop.png', animations: 'disabled' })
+  await connect.click()
+  await expect(tracker.getByRole('heading', { name: 'Apply to real jobs.' })).toBeVisible()
+  await expect(tracker.getByRole('button', { name: 'Production', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await expect(tracker.locator('.job-card')).toHaveCount(2)
+  await expect(tracker.locator('.workspace-label')).toHaveText('PRODUCTION MODE')
+  await tracker.getByLabel('Search jobs').fill('platform')
+  await tracker.getByRole('button', { name: 'Search', exact: true }).click()
+  await expect(tracker).toHaveURL(/q=platform/)
+  const realCard = tracker.locator('.job-card')
+  await expect(realCard).toHaveCount(1)
+  await expect(realCard.getByRole('link', { name: /View Platform Engineer on jobs.lever.co/ }))
+    .toHaveAttribute('href', 'https://jobs.lever.co/globex/7c9e6679')
+  await expect(realCard).toContainText('Auto Apply · Lever')
+  await tracker.screenshot({ path: 'test-results/production-jobs-desktop.png', animations: 'disabled' })
+  await realCard.getByRole('button', { name: 'Apply with Auto Apply', exact: true }).click()
+  await expect(
+    realCard.getByRole('button', { name: 'Submitted', exact: true }),
+  ).toBeVisible({ timeout: 30000 })
+  await realCard.getByRole('link', { name: 'Platform Engineer', exact: true }).click()
+  await expect(tracker.getByText(/This is a real job on Lever/)).toBeVisible()
+  await tracker.setViewportSize({ width: 390, height: 844 })
+  expect(await tracker.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+  await tracker.screenshot({ path: 'test-results/production-job-mobile.png', animations: 'disabled' })
+  // The toggle must not run into the logo on a phone.
+  const brand = await tracker.locator('.mobile-brand').boundingBox()
+  const toggle = await tracker.locator('.mode-toggle').boundingBox()
+  expect(brand!.x + brand!.width).toBeLessThanOrEqual(toggle!.x)
+  await tracker.setViewportSize({ width: 1440, height: 1050 })
+  // With a key stored, switching is one click each way.
+  await tracker.getByRole('button', { name: 'Sandbox', exact: true }).click()
+  await expect(tracker.getByRole('heading', { name: 'See Auto Apply in action.' })).toBeVisible()
+  await tracker.getByRole('button', { name: 'Production', exact: true }).click()
+  await expect(tracker.getByRole('heading', { name: 'Apply to real jobs.' })).toBeVisible()
+  await tracker.getByRole('button', { name: /Manage Jobo API key/ }).click()
+  await tracker.getByRole('dialog').getByRole('button', { name: 'Disconnect key' }).click()
+  await expect(tracker.getByRole('heading', { name: 'See Auto Apply in action.' })).toBeVisible()
+  await expect(tracker.getByRole('button', { name: /Manage Jobo API key/ })).toHaveCount(0)
+  await tracker.goto('/settings')
   await tracker.getByRole('button', { name: 'Log out', exact: true }).click()
   await expect(
     tracker.getByRole('heading', { name: /Your app. Our API./ }),

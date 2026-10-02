@@ -6,9 +6,12 @@ import { ArrowLeft, MapPin, BriefcaseBusiness, Sparkles } from 'lucide-react'
 import { db } from '@/db/client'
 import { profiles, applications, savedJobs } from '@/db/schema'
 import { requireUser } from '@/lib/session'
-import { getJobs } from '@/lib/jobs'
+import { getJobs, isProductionJobId } from '@/lib/jobs'
+import type { Job } from '@/lib/jobs-types'
+import { getProductionJob, JobsApiError } from '@/lib/jobo/jobs-api'
+import { productionApiKey } from '@/lib/user-settings'
 import { ApplyButton, SaveButton } from '@/components/JobActions'
-import { SandboxJobLink } from '@/components/SandboxJobLink'
+import { ProductionJobLink, SandboxJobLink } from '@/components/SandboxJobLink'
 export default async function JobPage({
   params,
 }: {
@@ -16,8 +19,40 @@ export default async function JobPage({
 }) {
   const user = await requireUser(),
     { slug } = await params
-  const job = (await getJobs()).find((j) => j.slug === slug)
+  let job: Job | undefined
+  if (isProductionJobId(slug)) {
+    const apiKey = await productionApiKey(user.id)
+    if (!apiKey)
+      return (
+        <div className="empty-state">
+          <h1>This is a real job.</h1>
+          <p>Switch to production mode with your Jobo API key to view and apply to it.</p>
+          <Link href="/jobs" className="button primary">
+            Back to jobs
+          </Link>
+        </div>
+      )
+    try {
+      job = await getProductionJob(apiKey, slug)
+    } catch (error) {
+      if (error instanceof JobsApiError && error.kind === 'not_found') notFound()
+      return (
+        <div className="empty-state">
+          <h1>Job unavailable</h1>
+          <p>
+            {error instanceof JobsApiError
+              ? error.message
+              : 'We couldn’t load this job from Jobo right now.'}
+          </p>
+          <Link href="/jobs" className="button primary">
+            Back to jobs
+          </Link>
+        </div>
+      )
+    }
+  } else job = (await getJobs()).find((j) => j.slug === slug)
   if (!job) notFound()
+  const production = !!job.production
   const profile = (
     await db
       .select()
@@ -39,12 +74,17 @@ export default async function JobPage({
   return (
     <>
       <Link href="/jobs" className="back-link">
-        <ArrowLeft size={16} /> All sandbox jobs
+        <ArrowLeft size={16} /> {production ? 'All jobs' : 'All sandbox jobs'}
       </Link>
       <div className="detail-layout">
         <article className="surface job-detail">
           <div className="spread">
-            <span className="company-mark large-mark purple">{job.mark}</span>
+            {job.logoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img className="company-mark large-mark company-logo" src={job.logoUrl} alt="" />
+            ) : (
+              <span className="company-mark large-mark purple">{job.mark}</span>
+            )}
             <SaveButton jobId={slug} saved={!!saved} />
           </div>
           <p className="company-name">{job.company}</p>
@@ -63,17 +103,22 @@ export default async function JobPage({
           <hr />
           <h2>Meet {job.company}</h2>
           <p>{job.about}</p>
-          <h2>What you’ll work on</h2>
-          <ul className="responsibilities">
-            {job.responsibilities.map((r) => (
-              <li key={r}>{r}</li>
-            ))}
-          </ul>
-          <div className="notice">
+          {job.responsibilities.length > 0 && (
+            <>
+              <h2>What you’ll work on</h2>
+              <ul className="responsibilities">
+                {job.responsibilities.map((r) => (
+                  <li key={r}>{r}</li>
+                ))}
+              </ul>
+            </>
+          )}
+          <div className={`notice ${production ? 'warning' : ''}`}>
             <Sparkles size={18} />
             <span>
-              This is a fictional sandbox role. Try a real application flow
-              without contacting an employer.
+              {production
+                ? `This is a real job on ${job.sourceName ?? 'the employer’s ATS'}. Applying submits your profile to the employer on your own Jobo API key.`
+                : 'This is a fictional sandbox role. Try a real application flow without contacting an employer.'}
             </span>
           </div>
         </article>
@@ -82,7 +127,7 @@ export default async function JobPage({
             <span className="mini-icon">
               <Sparkles size={21} />
             </span>
-            <h2>Test Auto Apply on this job.</h2>
+            <h2>{production ? 'Apply with Auto Apply.' : 'Test Auto Apply on this job.'}</h2>
             <p>
               Start the API flow with your reviewed profile. The background
               worker discovers fields, prepares answers, and tracks the result.
@@ -98,7 +143,11 @@ export default async function JobPage({
               available={job.available}
               existingId={existing?.id}
             />
-            <SandboxJobLink url={job.applyUrl} slug={job.slug} title={job.role} />
+            {production ? (
+              <ProductionJobLink url={job.listingUrl ?? job.applyUrl} ats={job.sourceName} title={job.role} />
+            ) : (
+              <SandboxJobLink url={job.applyUrl} slug={job.slug} title={job.role} />
+            )}
             <small>
               We only use facts you’ve provided. If something’s missing, we stop
               and let you know.

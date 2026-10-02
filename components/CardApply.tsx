@@ -11,11 +11,13 @@ export function CardApply({
   profileId,
   available,
   application,
+  production = false,
 }: {
   jobId: string
   profileId?: string
   available: boolean
   application?: CardApplication
+  production?: boolean
 }) {
   const router = useRouter()
   const [pending, setPending] = useState(false)
@@ -158,7 +160,11 @@ export function CardApply({
           </Link>
         </div>
       ) : (
-        <p className="card-apply-hint">Sandbox only · Runs in the background</p>
+        <p className="card-apply-hint">
+          {production
+            ? 'Real employer · Your API key · Runs in the background'
+            : 'Sandbox only · Runs in the background'}
+        </p>
       )}
       {error && (
         <p className="inline-error" role="alert">

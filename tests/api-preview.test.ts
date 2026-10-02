@@ -41,7 +41,11 @@ describe('redacted API previews', () => {
 
   it('omits non-JSON bodies and labels oversized captures', () => {
     expect(jsonBody('<html>secret</html>')).toEqual({ notice: 'Non-JSON body omitted from preview.' })
-    expect(JSON.parse(previewJson({ data: 'x'.repeat(70000) })).notice).toMatch(/truncated/)
+    expect(JSON.parse(previewJson({ data: 'x'.repeat(300000) })).notice).toMatch(/truncated/)
+    // An oversized HTTP message keeps its headers and cuts only the body.
+    const message = JSON.parse(previewJson({ headers: { 'content-type': 'application/json' }, body: { data: 'x'.repeat(300000) } }))
+    expect(message).toMatchObject({ headers: { 'content-type': 'application/json' }, truncated: true })
+    expect(message.body_excerpt.length).toBeLessThanOrEqual(256 * 1024)
   })
 
   it('records an actual request and response but preserves transport headers, bodies and readable response', async () => {
@@ -102,4 +106,27 @@ describe('redacted API previews', () => {
     } finally { warning.mockRestore() }
   })
 
+})
+
+describe('preview display', () => {
+  it('splits a stored message into headers and a pretty body, tolerating every stored shape', async () => {
+    const { parsePreviewMessage } = await import('@/lib/jobo/api-preview')
+    expect(parsePreviewMessage(JSON.stringify({ headers: { 'content-type': 'application/json', 'retry-after': null }, body: { ok: true } })))
+      .toEqual({ headers: [['content-type', 'application/json']], body: '{\n  "ok": true\n}', truncated: false })
+    expect(parsePreviewMessage(JSON.stringify({ headers: {}, body: null })).body).toBeNull()
+    expect(parsePreviewMessage(JSON.stringify({ notice: 'old', excerpt: 'abc' }))).toMatchObject({ body: 'abc', truncated: true })
+    expect(parsePreviewMessage('not json')).toMatchObject({ body: 'not json' })
+  })
+  it('builds a runnable cURL with the key left as a variable', async () => {
+    const { curlCommand } = await import('@/lib/jobo/api-preview')
+    const curl = curlCommand('POST', 'https://connect.jobo.world/api/auto-apply/applications', {
+      headers: [['content-type', 'application/json'], ['idempotency-key', "it's-1"]],
+      body: '{"apply_url":"https://x"}',
+      truncated: false,
+    })
+    expect(curl).toContain('curl -X POST')
+    expect(curl).toContain('"X-Api-Key: $JOBO_API_KEY"')
+    expect(curl).toContain("-H 'idempotency-key: it'\\''s-1'")
+    expect(curl).toContain(`--data '{"apply_url":"https://x"}'`)
+  })
 })

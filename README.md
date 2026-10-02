@@ -64,6 +64,7 @@ Edit `.env.local`. All credentials stay server-side; do not prefix them with `NE
 | `RESUME_URL_SIGNING_SECRET` | A different random secret, at least 32 characters |
 | `PUBLIC_BASE_URL` | Your app's publicly reachable HTTPS origin on port 443, without a path |
 | `DATA_DIR` | A writable directory for PDFs; defaults to `./.data` |
+| `API_KEY_ENCRYPTION_SECRET` | Optional. At least 32 random characters; enables [production mode](#production-mode), where visitors apply to real jobs on their own Jobo API key |
 
 Generate each secret separately, for example with `openssl rand -hex 32`.
 Replace the `https://demo.jobo.world` origin values in the example environment;
@@ -71,7 +72,7 @@ that hosted site cannot serve files from your local database.
 
 The browser can use localhost for account/profile development, but Jobo must be able to download resumes from `PUBLIC_BASE_URL`. Use your own deployed app or an HTTPS tunnel to the local web server. The worker and web server must share the same database, PDF directory, and signing secret. Email delivery must work for new accounts to verify; email failures are reported rather than treated as success.
 
-Keep the sandbox settings from `.env.example`. This product also enforces sandbox-only application targets in code; changing an environment flag does not enable live-employer applications.
+Keep the sandbox settings from `.env.example`. Sandbox mode only ever applies to `sandbox.jobo.world`, enforced in code. Applications to real employers happen only in [production mode](#production-mode), on the visitor's own API key, after they accept a warning.
 
 ### 3. Start the web app
 
@@ -123,6 +124,16 @@ Reasoning is disabled. The model call has a 90-second ceiling, shortened to leav
 
 Sensitive fields never go to the answer model. Users choose whether to use an advertised decline option or leave sensitive questions unanswered. The app does not collect or infer demographic answers. Optional location, authorization, sponsorship, availability, and relocation facts may remain unanswered; a form requiring a missing fact cannot be completed automatically.
 
+## Production mode
+
+The top bar switches between **Sandbox** (fictional jobs on `sandbox.jobo.world`, the deployment's `JOBO_API_KEY`) and **Production**. Production asks for the visitor's own Jobo API key, shows a one-time warning that applications go to real employers, and then:
+
+- Searches the live catalog with `GET /api/jobs` on the visitor's key, with `sources` limited to the ATSes Auto Apply can route to. That list comes from the public status API (`JOBO_STATUS_URL`) minus `jobosandbox`, with a built-in fallback. Search is billed per job returned, so results are cached in memory for five minutes per key and query, because the feed re-renders while an application runs. Job detail and saved jobs use `GET /api/jobs/{id}`, which is free.
+- Creates applications with `job_id` on the visitor's key, so they belong to the visitor's Jobo account. The account needs Auto Apply enabled. Jobo checks that at create time, and the demo explains `auto_apply_not_enabled` and similar refusals.
+- Stores the key AES-256-GCM sealed with `API_KEY_ENCRYPTION_SECRET` (`lib/secret-box.ts`), because the background worker needs it after the browser closes. Each queued application snapshots the sealed key, so a run finishes on the key it started with. The snapshot is cleared when the run is terminal. Disconnecting deletes the stored key.
+
+Production mode is off unless `API_KEY_ENCRYPTION_SECRET` is set. Rotating that secret disconnects every stored key.
+
 ## Persistence and recovery
 
 - Better Auth owns email/password accounts, verification, recovery, sessions, and authentication rate limits. Protected data actions check ownership.
@@ -132,7 +143,7 @@ Sensitive fields never go to the answer model. Users choose whether to use an ad
 - Create idempotency keys are persisted before network calls, and answers before submission. Recovery reuses the existing attempt. Confirmed or uncertain submissions cannot be started again through ordinary retry.
 - After six failed exchanges, the worker moves to cancellation/reconciliation if an upstream ID is known; otherwise it pauses for operator review. Create recovery stops after a conservative 20-hour window, before the API's 24-hour idempotency expiry. Unreconciled records stay blocked from duplicate submission.
 
-The private API inspector captures up to 100 HTTP calls per application, with a 64K-character limit per JSON preview and visible truncation indicators. Older records have no historical capture. An absent response is never evidence that submission did not happen. A failure-triggered cancellation is displayed as **Couldn’t Complete**; a user cancellation as **Canceled**.
+The private API inspector captures up to 100 HTTP calls per application, shown as separate header and body code blocks with copy and copy-as-cURL; an oversized body is cut at 256K characters with a visible truncation label. Older records have no historical capture. An absent response is never evidence that submission did not happen. A failure-triggered cancellation is displayed as **Couldn’t Complete**; a user cancellation as **Canceled**.
 
 ## Deploy your own instance
 

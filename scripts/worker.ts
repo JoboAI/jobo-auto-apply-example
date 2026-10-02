@@ -50,7 +50,7 @@ async function run(id: string) {
     ) {
       await db
         .update(applications)
-        .set({ status: 'canceled', updatedAt: Date.now() })
+        .set({ status: 'canceled', apiKeyCiphertext: null, updatedAt: Date.now() })
         .where(eq(applications.id, id))
     } else {
       if (!row.joboApplicationId)

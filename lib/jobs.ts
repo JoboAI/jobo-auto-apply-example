@@ -53,6 +53,30 @@ export function validSandboxUrl(value: string, slug: string): boolean {
     return false
   }
 }
+/**
+ * A production job's destination: a Jobo job id plus an https apply URL. Jobo
+ * resolves the ATS from the job id itself; the URL is kept for display and
+ * as the audit record of where the application went.
+ */
+export function validProductionTarget(jobId: string, applyUrl: string): boolean {
+  if (!isProductionJobId(jobId)) return false
+  try {
+    const u = new URL(applyUrl)
+    return u.protocol === 'https:' && !u.username && !u.password
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Production jobs are keyed by their Jobo UUID, sandbox jobs by a readable
+ * slug (`multi-step`). Routing, saving and applying all branch on this; a
+ * sandbox row is still pinned to sandbox.jobo.world by validSandboxUrl.
+ */
+export function isProductionJobId(id: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
+}
+
 export async function getJobs(): Promise<Job[]> {
   const response = await fetch('https://sandbox.jobo.world/api/jobs', {
     cache: 'no-store',

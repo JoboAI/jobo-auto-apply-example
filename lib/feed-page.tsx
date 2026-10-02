@@ -5,7 +5,14 @@ import Link from 'next/link'
 import { db } from '@/db/client'
 import { profiles, savedJobs, applications, steps } from '@/db/schema'
 import { requireUser } from './session'
-import { getJobs } from './jobs'
+import { getJobs, isProductionJobId } from './jobs'
+import type { Job } from './jobs-types'
+import {
+  getProductionJob,
+  JobsApiError,
+  searchProductionJobsCached,
+} from './jobo/jobs-api'
+import { getDemoSettings, productionApiKey } from './user-settings'
 import { JobFeed } from '@/components/JobFeed'
 import {
   applicationLabel,
@@ -13,8 +20,22 @@ import {
   type CardApplication,
 } from './presentation'
 import { isTerminal } from './status'
-export async function FeedPage({ savedOnly = false }: { savedOnly?: boolean }) {
+export interface FeedSearch {
+  q?: string
+  location?: string
+  page?: string
+}
+
+export async function FeedPage({
+  savedOnly = false,
+  search = {},
+}: {
+  savedOnly?: boolean
+  search?: FeedSearch
+}) {
   const user = await requireUser()
+  const settings = await getDemoSettings(user.id)
+  const production = settings.mode === 'production'
   const saved = await db
     .select()
     .from(savedJobs)
@@ -53,15 +74,52 @@ export async function FeedPage({ savedOnly = false }: { savedOnly?: boolean }) {
       message: app.stopReason || app.failureMessage,
     }
   }
-  let jobs
+  let jobs: Job[]
+  let paging: { total: number; page: number; totalPages: number } | undefined
   try {
-    jobs = await getJobs()
-  } catch {
+    if (production) {
+      const apiKey = await productionApiKey(user.id)
+      if (!apiKey) throw new JobsApiError('unauthorized', 'Reconnect your Jobo API key.')
+      if (savedOnly) {
+        // Saved real jobs are re-read one by one — GET /api/jobs/{id} is free.
+        const ids = saved.map((s) => s.jobId).filter(isProductionJobId)
+        const found = await Promise.all(
+          ids.map((id) =>
+            getProductionJob(apiKey, id).catch((error) => {
+              if (error instanceof JobsApiError && error.kind === 'not_found') return null
+              throw error
+            }),
+          ),
+        )
+        jobs = found.filter((j): j is Job => !!j)
+      } else {
+        const page = Math.max(1, Number.parseInt(search.page ?? '1', 10) || 1)
+        const result = await searchProductionJobsCached(apiKey, {
+          q: search.q,
+          location: search.location,
+          page,
+        })
+        jobs = result.jobs
+        paging = { total: result.total, page: result.page, totalPages: result.totalPages }
+      }
+    } else jobs = await getJobs()
+  } catch (error) {
+    const problem = error instanceof JobsApiError ? error : null
     return (
       <div className="empty-state">
-        <h1>Sandbox catalog unavailable</h1>
+        <h1>
+          {!production
+            ? 'Sandbox catalog unavailable'
+            : problem?.kind === 'unauthorized'
+              ? 'Your API key was rejected'
+              : problem?.kind === 'insufficient_credits'
+                ? 'Out of job-search credits'
+                : 'Jobs unavailable'}
+        </h1>
         <p>
-          We couldn’t load sandbox jobs right now. Please try again in a moment.
+          {production
+            ? (problem?.message ?? 'We couldn’t load jobs from Jobo right now. Please try again in a moment.')
+            : 'We couldn’t load sandbox jobs right now. Please try again in a moment.'}
         </p>
         <Link href={savedOnly ? '/saved' : '/jobs'} className="button primary">
           Try again
@@ -75,6 +133,12 @@ export async function FeedPage({ savedOnly = false }: { savedOnly?: boolean }) {
       savedIds={saved.map((s) => s.jobId)}
       name={user.name}
       savedOnly={savedOnly}
+      mode={settings.mode}
+      search={
+        production && !savedOnly
+          ? { q: search.q ?? '', location: search.location ?? '', ...paging! }
+          : undefined
+      }
       profileId={profile.find(isApplicationReady)?.id}
       applicationStates={applicationStates}
       applicationCount={apps.length}

@@ -13,10 +13,36 @@ import { buildAnswers, repairAnswers } from '@/lib/answers'
 import type { AnswerContext, BuildResult } from '@/lib/answers/types'
 import { signApplicationResumeUrl } from '@/lib/signed-url'
 import { isTerminal } from '@/lib/status'
-import { jobCountryCode, validSandboxUrl } from '@/lib/jobs'
+import { jobCountryCode, validProductionTarget, validSandboxUrl } from '@/lib/jobs'
+import { openApiKey } from '@/lib/user-settings'
 import { log } from '@/lib/logger'
+import { createFailureMessage } from '@/lib/presentation'
 const RESERVE_MS = 20000
 const MAX_WAIT_SECONDS = 90
+
+/**
+ * The client for one application. Sandbox runs use the deployment's key;
+ * production runs use the visitor's own key, sealed on the row when it was
+ * queued, so the application lives in THEIR Jobo account.
+ */
+function clientFor(local: Pick<ApplicationRow, 'id' | 'sandbox' | 'apiKeyCiphertext'>) {
+  if (local.sandbox) return jobo(local.id)
+  if (!local.apiKeyCiphertext) throw new MissingApiKeyError()
+  let apiKey: string
+  try {
+    apiKey = openApiKey(local.apiKeyCiphertext)
+  } catch {
+    throw new MissingApiKeyError()
+  }
+  return jobo(local.id, apiKey)
+}
+
+class MissingApiKeyError extends Error {
+  constructor() {
+    super('The Jobo API key for this application is no longer available. Reconnect your key and retry.')
+    this.name = 'MissingApiKeyError'
+  }
+}
 async function assertLease(id: string, owner: string) {
   const [row] = await db
     .select()
@@ -44,8 +70,29 @@ export async function advanceApplication(
   )
     return
   await assertLease(id, leaseOwner)
-  if (!validSandboxUrl(local.applyUrl, local.jobId ?? ''))
-    throw new Error('Application destination is not in the sandbox.')
+  if (local.sandbox) {
+    if (!validSandboxUrl(local.applyUrl, local.jobId ?? ''))
+      throw new Error('Application destination is not in the sandbox.')
+  } else if (!validProductionTarget(local.jobId ?? '', local.applyUrl))
+    throw new Error('Application destination is not a Jobo job.')
+  let api: ReturnType<typeof jobo>
+  try {
+    api = clientFor(local)
+  } catch (error) {
+    if (!(error instanceof MissingApiKeyError)) throw error
+    // No retry can succeed without the key: stop instead of looping.
+    await db
+      .update(applications)
+      .set({
+        status: local.joboApplicationId ? 'failed' : 'create_failed',
+        stopReason: error.message,
+        failureMessage: error.message,
+        apiKeyCiphertext: null,
+        updatedAt: Date.now(),
+      })
+      .where(eq(applications.id, id))
+    return
+  }
   if (
     !local.joboApplicationId &&
     Date.now() - local.createdAt > 20 * 60 * 60 * 1000
@@ -61,15 +108,17 @@ export async function advanceApplication(
       // the process died mid-hold). Replaying create with the SAME stored
       // Idempotency-Key re-attaches to the in-flight application and its
       // wait — this is why the key was written before the first attempt.
-      application = await jobo(id).applications.create(
-        { apply_url: local.applyUrl },
+      // Production runs create by Jobo job id: Jobo resolves the ATS and the
+      // apply URL from its own catalog record of that job.
+      application = await api.applications.create(
+        local.sandbox ? { apply_url: local.applyUrl } : { job_id: local.jobId! },
         { idempotencyKey: local.idempotencyKey },
       )
     } else {
       // Long-poll only while Jobo is working; a plain snapshot suffices when
       // the local state says a step is already waiting for answers.
       const working = local.status === 'queued' || local.status === 'running'
-      application = await jobo(id).applications.get(
+      application = await api.applications.get(
         local.joboApplicationId,
         working ? { waitSeconds: MAX_WAIT_SECONDS } : undefined,
       )
@@ -84,8 +133,8 @@ export async function advanceApplication(
       .limit(1)
     if (fresh!.cancelRequested && !isTerminal(application.status)) {
       await assertLease(id, leaseOwner)
-      await jobo(id).applications.cancel(application.id)
-      application = await jobo(id).applications.get(application.id, {
+      await api.applications.cancel(application.id)
+      application = await api.applications.get(application.id, {
         waitSeconds: MAX_WAIT_SECONDS,
       })
       await persistApplication(id, application, leaseOwner)
@@ -122,8 +171,8 @@ export async function advanceApplication(
           .set({
             status: 'create_failed',
             createErrorCode: error.code,
-            failureMessage:
-              'The application service could not start this application. Please try again later.',
+            apiKeyCiphertext: null,
+            failureMessage: createFailureMessage(error.code),
             updatedAt: Date.now(),
           })
           .where(eq(applications.id, id))
@@ -162,7 +211,7 @@ async function answerStep(
     )
     .limit(1)
   if (existing?.submittedAt) {
-    return jobo(local.id).applications.get(joboId, { waitSeconds: MAX_WAIT_SECONDS })
+    return clientFor(local).applications.get(joboId, { waitSeconds: MAX_WAIT_SECONDS })
   }
 
   const completeStep = async (
@@ -193,9 +242,9 @@ async function answerStep(
       .update(applications)
       .set({ stopReason: reason, cancelRequested: true })
       .where(eq(applications.id, local.id))
-    await jobo(local.id).applications.cancel(joboId)
+    await clientFor(local).applications.cancel(joboId)
     // Cancels settle at the next safe checkpoint; wait for the terminal state.
-    return jobo(local.id).applications.get(joboId, { waitSeconds: MAX_WAIT_SECONDS })
+    return clientFor(local).applications.get(joboId, { waitSeconds: MAX_WAIT_SECONDS })
   }
 
   const profile = local.profileSnapshot
@@ -249,7 +298,7 @@ async function answerStep(
     resumeContentType: profile.resumeContentType,
     resumeText: profile.resumeText,
     jobCountryCode: local.jobSnapshot
-      ? jobCountryCode(local.jobSnapshot.location)
+      ? (local.jobSnapshot.countryCode ?? jobCountryCode(local.jobSnapshot.location))
       : undefined,
     jobDescription: local.jobSnapshot
       ? `${local.jobSnapshot.role} at ${local.jobSnapshot.company}\n${local.jobSnapshot.about}\n${local.jobSnapshot.responsibilities.join('\n')}`
@@ -369,7 +418,7 @@ async function answerStep(
       llmModel: result.llmModel ?? null,
       llmMs: result.llmMs ?? null,
     })
-    const next = await jobo(local.id).applications.submitAnswers(joboId, answers, {
+    const next = await clientFor(local).applications.submitAnswers(joboId, answers, {
       // Optimistic guard: refuse to answer a different round than the one this
       // snapshot was built for (409 stale_correction_round on mismatch).
       correctionRound: step.correction_round,
@@ -422,6 +471,8 @@ async function persistApplication(
       failureCode: application.failure?.code ?? null,
       failureMessage: application.failure?.message ?? null,
       failureRetryable: application.failure?.retryable ?? null,
+      // A finished run never needs the visitor's key again.
+      ...(isTerminal(application.status) ? { apiKeyCiphertext: null } : {}),
       lastSyncedAt: Date.now(),
       updatedAt: Date.now(),
     })

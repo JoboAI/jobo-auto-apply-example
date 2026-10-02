@@ -147,6 +147,27 @@ export const profiles = pgTable('profiles', {
     .default(nowMs),
 })
 
+/**
+ * Per-visitor demo mode. Production mode applies to real jobs on the
+ * visitor's own Jobo API key, stored sealed (lib/secret-box.ts) because the
+ * background worker needs it with no browser present.
+ */
+export const userSettings = pgTable('user_settings', {
+  userId: text('user_id')
+    .primaryKey()
+    .references(() => user.id, { onDelete: 'cascade' }),
+  mode: text('mode').$type<'sandbox' | 'production'>().notNull().default('sandbox'),
+  apiKeyCiphertext: text('api_key_ciphertext'),
+  /** Last four characters, so the UI can say which key is connected. */
+  apiKeyHint: text('api_key_hint'),
+  /** When the visitor accepted the one-time "real employers" warning. */
+  productionAcknowledgedAt: epochMs('production_acknowledged_at'),
+  updatedAt: epochMs('updated_at')
+    .notNull()
+    .default(nowMs),
+})
+export type UserSettingsRow = typeof userSettings.$inferSelect
+
 export const applications = pgTable(
   'applications',
   {
@@ -178,6 +199,14 @@ export const applications = pgTable(
 
     applyUrl: text('apply_url').notNull(),
     sandbox: boolean('sandbox').notNull().default(false),
+    /**
+     * Production mode only: the visitor's own Jobo API key, sealed with
+     * API_KEY_ENCRYPTION_SECRET when the application was queued. Kept on the
+     * row so a run finishes on the key it started with even if the visitor
+     * disconnects; cleared once the application is terminal. Null for sandbox
+     * runs, which use the deployment's JOBO_API_KEY.
+     */
+    apiKeyCiphertext: text('api_key_ciphertext'),
     scenarioSlug: text('scenario_slug'),
 
     /**

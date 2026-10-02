@@ -2,6 +2,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { ApiDocsLink, SourceLink } from '@/components/SourceLink'
+import { ModeToggle, type ModeProps } from '@/components/ModeToggle'
 import {
   BriefcaseBusiness,
   Bookmark,
@@ -20,13 +21,16 @@ const links = [
 export function AppShell({
   name,
   email,
+  settings,
   children,
 }: {
   name: string
   email: string
+  settings: ModeProps
   children: React.ReactNode
 }) {
   const path = usePathname()
+  const production = settings.mode === 'production'
   return (
     <div className="app-shell">
       <a className="skip-link" href="#main">
@@ -37,7 +41,9 @@ export function AppShell({
           <img src="/logos/jobo-logo.svg" alt="Jobo" />
           <span>auto apply</span>
         </Link>
-        <div className="workspace-label">DEVELOPER SANDBOX</div>
+        <div className={`workspace-label ${production ? 'production' : ''}`}>
+          {production ? 'PRODUCTION MODE' : 'DEVELOPER SANDBOX'}
+        </div>
         <nav aria-label="Main navigation">
           {links.map(({ href, label, icon: Icon }) => (
             <Link
@@ -59,8 +65,9 @@ export function AppShell({
             </span>
             <strong>This is the Auto Apply Demo.</strong>
             <p>
-              See the API in action with fictional jobs, then explore the source
-              to build your own integration.
+              {production
+                ? 'You are applying to real jobs on your own Jobo API key. Switch back to sandbox any time.'
+                : 'See the API in action with fictional jobs, then explore the source to build your own integration.'}
             </p>
             <a
               href="https://sandbox.jobo.world"
@@ -87,10 +94,7 @@ export function AppShell({
             <img src="/logos/jobo-logo.svg" alt="Jobo" />
           </Link>
           <div className="topbar-actions">
-            <span className="sandbox-pill">
-              <span />
-              Auto Apply Demo
-            </span>
+            <ModeToggle {...settings} />
             <ApiDocsLink compact />
             <SourceLink compact />
             <Link
@@ -106,7 +110,11 @@ export function AppShell({
           {children}
         </main>
         <footer className="app-footer">
-          <span>Jobo Auto Apply Demo · No real employers contacted.</span>
+          <span>
+            {production
+              ? 'Jobo Auto Apply Demo · Production mode: applications go to real employers.'
+              : 'Jobo Auto Apply Demo · No real employers contacted.'}
+          </span>
           <div className="developer-links">
             <ApiDocsLink />
             <SourceLink />

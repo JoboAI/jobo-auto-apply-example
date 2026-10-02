@@ -9,8 +9,14 @@ const mocked = vi.hoisted(() => ({
   submitAnswers: vi.fn(),
   cancel: vi.fn(),
   build: vi.fn(),
+  client: vi.fn(),
 }))
-vi.mock('@/lib/jobo/client', () => ({ jobo: () => ({ applications: mocked }) }))
+vi.mock('@/lib/jobo/client', () => ({
+  jobo: (...args: unknown[]) => {
+    mocked.client(...args)
+    return { applications: mocked }
+  },
+}))
 vi.mock('@/lib/answers', () => ({
   buildAnswers: mocked.build,
   repairAnswers: vi.fn(),
@@ -21,6 +27,8 @@ process.env.OPENROUTER_API_KEY = 'fixture'
 process.env.PUBLIC_BASE_URL = 'https://demo.jobo.world'
 process.env.RESUME_URL_SIGNING_SECRET =
   'fixture-signing-secret-with-32-characters'
+process.env.API_KEY_ENCRYPTION_SECRET =
+  'fixture-encryption-secret-with-32-characters'
 let db: typeof import('@/db/client').db,
   schema: typeof import('@/db/schema'),
   queue: typeof import('@/lib/queue'),
@@ -324,5 +332,94 @@ describe('correction and retry recovery', () => {
         .where(eq(schema.applications.id, id)))[0]?.status,
     ).toBe('recovery_required')
     expect(await queue.claimApplication('worker')).toBeNull()
+  })
+})
+describe('production mode', () => {
+  const realJobId = '3f2b8c1e-5a6d-4e7f-8a9b-0c1d2e3f4a5b'
+  const realJob = {
+    slug: realJobId,
+    company: 'Acme',
+    mark: 'AC',
+    role: 'Backend engineer',
+    location: 'Berlin, Germany',
+    department: 'Greenhouse',
+    employmentType: 'Full-time',
+    about: 'APIs',
+    responsibilities: [],
+    applyUrl: 'https://job-boards.greenhouse.io/acme/jobs/123',
+    available: true,
+    production: true,
+    source: 'greenhouse',
+    countryCode: 'DE',
+  }
+  async function enqueueProduction() {
+    // The shared beforeEach queued (and leased) a sandbox run for alice; the
+    // per-user cap would hold the production one back behind it.
+    await db.delete(schema.applications)
+    const { sealApiKey } = await import('@/lib/user-settings')
+    const prodId = await queue.enqueueApplication('alice', 'sample-ada-lovelace', realJob, false, {
+      apiKeyCiphertext: sealApiKey('jbe_live_visitor_key_fixture_0000000000'),
+    })
+    await queue.claimApplication('worker')
+    return prodId
+  }
+  it('creates by job id on the visitor’s own key and forgets the key once terminal', async () => {
+    const prodId = await enqueueProduction()
+    await engine.advanceApplication(prodId, 'worker')
+    expect(mocked.create).toHaveBeenCalledWith(
+      { job_id: realJobId },
+      expect.objectContaining({ idempotencyKey: expect.any(String) }),
+    )
+    for (const call of mocked.client.mock.calls)
+      expect(call).toEqual([prodId, 'jbe_live_visitor_key_fixture_0000000000'])
+    expect(mocked.build.mock.calls[0][1].jobCountryCode).toBe('DE')
+    const [row] = await db
+      .select()
+      .from(schema.applications)
+      .where(eq(schema.applications.id, prodId))
+    expect(row.status).toBe('submitted')
+    expect(row.sandbox).toBe(false)
+    expect(row.apiKeyCiphertext).toBeNull()
+  })
+  it('keeps sandbox runs on the deployment key and the sandbox URL', async () => {
+    await engine.advanceApplication(id, 'worker')
+    expect(mocked.create.mock.calls[0][0]).toEqual({
+      apply_url: 'https://sandbox.jobo.world/apply/multi-step',
+    })
+    expect(mocked.client.mock.calls.every((call) => call.length === 1)).toBe(true)
+  })
+  it('stops instead of retrying when the stored key is gone', async () => {
+    const prodId = await enqueueProduction()
+    await db.update(schema.applications)
+      .set({ apiKeyCiphertext: 'v1.garbage.garbage.garbage' })
+      .where(eq(schema.applications.id, prodId))
+    await engine.advanceApplication(prodId, 'worker')
+    expect(mocked.create).not.toHaveBeenCalled()
+    const [row] = await db
+      .select()
+      .from(schema.applications)
+      .where(eq(schema.applications.id, prodId))
+    expect(row.status).toBe('create_failed')
+    expect(row.stopReason).toMatch(/API key/)
+  })
+  it('explains an account without Auto Apply access', async () => {
+    const prodId = await enqueueProduction()
+    const { JoboAPIError } = await import('@jobo-ai/autoapply')
+    mocked.create.mockRejectedValueOnce(
+      new JoboAPIError({
+        status: 403,
+        code: 'auto_apply_not_enabled',
+        detail: 'This account does not have access to Auto Apply.',
+      }),
+    )
+    await engine.advanceApplication(prodId, 'worker')
+    const [row] = await db
+      .select()
+      .from(schema.applications)
+      .where(eq(schema.applications.id, prodId))
+    expect(row.status).toBe('create_failed')
+    expect(row.createErrorCode).toBe('auto_apply_not_enabled')
+    expect(row.failureMessage).toMatch(/not enabled/)
+    expect(row.apiKeyCiphertext).toBeNull()
   })
 })

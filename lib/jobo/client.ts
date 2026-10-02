@@ -23,14 +23,21 @@ import type { SandboxScenariosResponse } from './sandbox'
 
 let cached: { client: JoboAutoApply; fingerprint: string } | null = null
 
-export function jobo(applicationId?: string): JoboAutoApply {
+/**
+ * `apiKey` overrides the deployment's key — production mode passes the
+ * visitor's own key, so the application belongs to their Jobo account.
+ */
+export function jobo(applicationId?: string, apiKey?: string): JoboAutoApply {
   const c = config()
+  const key = apiKey ?? c.JOBO_API_KEY
   if (applicationId) {
-    const secrets = [c.JOBO_API_KEY, c.OPENROUTER_API_KEY, c.RESUME_URL_SIGNING_SECRET,
-      process.env.BETTER_AUTH_SECRET, process.env.BREVO_API_KEY].filter((v): v is string => !!v)
-    return createClient({ apiKey: c.JOBO_API_KEY, baseUrl: c.JOBO_API_BASE_URL,
+    const secrets = [key, c.JOBO_API_KEY, c.OPENROUTER_API_KEY, c.RESUME_URL_SIGNING_SECRET,
+      c.API_KEY_ENCRYPTION_SECRET, process.env.BETTER_AUTH_SECRET, process.env.BREVO_API_KEY]
+      .filter((v): v is string => !!v)
+    return createClient({ apiKey: key, baseUrl: c.JOBO_API_BASE_URL,
       fetch: recordingFetch(applicationId, secrets) })
   }
+  if (apiKey) return createClient({ apiKey, baseUrl: c.JOBO_API_BASE_URL })
   // Re-create when the env changes under us (dev server, tests) rather than
   // pinning the first key we ever saw.
   const fingerprint = `${c.JOBO_API_BASE_URL}\u0000${c.JOBO_API_KEY}`

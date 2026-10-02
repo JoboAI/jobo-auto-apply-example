@@ -45,3 +45,28 @@ export function displayDate(time: number) {
     }).format(time) + ' UTC'
   )
 }
+
+/**
+ * What to tell the visitor when Jobo refuses to create an application. These
+ * codes mostly matter in production mode, where the visitor's own account
+ * (its Auto Apply access, credits, concurrency) is what Jobo checks.
+ */
+export function createFailureMessage(code: string | undefined): string {
+  switch (code) {
+    case 'auto_apply_not_enabled':
+      return 'Auto Apply is not enabled for this API key’s Jobo account. Request access in the Jobo dashboard, then retry.'
+    case 'unsupported_ats':
+      return 'Auto Apply does not support this job’s application form yet.'
+    case 'ambiguous_ats':
+      return 'Auto Apply could not tell which application system this job uses.'
+    case 'concurrency_limit_reached':
+      return 'Your Jobo account already has the maximum number of applications running. Retry when one finishes.'
+    case 'application_quota_exceeded':
+    case 'application_capacity_exceeded':
+      return 'Your Jobo account has reached its Auto Apply limit for now. Please retry later.'
+    case 'job_not_found':
+      return 'Jobo could not find this job any more — it may have closed.'
+    default:
+      return 'The application service could not start this application. Please try again later.'
+  }
+}

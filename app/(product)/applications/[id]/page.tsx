@@ -12,7 +12,7 @@ import { LiveRefresh, CancelButton } from '@/components/ApplicationLive'
 import { ApplyButton } from '@/components/JobActions'
 import { ApplicationApiPreview } from '@/components/ApplicationApiPreview'
 import { ApplicationAnswers } from '@/components/ApplicationAnswers'
-import { SandboxJobLink } from '@/components/SandboxJobLink'
+import { ProductionJobLink, SandboxJobLink } from '@/components/SandboxJobLink'
 export default async function Page({
   params,
 }: {
@@ -51,7 +51,7 @@ export default async function Page({
       <div className="page-heading">
         <div>
           <div className="eyebrow">AUTO APPLY API · APPLICATION RUN</div>
-          <h1>{row.jobSnapshot?.role ?? 'Sandbox application'}</h1>
+          <h1>{row.jobSnapshot?.role ?? (row.sandbox ? 'Sandbox application' : 'Application')}</h1>
           <p>
             {row.jobSnapshot?.company} · {row.jobSnapshot?.location}
           </p>
@@ -77,7 +77,9 @@ export default async function Page({
           </h2>
           <p>
             {submitted
-              ? 'Your sandbox application was confirmed as submitted.'
+              ? row.sandbox
+                ? 'Your sandbox application was confirmed as submitted.'
+                : 'Your application was submitted to the employer through your Jobo account.'
               : row.stopReason ||
                 row.failureMessage ||
                 (active
@@ -171,7 +173,11 @@ export default async function Page({
           {active && <CancelButton id={id} requested={row.cancelRequested} />}
           <div className="notice">
             <Sparkles size={17} />
-            <span>Sandbox application — no real employer is contacted.</span>
+            <span>
+              {row.sandbox
+                ? 'Sandbox application — no real employer is contacted.'
+                : 'Production application — sent to a real employer on your own Jobo API key.'}
+            </span>
           </div>
         </section>
         <aside>
@@ -180,7 +186,11 @@ export default async function Page({
               <FileText size={22} />
             </span>
             <h3>Candidate snapshot</h3>
-            <SandboxJobLink url={row.applyUrl} slug={row.jobId ?? ''} title={row.jobSnapshot?.role ?? 'application'} />
+            {row.sandbox ? (
+              <SandboxJobLink url={row.applyUrl} slug={row.jobId ?? ''} title={row.jobSnapshot?.role ?? 'application'} />
+            ) : (
+              <ProductionJobLink url={row.jobSnapshot?.listingUrl ?? row.applyUrl} ats={row.jobSnapshot?.sourceName} title={row.jobSnapshot?.role ?? 'application'} />
+            )}
             <p>{row.profileSnapshot?.resumeFilename}</p>
             <dl className="snapshot-details">
               <dt>Name</dt>

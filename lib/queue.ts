@@ -8,7 +8,7 @@ import { applications, profiles } from '@/db/schema'
 import type { Job } from './jobs-types'
 import { isTerminal } from './status'
 import { canRetry } from './presentation'
-import { validSandboxUrl } from './jobs'
+import { validProductionTarget, validSandboxUrl } from './jobs'
 import { isApplicationReady } from './resume/completeness'
 
 /**
@@ -27,8 +27,19 @@ export async function enqueueApplication(
   profileId: string,
   job: Job,
   retry = false,
+  /**
+   * Production mode: the visitor's sealed API key. The application runs on
+   * that key and goes to a real employer, so it is required for, and only
+   * accepted with, a production job.
+   */
+  production?: { apiKeyCiphertext: string },
 ) {
-  if (!validSandboxUrl(job.applyUrl, job.slug))
+  if (job.production) {
+    if (!production?.apiKeyCiphertext)
+      throw new Error('Connect your Jobo API key to apply to real jobs.')
+    if (!validProductionTarget(job.slug, job.applyUrl))
+      throw new Error('Invalid production job.')
+  } else if (production || !validSandboxUrl(job.applyUrl, job.slug))
     throw new Error('Invalid sandbox job.')
   return db.transaction(
     async (tx) => {
@@ -85,8 +96,9 @@ export async function enqueueApplication(
             },
             idempotencyKey: randomUUID(),
             applyUrl: job.applyUrl,
-            sandbox: true,
-            scenarioSlug: job.slug,
+            sandbox: !job.production,
+            scenarioSlug: job.production ? null : job.slug,
+            apiKeyCiphertext: production?.apiKeyCiphertext ?? null,
             status: 'queued',
           })
       } catch (error) {
