@@ -8,7 +8,7 @@ A working example of integrating the Jobo Auto Apply API into a Next.js app. Can
 
 1. Open [demo.jobo.world](https://demo.jobo.world), sign up, and verify your email.
 2. Upload a text-based PDF resume, up to 5 MB.
-3. Review your contact details, common application answers, and resume. Full name, email, phone, and a personal LinkedIn `/in/` URL are required.
+3. Review your profile in four steps: personal info, employment info (work authorization and voluntary self-identification), job preferences, and the extracted resume. First and last name, email, phone, a personal LinkedIn `/in/` URL, the work authorization questions, and the self-identification questions ("Decline to state" counts) are required.
 4. Choose a fictional role and click **Apply**. Follow progress on the job card or application detail page.
 5. Expand **API requests & responses** to inspect the integration's recorded HTTP exchanges. Credentials and signed download tokens are redacted.
 
@@ -122,7 +122,9 @@ Name, email, dates, file URLs, repeating groups, and exact selections are filled
 
 Reasoning is disabled. The model call has a 90-second ceiling, shortened to leave 20 seconds before the reported step deadline. Responses are validated, with one mechanical repair allowed. If a model request fails, the app can still submit when deterministic answers cover every required field. Missing required facts, verification codes, or rejected API credentials stop the application with an explanation. There is no fallback to another model family.
 
-Sensitive fields never go to the answer model. Users choose whether to use an advertised decline option or leave sensitive questions unanswered. The app does not collect or infer demographic answers. Optional location, authorization, sponsorship, availability, and relocation facts may remain unanswered; a form requiring a missing fact cannot be completed automatically.
+The profile follows Simplify.jobs' candidate model: personal info, links, education, experience, projects, skills, languages, work authorization (US, Canada and UK, plus other countries), equal employment info, and job preferences. Full name, pronouns, current title, and "are you over 18" are derived from it rather than stored.
+
+Self-identification (gender, ethnicity, veteran, disability, LGBTQ+) is collected explicitly, filled by fixed rules in [`lib/answers/eeo.ts`](lib/answers/eeo.ts), and never sent to the answer model. Neither is the date of birth. An answer with no exact match among a form's options falls back to the form's own decline option. Work authorization and age are likewise answered only from what the candidate stated; a form requiring a missing fact cannot be completed automatically.
 
 ## Production mode
 

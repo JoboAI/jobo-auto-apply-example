@@ -8,124 +8,118 @@ import type { ResumeProfile } from '@/lib/resume/profile-schema'
 
 export const profile = {
   personal: {
-    full_name: 'Grace Hopper',
     first_name: 'Grace',
     last_name: 'Hopper',
+    preferred_name: null,
     email: 'grace.hopper@example.com',
     phone: '+12025550143',
-    headline: 'Staff Platform Engineer',
-    pronouns: null
+    birthday: null
   },
   location: {
-    line1: null,
-    line2: null,
+    address: null,
+    address_2: null,
+    address_3: null,
     city: 'New York',
     region: 'NY',
     postal_code: null,
     country_code: 'US',
     country_name: 'United States'
   },
-  links: [{ label: 'Portfolio', type: 'portfolio', url: 'https://grace-hopper.example.com' }],
-  work_experience: [
+  links: {
+    linkedin: null,
+    github: null,
+    portfolio: 'https://grace-hopper.example.com',
+    other: null
+  },
+  experience: [
     {
       company: 'Compiler Works',
       title: 'Staff Platform Engineer',
-      employment_type: 'Full-time',
       location: 'Remote (US)',
-      start_date: '2021-01',
-      end_date: null,
-      is_current: true,
+      type: 'full_time',
+      start_month: 1,
+      start_year: 2021,
+      end_month: null,
+      end_year: null,
+      currently_working: true,
       description:
-        'Runs the platform group (6 engineers) for a 200-engineer organisation: the Kubernetes ' +
-        'fleet, CI/CD, and an internal developer portal that cut service-bootstrap time from ' +
-        'two weeks to one afternoon. Halved compute spend with bin-packing and spot pools.'
+        '- Run the platform group (6 engineers) for a 200-engineer organisation: the Kubernetes ' +
+        'fleet, CI/CD, and an internal developer portal.\n' +
+        '- Cut service-bootstrap time from two weeks to one afternoon.\n' +
+        '- Halved compute spend with bin-packing and spot pools.'
     },
     {
       company: 'Flowmatic',
       title: 'Senior Site Reliability Engineer',
-      employment_type: 'Full-time',
       location: 'New York, NY',
-      start_date: '2017-04',
-      end_date: '2020-12',
-      is_current: false,
+      type: 'full_time',
+      start_month: 4,
+      start_year: 2017,
+      end_month: 12,
+      end_year: 2020,
+      currently_working: false,
       description:
-        'Owned reliability for the payments path (99.99% SLO). Introduced error budgets, ' +
-        'progressive rollouts, and the incident-review culture the company still uses.'
+        '- Owned reliability for the payments path (99.99% SLO).\n' +
+        '- Introduced error budgets, progressive rollouts, and the incident-review culture the ' +
+        'company still uses.'
     },
     {
       company: 'Mark One Systems',
       title: 'Systems Engineer',
-      employment_type: 'Full-time',
       location: 'Philadelphia, PA',
-      start_date: '2013-08',
-      end_date: '2017-03',
-      is_current: false,
+      type: 'full_time',
+      start_month: 8,
+      start_year: 2013,
+      end_month: 3,
+      end_year: 2017,
+      currently_working: false,
       description:
-        'Automated a bare-metal fleet of 800 hosts with configuration management and PXE ' +
+        '- Automated a bare-metal fleet of 800 hosts with configuration management and PXE ' +
         'provisioning, taking rebuild time from days to under an hour.'
     }
   ],
   education: [
     {
       school: 'Rensselaer Polytechnic Institute',
-      degree: 'BSc',
-      field_of_study: 'Applied Mathematics',
-      start_date: '2009-09',
-      end_date: '2013-05',
-      is_current: false,
-      grade: null
+      degree: 'bs',
+      major: 'Applied Mathematics',
+      gpa: null,
+      start_month: 9,
+      start_year: 2009,
+      grad_month: 5,
+      grad_year: 2013
     }
   ],
+  projects: [],
   skills: [
-    { name: 'Go', level: 'Expert' },
-    { name: 'Kubernetes', level: 'Expert' },
-    { name: 'Terraform', level: 'Expert' },
-    { name: 'Observability (Prometheus, OpenTelemetry)', level: 'Proficient' },
-    { name: 'CI/CD', level: 'Expert' },
-    { name: 'Linux', level: 'Expert' }
+    { name: 'Go', years: '5-8', favorite: true },
+    { name: 'Kubernetes', years: '5-8', favorite: true },
+    { name: 'Terraform', years: null, favorite: false },
+    { name: 'Observability (Prometheus, OpenTelemetry)', years: null, favorite: false },
+    { name: 'CI/CD', years: null, favorite: false },
+    { name: 'Linux', years: '9+', favorite: false }
   ],
-  languages: [{ name: 'English', proficiency: 'Native' }],
-  certifications: [
-    { name: 'Certified Kubernetes Administrator', issuer: 'CNCF', issued: '2022-05' }
-  ],
+  languages: ['English'],
   work_authorization: {
-    authorized_country_codes: ['US'],
-    requires_sponsorship: false,
-    notice_period_days: 14
+    us: true,
+    canada: false,
+    uk: false,
+    other_country_codes: [],
+    requires_sponsorship: false
+  },
+  // Declines every self-identification question — the other path.
+  eeo: {
+    gender: 'decline',
+    ethnicity: ['decline'],
+    veteran: 'decline',
+    disability: 'decline',
+    lgbtq: 'decline'
   },
   preferences: {
-    desired_salary: null,
-    salary_currency: null,
-    willing_to_relocate: false,
-    remote_preference: 'remote',
-    earliest_start_date: null
-  },
-  about: {
-    summary:
-      'I am a platform engineer with twelve years across SRE and infrastructure. I build paved ' +
-      'roads: golden-path pipelines, observability that answers questions, and deploys nobody ' +
-      'fears.',
-    motivation:
-      'I am looking for a staff-level platform or infrastructure role, fully remote, at a ' +
-      'company that treats internal tooling as a product with users. I like deleting more ' +
-      'code than I write and documenting the rest.',
-    strengths: [
-      'Kubernetes fleet operations',
-      'Developer-experience tooling',
-      'SLOs and error budgets',
-      'Cost optimisation',
-      'Incident command'
-    ],
-    notable_projects: [
-      'An internal developer portal that cut service-bootstrap time from two weeks to one afternoon.',
-      'A bin-packing and spot-pool strategy that halved compute spend for a 200-engineer org.',
-      'The error-budget and progressive-rollout practice for a 99.99% SLO payments path.'
-    ],
-    freeform_notes:
-      'Remote only — I am based in New York and travel quarterly for team weeks. Two weeks of ' +
-      'notice. For open-ended questions: my favourite work is turning a recurring toil into a ' +
-      'platform capability, and I evaluate companies by how they run incident reviews. I hold ' +
-      'a current CKA. Salary expectations depend on equity mix and are negotiable.'
+    job_types: ['full_time', 'contract'],
+    work_setups: ['remote'],
+    locations: ['Remote (US)'],
+    min_salary: 220000
   }
 } satisfies ResumeProfile
 

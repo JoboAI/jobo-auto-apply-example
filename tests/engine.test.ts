@@ -79,7 +79,7 @@ beforeAll(async () => {
   for (const row of (await db.select().from(schema.profiles))) {
     await db.update(schema.profiles).set({ data: {
       ...row.data,
-      links: [...row.data.links, { label: 'LinkedIn', type: 'linkedin', url: 'https://www.linkedin.com/in/jobo-test-candidate' }],
+      links: { ...row.data.links, linkedin: 'https://www.linkedin.com/in/jobo-test-candidate' },
     } }).where(eq(schema.profiles.id, row.id))
   }
   await db.update(schema.profiles)

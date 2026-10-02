@@ -1,6 +1,12 @@
 import type { Field, GroupItemField } from '@jobo-ai/autoapply'
 import type { AnswerContext } from './types'
 import { fieldOptions, groupItemOptions } from './options'
+import {
+  ageInYears,
+  currentRole,
+  fullName,
+  type ResumeProfile,
+} from '@/lib/resume/profile-schema'
 
 /**
  * Prompt construction for the answer model.
@@ -109,13 +115,34 @@ export interface PromptInput {
   }[]
 }
 
-export function buildUserPrompt({ ctx, fields, gaps }: PromptInput): string {
-  const { profile } = ctx
+/**
+ * The profile as the model sees it.
+ *
+ * Self-identification (`eeo`) and the date of birth are removed, not just
+ * unused: what is not in the prompt cannot leak into an answer. Sensitive
+ * fields are answered by rule alone — see lib/answers/eeo.ts. Age-gated
+ * questions get the one fact they need instead.
+ */
+export function promptProfile(profile: ResumeProfile) {
+  const { eeo: _eeo, ...rest } = profile
+  const { birthday: _birthday, ...personal } = profile.personal
+  const age = ageInYears(profile)
+  const role = currentRole(profile)
+  return {
+    ...rest,
+    personal: {
+      full_name: fullName(profile),
+      ...personal,
+      is_over_18: age === null ? null : age >= 18,
+    },
+    current_title: role?.title ?? null,
+    current_company: role?.company ?? null,
+  }
+}
 
-  // Sensitive fields are deliberately never included. They are declined
-  // without a model — see lib/answers/deterministic.ts.
+export function buildUserPrompt({ ctx, fields, gaps }: PromptInput): string {
   const blocks: Record<string, unknown> = {
-    candidate_profile: profile,
+    candidate_profile: promptProfile(ctx.profile),
     resume_excerpt: ctx.resumeText.slice(0, MAX_RESUME_EXCERPT),
     job: {
       apply_url: ctx.applyUrl,

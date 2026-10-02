@@ -8,128 +8,116 @@ import type { ResumeProfile } from '@/lib/resume/profile-schema'
 
 export const profile = {
   personal: {
-    full_name: 'Ada Lovelace',
     first_name: 'Ada',
     last_name: 'Lovelace',
+    preferred_name: null,
     email: 'ada.lovelace@example.com',
     phone: '+442079460958',
-    headline: 'Senior Backend Engineer',
-    pronouns: null
+    birthday: '1990-12-10'
   },
   location: {
-    line1: null,
-    line2: null,
+    address: null,
+    address_2: null,
+    address_3: null,
     city: 'London',
     region: null,
     postal_code: null,
     country_code: 'GB',
     country_name: 'United Kingdom'
   },
-  links: [{ label: 'Portfolio', type: 'portfolio', url: 'https://ada-lovelace.example.com' }],
-  work_experience: [
+  links: {
+    linkedin: null,
+    github: null,
+    portfolio: 'https://ada-lovelace.example.com',
+    other: null
+  },
+  experience: [
     {
       company: 'Analytical Engines Ltd',
       title: 'Senior Backend Engineer',
-      employment_type: 'Full-time',
       location: 'London, UK',
-      start_date: '2022-03',
-      end_date: null,
-      is_current: true,
+      type: 'full_time',
+      start_month: 3,
+      start_year: 2022,
+      end_month: null,
+      end_year: null,
+      currently_working: true,
       description:
-        'Owns the job-scheduling platform, a Postgres-backed queue executing 40M tasks a day. ' +
-        'Designed the idempotency-key contract used by every internal producer, cutting duplicate ' +
-        'side effects to zero across three years of incident reports. Leads a team of four.'
+        '- Own the job-scheduling platform: a Postgres-backed queue executing 40M tasks/day.\n' +
+        '- Designed the idempotency-key contract used by every internal producer, cutting duplicate ' +
+        'side effects to zero across three years of incident reports.\n' +
+        '- Led a team of four through the migration from cron sprawl to event-driven workers.'
     },
     {
       company: 'Difference Works',
       title: 'Backend Engineer',
-      employment_type: 'Full-time',
       location: 'Remote',
-      start_date: '2019-06',
-      end_date: '2022-02',
-      is_current: false,
+      type: 'full_time',
+      start_month: 6,
+      start_year: 2019,
+      end_month: 2,
+      end_year: 2022,
+      currently_working: false,
       description:
-        'Built the public REST API (TypeScript, Node.js) for a payroll product used by 900 SMEs. ' +
-        'Wrote the webhook delivery system, including signing and replay protection.'
+        '- Built the public REST API (TypeScript, Node.js) for a payroll product used by 900 SMEs.\n' +
+        '- Wrote the webhook delivery system, including signing and replay protection.'
     },
     {
       company: 'Jacquard Systems',
       title: 'Software Engineer',
-      employment_type: 'Full-time',
       location: 'Manchester, UK',
-      start_date: '2016-09',
-      end_date: '2019-05',
-      is_current: false,
+      type: 'full_time',
+      start_month: 9,
+      start_year: 2016,
+      end_month: 5,
+      end_year: 2019,
+      currently_working: false,
       description:
-        'Shipped inventory ingestion pipelines processing supplier feeds in 14 formats, with ' +
-        'schema validation and quarantine flows that kept bad data out of the warehouse.'
+        '- Shipped inventory ingestion pipelines processing supplier feeds in 14 formats.'
     }
   ],
   education: [
     {
       school: 'University of Edinburgh',
-      degree: 'BSc',
-      field_of_study: 'Mathematics and Computer Science',
-      start_date: '2012-09',
-      end_date: '2016-06',
-      is_current: false,
-      grade: null
+      degree: 'bs',
+      major: 'Mathematics and Computer Science',
+      gpa: null,
+      start_month: 9,
+      start_year: 2012,
+      grad_month: 6,
+      grad_year: 2016
     }
   ],
+  projects: [],
   skills: [
-    { name: 'TypeScript', level: 'Expert' },
-    { name: 'Node.js', level: 'Expert' },
-    { name: 'PostgreSQL', level: 'Expert' },
-    { name: 'Kubernetes', level: 'Proficient' },
-    { name: 'Event-driven architecture', level: 'Expert' },
-    { name: 'Terraform', level: 'Familiar' }
+    { name: 'TypeScript', years: '5-8', favorite: true },
+    { name: 'Node.js', years: '5-8', favorite: false },
+    { name: 'PostgreSQL', years: '9+', favorite: true },
+    { name: 'Kubernetes', years: null, favorite: false },
+    { name: 'Event-driven architecture', years: null, favorite: false },
+    { name: 'Terraform', years: null, favorite: false }
   ],
-  languages: [
-    { name: 'English', proficiency: 'Native' },
-    { name: 'French', proficiency: 'Conversational' }
-  ],
-  certifications: [],
+  languages: ['English', 'French'],
   work_authorization: {
-    authorized_country_codes: ['GB', 'NL'],
-    requires_sponsorship: false,
-    notice_period_days: 30
+    us: false,
+    canada: false,
+    uk: true,
+    other_country_codes: ['NL'],
+    requires_sponsorship: false
+  },
+  // Explicit answers, so tests cover the self-identification mapping path.
+  eeo: {
+    gender: 'female',
+    ethnicity: ['white'],
+    veteran: 'no',
+    disability: 'no',
+    lgbtq: 'no'
   },
   preferences: {
-    desired_salary: null,
-    salary_currency: null,
-    willing_to_relocate: false,
-    remote_preference: 'hybrid',
-    earliest_start_date: null
-  },
-  about: {
-    summary:
-      'I am a backend engineer with nine years of experience building event-driven systems and ' +
-      'the teams that run them. I care about idempotency, boring failure modes, and APIs that ' +
-      'explain themselves.',
-    motivation:
-      'I am looking for a senior backend role at a product company where reliability is a ' +
-      'feature, not an afterthought — ideally owning a service end to end, from schema design ' +
-      'to the pager. I do my best work on small teams that ship deliberately.',
-    strengths: [
-      'Idempotent API and queue design',
-      'Postgres at scale',
-      'Incident analysis and prevention',
-      'Mentoring mid-level engineers',
-      'Writing documentation people actually read'
-    ],
-    notable_projects: [
-      'A Postgres-backed job scheduler executing 40M tasks/day with exactly-once side effects.',
-      'A signed webhook delivery system with replay protection for a payroll product.',
-      'Migration of a cron-sprawl estate to event-driven workers with zero missed jobs.'
-    ],
-    freeform_notes:
-      'Happy to talk through the job scheduler design in depth — the idempotency-key contract ' +
-      'is the part I am proudest of, because it turned a class of recurring incidents into a ' +
-      'non-event. I prefer hybrid working from London, up to two office days a week. I can ' +
-      'start after a 30-day notice period. Salary expectations are negotiable and depend on ' +
-      'the overall package. For "why do you want to work here" style questions: I am drawn to ' +
-      'products where correctness matters to the customer — payments, infrastructure, ' +
-      'developer tools — and to teams that write things down.'
+    job_types: ['full_time'],
+    work_setups: ['hybrid'],
+    locations: ['London'],
+    min_salary: null
   }
 } satisfies ResumeProfile
 

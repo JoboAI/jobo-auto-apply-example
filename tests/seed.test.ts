@@ -7,7 +7,8 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { db as database } from '@/db/client'
 import { profiles } from '@/db/schema'
 import { SAMPLE_PROFILES, seedSampleProfiles } from '@/db/seed'
-import { emptyEeo, resumeProfileSchema } from '@/lib/resume/profile-schema'
+import { resumeProfileSchema } from '@/lib/resume/profile-schema'
+import { employmentIssues } from '@/lib/resume/completeness'
 
 /**
  * The sample-profile seed. What matters: it is idempotent (runs on every
@@ -27,8 +28,10 @@ describe('sample personas', () => {
     const parsed = resumeProfileSchema.parse(sample.data)
     // The answer engine feeds on these; an empty one would silently degrade
     // every open-ended and work-authorization answer.
-    expect(parsed.about.freeform_notes.length).toBeGreaterThan(0)
-    expect(parsed.work_authorization.authorized_country_codes.length).toBeGreaterThan(0)
+    expect(parsed.experience.length).toBeGreaterThan(0)
+    expect(employmentIssues(parsed)).toEqual(
+      Object.fromEntries(Object.keys(employmentIssues(parsed)).map((key) => [key, ''])),
+    )
     expect(sample.resumeText.length).toBeGreaterThan(0)
     // Fictional personas must not carry plausible real contact details.
     expect(parsed.personal.email.endsWith('@example.com')).toBe(true)
@@ -49,7 +52,7 @@ describe('seedSampleProfiles', () => {
     for (const sample of SAMPLE_PROFILES) {
       const row = rows.find((entry) => entry.id === sample.id)
       expect(row).toBeDefined()
-      expect(row!.eeo).toEqual(emptyEeo)
+      expect(row!.data).toEqual(sample.data)
 
       const pdfPath = join(resumeDir, `${sample.id}.pdf`)
       expect(existsSync(pdfPath)).toBe(true)
@@ -70,7 +73,6 @@ describe('seedSampleProfiles', () => {
         name: 'A Real Person',
         isDefault: true,
         data: SAMPLE_PROFILES[0].data,
-        eeo: emptyEeo,
         resumeFilename: 'real.pdf',
         resumeContentType: 'application/pdf',
         resumeBytes: 3,

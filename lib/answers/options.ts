@@ -172,7 +172,7 @@ export function matchBooleanOption(
  */
 export function findDeclineOption(options: readonly FieldOption[]): FieldOption | undefined {
   return options.find((option) =>
-    /prefer not|decline|do not wish|don't wish|choose not|not disclose|no answer/i.test(
+    /prefer not|decline|do not wish|don't wish|do not want|don't want|choose not|not disclose|no answer|rather not/i.test(
       `${option.label} ${option.value}`
     )
   )

@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { count, eq } from 'drizzle-orm'
 import type { Database } from './client'
 import { profiles } from './schema'
-import { emptyEeo, type ResumeProfile } from '@/lib/resume/profile-schema'
+import type { ResumeProfile } from '@/lib/resume/profile-schema'
 import * as ada from './seed/ada-lovelace'
 import * as grace from './seed/grace-hopper'
 
@@ -63,7 +63,6 @@ export async function seedSampleProfiles(
         name: sample.name,
         isDefault: !hasDefault && index === 0,
         data: sample.data,
-        eeo: emptyEeo,
         resumeFilename: sample.pdfFile,
         resumeContentType: 'application/pdf',
         resumeBytes: bytes.byteLength,

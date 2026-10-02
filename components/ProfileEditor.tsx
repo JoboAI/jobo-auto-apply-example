@@ -3,74 +3,91 @@ import { useRef, useState } from 'react'
 import { pushWithFallback, useBusy } from '@/lib/use-busy'
 import { useRouter } from 'next/navigation'
 import { Check, Plus, Trash2, ArrowRight } from 'lucide-react'
-import type { ResumeProfile } from '@/lib/resume/profile-schema'
-import { ContactFields, CommonAnswerFields } from './ProfileSetupFields'
-import { contactIssues } from '@/lib/resume/completeness'
+import {
+  degreeOptions,
+  jobTypeOptions,
+  skillYearsOptions,
+  type ResumeProfile,
+} from '@/lib/resume/profile-schema'
+import { EmploymentFields, PersonalFields, PreferenceFields } from './ProfileSetupFields'
+import { contactIssues, employmentIssues } from '@/lib/resume/completeness'
 import { updateProfileAction } from '@/app/actions/profiles'
 type Value =
   string | number | boolean | null | Value[] | { [key: string]: Value }
 type RecordValue = { [key: string]: Value }
+/** The resume-backed sections, edited in the review step. */
+const reviewSections = ['experience', 'education', 'projects', 'skills', 'languages'] as const
+const STEPS = ['Personal info', 'Employment info', 'Job preferences', 'Review & confirm']
+const LAST = STEPS.length - 1
 const titles: Record<string, string> = {
-  personal: 'The essentials',
-  location: 'Where you’re based',
-  links: 'Find you online',
-  work_experience: 'Your experience',
-  education: 'Your education',
-  skills: 'What you do best',
+  experience: 'Work experience',
+  education: 'Education',
+  projects: 'Projects',
+  skills: 'Skills',
   languages: 'Languages',
-  certifications: 'Certifications',
-  work_authorization: 'Work authorization',
-  preferences: 'Your next role',
-  about: 'Candidate summary',
-  country_code: 'Country code (e.g. NL)',
-  authorized_country_codes: 'Countries you can work in (codes, one per line)',
-  requires_sponsorship: 'Do you need sponsorship?',
-  remote_preference: 'Workplace preference',
-  full_name: 'Full name',
-  freeform_notes: 'Anything else Jobo should know',
-  notice_period_days: 'Notice period (days)',
-  desired_salary: 'Desired salary',
-  salary_currency: 'Salary currency (e.g. EUR)',
+  major: 'Major / field of study',
+  gpa: 'GPA',
+  grad_month: 'Graduation month',
+  grad_year: 'Graduation year',
+  type: 'Employment type',
+  currently_working: 'I currently work here',
+  years: 'Years of experience',
+  favorite: 'Favorite skill',
+  link: 'Link',
+  title: 'Title',
 }
 const templates: Record<string, RecordValue> = {
-  links: { label: '', type: 'website', url: '' },
-  work_experience: {
+  experience: {
     company: '',
     title: '',
-    employment_type: null,
     location: null,
-    start_date: '',
-    end_date: null,
-    is_current: false,
+    type: null,
+    start_month: null,
+    start_year: null,
+    end_month: null,
+    end_year: null,
+    currently_working: false,
     description: '',
   },
   education: {
     school: '',
-    degree: null,
-    field_of_study: null,
-    start_date: null,
-    end_date: null,
-    is_current: false,
-    grade: null,
+    degree: 'bachelors',
+    major: null,
+    gpa: null,
+    start_month: null,
+    start_year: null,
+    grad_month: null,
+    grad_year: null,
   },
-  skills: { name: '', level: null },
-  languages: { name: '', proficiency: null },
-  certifications: { name: '', issuer: null, issued: null },
+  projects: {
+    name: '',
+    title: null,
+    location: null,
+    start_month: null,
+    start_year: null,
+    end_month: null,
+    end_year: null,
+    currently_working: false,
+    description: '',
+    link: null,
+  },
+  skills: { name: '', years: null, favorite: false },
+}
+const MONTHS = Array.from({ length: 12 }, (_, i) => [
+  String(i + 1),
+  new Date(Date.UTC(2000, i, 1)).toLocaleString('en', { month: 'long', timeZone: 'UTC' }),
+] as const)
+/** Select fields, with whether "Not specified" is allowed. */
+const enums: Record<string, { options: readonly (readonly [string, string])[]; nullable: boolean }> = {
+  degree: { options: degreeOptions, nullable: false },
+  type: { options: jobTypeOptions, nullable: true },
+  years: { options: skillYearsOptions, nullable: true },
 }
 const label = (key: string) =>
   titles[key] ?? key.replaceAll('_', ' ').replace(/^./, (c) => c.toUpperCase())
-const booleans = new Set([
-  'is_current',
-  'requires_sponsorship',
-  'willing_to_relocate',
-])
-const numbers = new Set(['desired_salary', 'notice_period_days'])
-const longText = new Set([
-  'description',
-  'summary',
-  'motivation',
-  'freeform_notes',
-])
+const booleans = new Set(['currently_working', 'favorite'])
+const isNumber = (key: string) => key === 'gpa' || key.endsWith('_year')
+const longText = new Set(['description'])
 function Fields({
   value,
   onChange,
@@ -135,42 +152,43 @@ function Fields({
           return <Fields key={key} value={v} onChange={change} />
         if (booleans.has(key))
           return (
-            <label key={key}>
+            <label key={key} className="choice">
+              <input
+                type="checkbox"
+                checked={v === true}
+                onChange={(e) => change(e.target.checked)}
+              />
               {label(key)}
-              <select
-                value={v === null ? '' : String(v)}
-                onChange={(e) =>
-                  change(
-                    e.target.value === '' ? null : e.target.value === 'true',
-                  )
-                }
-              >
-                <option value="">Not specified</option>
-                <option value="true">Yes</option>
-                <option value="false">No</option>
-              </select>
             </label>
           )
-        if (key === 'remote_preference' || key === 'type')
+        if (enums[key] || key.endsWith('_month')) {
+          const { options, nullable } = enums[key] ?? { options: MONTHS, nullable: true }
+          const numeric = key.endsWith('_month')
           return (
             <label key={key}>
               {label(key)}
               <select
                 value={String(v ?? '')}
-                onChange={(e) => change(e.target.value || null)}
+                onChange={(e) =>
+                  change(
+                    e.target.value === ''
+                      ? null
+                      : numeric
+                        ? Number(e.target.value)
+                        : e.target.value,
+                  )
+                }
               >
-                <option value="">Not specified</option>
-                {(key === 'type'
-                  ? ['linkedin', 'github', 'portfolio', 'website', 'other']
-                  : ['remote', 'hybrid', 'onsite', 'no_preference']
-                ).map((o) => (
+                {nullable && <option value="">Not specified</option>}
+                {options.map(([o, text]) => (
                   <option key={o} value={o}>
-                    {label(o)}
+                    {text}
                   </option>
                 ))}
               </select>
             </label>
           )
+        }
         return (
           <label key={key} className={longText.has(key) ? 'wide-field' : ''}>
             {label(key)}
@@ -182,18 +200,12 @@ function Fields({
               />
             ) : (
               <input
-                type={
-                  numbers.has(key)
-                    ? 'number'
-                    : key === 'email'
-                      ? 'email'
-                      : 'text'
-                }
+                type={isNumber(key) ? 'number' : key === 'link' ? 'url' : 'text'}
+                step={key === 'gpa' ? 0.01 : undefined}
                 value={String(v ?? '')}
-                placeholder={key.endsWith('_date') ? 'YYYY-MM' : ''}
                 onChange={(e) =>
                   change(
-                    numbers.has(key)
+                    isNumber(key)
                       ? e.target.value === ''
                         ? null
                         : Number(e.target.value)
@@ -233,14 +245,20 @@ export function ProfileEditor({
     setError('')
     requestAnimationFrame(() => stepHeading.current?.focus())
   }
-  const missing = Object.values(contactIssues(profile)).filter(Boolean)
+  const contactMissing = Object.values(contactIssues(profile)).filter(Boolean)
+  const employmentMissing = Object.values(employmentIssues(profile)).filter(Boolean)
   return (
     <form onSubmit={(e) => {
       e.preventDefault()
-      if ((step === 0 || step === 2) && missing.length) {
-        setStep(0)
-        setError(missing.join(' '))
-        requestAnimationFrame(() => document.querySelector<HTMLInputElement>('input[data-missing="true"]')?.focus())
+      // Each gate sends you back to the step that owns the missing answers.
+      const gate =
+        (step === 0 || step === LAST) && contactMissing.length ? { at: 0, missing: contactMissing }
+          : (step === 1 || step === LAST) && employmentMissing.length ? { at: 1, missing: employmentMissing }
+            : null
+      if (gate) {
+        setStep(gate.at)
+        setError(gate.missing.join(' '))
+        requestAnimationFrame(() => document.querySelector<HTMLElement>('[data-missing="true"]')?.focus())
         return
       }
       start(async () => {
@@ -249,10 +267,10 @@ export function ProfileEditor({
           const result = await updateProfileAction(id, {
             name: profileName,
             data: profile,
-            confirm: step === 2,
+            confirm: step === LAST,
           })
           if (!result.ok) setError(result.error ?? 'Could not save.')
-          else if (step < 2) goTo(step + 1)
+          else if (step < LAST) goTo(step + 1)
           else {
             setSaved(true)
             if (!reviewed) pushWithFallback(router, '/jobs')
@@ -264,32 +282,33 @@ export function ProfileEditor({
       })
     }}>
       <ol className="profile-steps" aria-label="Profile setup progress">
-        {['Contact details', 'Application answers', 'Review & confirm'].map((title, index) => (
+        {STEPS.map((title, index) => (
           <li key={title} aria-current={step === index ? 'step' : undefined} data-complete={step > index}>
             <span>{step > index ? <Check size={15} /> : `0${index + 1}`}</span>{title}
           </li>
         ))}
       </ol>
-      <h2 className="sr-only" tabIndex={-1} ref={stepHeading}>Step {step + 1}: {['Contact details', 'Application answers', 'Review and confirm'][step]}</h2>
-      {step === 0 && <ContactFields profile={profile} onChange={changeProfile} />}
-      {step === 1 && <CommonAnswerFields profile={profile} onChange={changeProfile} />}
-      {step === 2 && <>
+      <h2 className="sr-only" tabIndex={-1} ref={stepHeading}>Step {step + 1}: {STEPS[step].replace('&', 'and')}</h2>
+      {step === 0 && <PersonalFields profile={profile} onChange={changeProfile} />}
+      {step === 1 && <EmploymentFields profile={profile} onChange={changeProfile} />}
+      {step === 2 && <PreferenceFields profile={profile} onChange={changeProfile} />}
+      {step === LAST && <>
         <div className="notice"><Check size={18} /><span>
           {reviewed
             ? 'Changes apply to future applications. Applications already started keep their original resume.'
-            : 'Your contact details are ready. Check the extracted experience, education, and skills before confirming.'}
+            : 'Your answers are ready. Check the extracted experience, education, and skills before confirming.'}
         </span></div>
         <div className="surface editor-section setup-panel">
-          <div className="eyebrow">03 · YOUR REVIEWED PROFILE</div>
+          <div className="eyebrow">04 · YOUR REVIEWED PROFILE</div>
           <h2>The facts behind every answer.</h2>
           <p>Open any section to correct the resume extraction. No experience or qualifications are added for you.</p>
           <label>Resume name<input value={profileName} onChange={(e) => { setSaved(false); setName(e.target.value) }} required maxLength={100} /></label>
         </div>
-        {Object.entries(profile).filter(([key]) => key !== 'self_identification').map(([key, value], i) => (
-          <details className="surface editor-section" key={key} open={key === 'work_experience' || undefined}>
+        {reviewSections.map((key, i) => (
+          <details className="surface editor-section" key={key} open={key === 'experience' || undefined}>
             <summary><span className="section-number">{String(i + 1).padStart(2, '0')}</span>{label(key)}<span className="subtle">Edit details</span></summary>
-            <Fields value={Array.isArray(value) ? { [key]: value as Value } : value as RecordValue}
-              onChange={(next) => changeProfile({ ...profile, [key]: Array.isArray(value) ? next[key] : next })} />
+            <Fields value={{ [key]: profile[key] as Value }}
+              onChange={(next) => changeProfile({ ...profile, [key]: next[key] })} />
           </details>
         ))}
       </>}
@@ -297,12 +316,12 @@ export function ProfileEditor({
         <div>
           {error && <p role="alert" className="inline-error">{error}</p>}
           {saved && <p role="status">Your profile is saved.</p>}
-          <p className="subtle">{step < 2 ? 'Continue saves your progress. You can edit these answers later.' : 'Confirm only the information you’re happy to use in applications.'}</p>
+          <p className="subtle">{step < LAST ? 'Continue saves your progress. You can edit these answers later.' : 'Confirm only the information you’re happy to use in applications.'}</p>
         </div>
         <div className="setup-actions">
           {step > 0 && <button type="button" className="button secondary" disabled={pending} onClick={() => goTo(step - 1)}>Back</button>}
           <button className="button primary" disabled={pending}>
-            {pending ? 'Saving…' : step === 0 ? 'Continue to application answers' : step === 1 ? 'Review extracted resume' : reviewed ? 'Save changes' : 'Confirm profile & discover jobs'}
+            {pending ? 'Saving…' : step < LAST ? `Continue to ${STEPS[step + 1].toLowerCase()}` : reviewed ? 'Save changes' : 'Confirm profile & discover jobs'}
             <ArrowRight size={17} />
           </button>
         </div>

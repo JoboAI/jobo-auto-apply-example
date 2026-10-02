@@ -9,7 +9,7 @@ import {
   resumeProfileSchema,
   type ResumeProfile,
 } from '@/lib/resume/profile-schema'
-import { contactIssues } from '@/lib/resume/completeness'
+import { profileIssues } from '@/lib/resume/completeness'
 
 export async function updateProfileAction(
   id: string,
@@ -30,7 +30,7 @@ export async function updateProfileAction(
       error: 'Please check the profile fields and try again.',
     }
   const data = normalizeProfile(parsed.data)
-  const missing = Object.values(contactIssues(data)).filter(Boolean)
+  const missing = profileIssues(data)
   if ((update.confirm || row.reviewedAt) && missing.length)
     return {
       ok: false,
@@ -49,27 +49,6 @@ export async function updateProfileAction(
   revalidatePath('/jobs')
   revalidatePath('/saved')
   return { ok: true }
-}
-export async function updateNotesAction(id: string, notes: string) {
-  const user = await requireUser()
-  const [row] = await db
-    .select()
-    .from(profiles)
-    .where(
-      and(
-        eq(profiles.id, id),
-        eq(profiles.userId, user.id),
-        eq(profiles.archived, false),
-      ),
-    )
-    .limit(1)
-  if (!row) return { ok: false }
-  return updateProfileAction(id, {
-    data: {
-      ...row.data,
-      about: { ...row.data.about, freeform_notes: notes.slice(0, 10000) },
-    },
-  })
 }
 export async function setDefaultProfileAction(id: string) {
   const user = await requireUser()

@@ -57,7 +57,7 @@ beforeAll(async () => {
   for (const row of await db.select().from(schema.profiles)) {
     await db.update(schema.profiles).set({ data: {
       ...row.data,
-      links: [...row.data.links, { label: 'LinkedIn', type: 'linkedin', url: 'https://www.linkedin.com/in/jobo-test-candidate' }],
+      links: { ...row.data.links, linkedin: 'https://www.linkedin.com/in/jobo-test-candidate' },
     } }).where(eq(schema.profiles.id, row.id))
   }
   await db.update(schema.profiles)
@@ -90,11 +90,11 @@ describe('private profiles and durable applications', () => {
       .set({ reviewedAt: Date.now() })
       .where(eq(schema.profiles.id, 'sample-ada-lovelace'))
   })
-  it('saves incomplete drafts but requires LinkedIn and phone for confirmation and enqueue', async () => {
+  it('saves incomplete drafts but requires LinkedIn, phone and employment answers for confirmation and enqueue', async () => {
     const { updateProfileAction } = await import('@/app/actions/profiles')
     const where = eq(schema.profiles.id, 'sample-ada-lovelace')
     const [original] = await db.select().from(schema.profiles).where(where).limit(1)
-    const draft = { ...original.data, links: [], self_identification: 'leave_blank' as const }
+    const draft = { ...original.data, links: { ...original.data.links, linkedin: null } }
     await db.update(schema.profiles).set({ reviewedAt: null }).where(where)
     expect(await updateProfileAction(original.id, { data: draft })).toEqual({ ok: true })
     expect((await db.select().from(schema.profiles).where(where))[0]?.reviewedAt).toBeNull()
@@ -104,7 +104,13 @@ describe('private profiles and durable applications', () => {
     await expect(queue.enqueueApplication('alice', original.id, job)).rejects.toThrow(/LinkedIn/)
     const noPhone = { ...original.data, personal: { ...original.data.personal, phone: null } }
     expect((await updateProfileAction(original.id, { data: noPhone, confirm: true })).error).toContain('phone')
-    expect(await updateProfileAction(original.id, { data: { ...original.data, self_identification: 'leave_blank' }, confirm: true })).toEqual({ ok: true })
+    // Self-identification must be answered — "decline" counts, untouched does not.
+    const unanswered = { ...original.data, eeo: { ...original.data.eeo, veteran: null } }
+    expect((await updateProfileAction(original.id, { data: unanswered, confirm: true })).error).toContain('veteran')
+    const noSponsorship = { ...original.data, work_authorization: { ...original.data.work_authorization, requires_sponsorship: null } }
+    expect((await updateProfileAction(original.id, { data: noSponsorship, confirm: true })).error).toContain('sponsorship')
+    const declined = { ...original.data, eeo: { ...original.data.eeo, veteran: 'decline' as const } }
+    expect(await updateProfileAction(original.id, { data: declined, confirm: true })).toEqual({ ok: true })
   })
   it('deduplicates clicks and preserves the original profile and PDF', async () => {
     const id = await queue.enqueueApplication('alice', 'sample-ada-lovelace', job)
@@ -120,8 +126,8 @@ describe('private profiles and durable applications', () => {
       .set({
         data: {
           ...original.data,
-          self_identification: 'decline',
-          personal: { ...original.data.personal, full_name: 'Edited name' },
+          eeo: { ...original.data.eeo, gender: 'decline' },
+          personal: { ...original.data.personal, first_name: 'Edited' },
         },
       })
       .where(eq(schema.profiles.id, original.id))
@@ -130,10 +136,10 @@ describe('private profiles and durable applications', () => {
       .from(schema.applications)
       .where(eq(schema.applications.id, id))
       .limit(1)
-    expect(row.profileSnapshot?.data.personal.full_name).toBe(
-      original.data.personal.full_name,
+    expect(row.profileSnapshot?.data.personal.first_name).toBe(
+      original.data.personal.first_name,
     )
-    expect(row.profileSnapshot?.data.self_identification).toBe('leave_blank')
+    expect(row.profileSnapshot?.data.eeo.gender).toBe('female')
     const { RESUME_DIR } = await import('@/db/client')
     expect(readFileSync(join(RESUME_DIR, `${id}.pdf`))).toEqual(
       readFileSync(join(RESUME_DIR, `${original.id}.pdf`)),

@@ -27,7 +27,7 @@ beforeAll(async () => {
   for (const row of (await db.select().from(profiles))) {
     await db.update(profiles).set({ data: {
       ...row.data,
-      links: [...row.data.links, { label: 'LinkedIn', type: 'linkedin', url: 'https://www.linkedin.com/in/jobo-test-candidate' }],
+      links: { ...row.data.links, linkedin: 'https://www.linkedin.com/in/jobo-test-candidate' },
     } }).where(eq(profiles.id, row.id))
   }
   await db.update(profiles)

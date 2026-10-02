@@ -79,6 +79,31 @@ describe('LLM safety boundaries', () => {
     expect(prompt).not.toContain('SECRET GLOBAL ERROR')
   })
 
+  it('never puts self-identification or the date of birth in the prompt', () => {
+    const profile = emptyProfile('Ada Lovelace', 'ada@example.com')
+    profile.personal.birthday = '1987-06-05'
+    profile.eeo = {
+      gender: 'non_binary',
+      ethnicity: ['middle_eastern', 'native_hawaiian_pacific_islander'],
+      veteran: 'yes',
+      disability: 'yes',
+      lgbtq: 'yes'
+    }
+    const prompt = buildUserPrompt({
+      fields: [field({ field_id: 'motivation', type: 'textarea', label: 'Why us?' })],
+      gaps: [],
+      ctx: context({ profile })
+    })
+    const sent = JSON.parse(prompt).candidate_profile
+    expect(sent.eeo).toBeUndefined()
+    expect(sent.personal.birthday).toBeUndefined()
+    // Age-gated questions get the one derived fact they need.
+    expect(sent.personal.is_over_18).toBe(true)
+    expect(sent.personal.full_name).toBe('Ada Lovelace')
+    for (const secret of ['1987-06-05', 'non_binary', 'middle_eastern', 'native_hawaiian', '"eeo"'])
+      expect(prompt).not.toContain(secret)
+  })
+
   it('never carries a previous sensitive answer past a deterministic decline', async () => {
     const sensitive = field({
       field_id: 'voluntary-demographic',

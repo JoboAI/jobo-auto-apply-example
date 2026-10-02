@@ -14,6 +14,7 @@ import { ApplyButton } from '@/components/JobActions'
 import { ApplicationApiPreview } from '@/components/ApplicationApiPreview'
 import { ApplicationAnswers } from '@/components/ApplicationAnswers'
 import { ProductionJobLink, SandboxJobLink } from '@/components/SandboxJobLink'
+import { fullName } from '@/lib/resume/profile-schema'
 export default async function Page({
   params,
 }: {
@@ -195,7 +196,7 @@ export default async function Page({
             <p>{row.profileSnapshot?.resumeFilename}</p>
             <dl className="snapshot-details">
               <dt>Name</dt>
-              <dd>{row.profileSnapshot?.data.personal.full_name}</dd>
+              <dd>{row.profileSnapshot ? fullName(row.profileSnapshot.data) : null}</dd>
               <dt>Email</dt>
               <dd>{row.profileSnapshot?.data.personal.email}</dd>
             </dl>

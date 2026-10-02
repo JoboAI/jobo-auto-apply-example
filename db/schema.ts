@@ -11,7 +11,7 @@ import {
   timestamp,
 } from 'drizzle-orm/pg-core'
 import type { Answer, CommandError, Field } from '@jobo-ai/autoapply'
-import type { ResumeProfile, EeoAnswers } from '@/lib/resume/profile-schema'
+import type { ResumeProfile } from '@/lib/resume/profile-schema'
 import type { Job } from '@/lib/jobs-types'
 import type { AnswerTrace } from '@/lib/answers/types'
 
@@ -115,18 +115,12 @@ export const profiles = pgTable('profiles', {
     .default(false),
 
   /**
-   * The structured profile, as JSON. Deliberately NOT normalised into eight
+   * The structured profile, as JSON — including the candidate's voluntary
+   * self-identification (`data.eeo`). Deliberately NOT normalised into a dozen
    * tables: it is read whole, written whole, and never queried by field.
    * Normalising it would triple the schema and teach nothing about Auto Apply.
    */
   data: jsonb('data').$type<ResumeProfile>().notNull(),
-
-  /**
-   * Retained so existing local databases remain readable without a migration.
-   * The answer pipeline never reads or submits these values: sensitive fields
-   * use only an advertised decline option or remain unanswered.
-   */
-  eeo: jsonb('eeo').$type<EeoAnswers>(),
 
   resumeFilename: text('resume_filename').notNull(),
   resumeContentType: text('resume_content_type').notNull(),

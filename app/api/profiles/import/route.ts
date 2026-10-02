@@ -5,7 +5,6 @@ import { count } from 'drizzle-orm'
 import { db } from '@/db/client'
 import { profiles } from '@/db/schema'
 import { ResumeExtractionError, extractResumeText } from '@/lib/resume/extract'
-import { emptyEeo } from '@/lib/resume/profile-schema'
 import { MAX_RESUME_BYTES, saveResume } from '@/lib/resume/storage'
 import { structureResume, suggestProfileName } from '@/lib/resume/structure'
 import { log } from '@/lib/logger'
@@ -118,7 +117,6 @@ export async function POST(request: Request): Promise<Response> {
       name: suggestProfileName(profile),
       isDefault: isFirst,
       data: profile,
-      eeo: emptyEeo,
       resumeFilename: file.name || 'resume.pdf',
       // Jobo matches this against the field's `accepted_file_types`, so record
       // what we will actually serve rather than what the browser claimed.

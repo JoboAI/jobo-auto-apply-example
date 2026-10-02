@@ -15,6 +15,13 @@
       "when": 1790914333213,
       "tag": "0001_production_mode",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790925139315,
+      "tag": "0002_simplify_profile",
+      "breakpoints": true
     }
   ]
 }
