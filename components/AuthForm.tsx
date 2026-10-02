@@ -34,7 +34,11 @@ export function AuthForm({
               name: String(data.get('name')),
               email,
               password,
-              callbackURL: '/jobs',
+              // Straight to onboarding: a new account has no profile, and
+              // /jobs would redirect it there from inside a streamed page,
+              // which Next backs with a 1-second <meta refresh>. That
+              // reload landed on top of a quick first upload and threw it away.
+              callbackURL: '/onboarding',
             })
           : mode === 'login'
             ? await authClient.signIn.email({
@@ -186,7 +190,7 @@ export function AuthForm({
                   try {
                     const r = await authClient.sendVerificationEmail({
                       email,
-                      callbackURL: '/jobs',
+                      callbackURL: '/onboarding',
                     })
                     if (r.error)
                       setError(r.error.message ?? 'Could not send email.')

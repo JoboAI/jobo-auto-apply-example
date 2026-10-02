@@ -9,6 +9,7 @@ import { requireUser } from '@/lib/session'
 import { isTerminal } from '@/lib/status'
 import { applicationLabel, canRetry, displayDate } from '@/lib/presentation'
 import { LiveRefresh, CancelButton } from '@/components/ApplicationLive'
+import { liveVersion } from '@/lib/live-version'
 import { ApplyButton } from '@/components/JobActions'
 import { ApplicationApiPreview } from '@/components/ApplicationApiPreview'
 import { ApplicationAnswers } from '@/components/ApplicationAnswers'
@@ -56,7 +57,7 @@ export default async function Page({
             {row.jobSnapshot?.company} · {row.jobSnapshot?.location}
           </p>
         </div>
-        <LiveRefresh active={active} />
+        <LiveRefresh id={id} active={active} version={liveVersion(row, history, exchanges)} />
       </div>
       <div className="detail-layout">
         <section className="surface application-detail">
