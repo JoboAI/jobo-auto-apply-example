@@ -52,6 +52,11 @@ export interface BuildResult {
   trace: AnswerTrace[]
   /** Fields we could not answer that Jobo requires — forces a cancel. */
   unanswerable: Field[]
+  /**
+   * The unanswerable fields the model was asked about but returned nothing
+   * usable for, even after a retry — a model fault, not a gap in the profile.
+   */
+  modelFailures?: Field[]
   llmModel?: string
   llmMs?: number
   llmError?: string

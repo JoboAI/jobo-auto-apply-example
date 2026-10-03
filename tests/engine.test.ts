@@ -197,6 +197,38 @@ describe('background application exchanges', () => {
         ?.stopReason,
     ).toBe('Your profile is missing required information: Available date')
   })
+  it('blames the model, not the profile, when it fumbled a required field', async () => {
+    mocked.build.mockResolvedValue({
+      answers: [],
+      trace: [],
+      unanswerable: [{ label: 'School search' }],
+      modelFailures: [{ label: 'School search' }],
+    })
+    mocked.get.mockResolvedValue(snapshot({ status: 'canceled', current_step: null }))
+    await engine.advanceApplication(id, 'worker')
+    expect(
+      (await db.select().from(schema.applications).where(eq(schema.applications.id, id)))[0]
+        ?.stopReason,
+    ).toBe('The AI could not produce a valid answer for: School search. Please try again.')
+  })
+  it('waits for a cancel to settle instead of recording the step it canceled', async () => {
+    mocked.build.mockResolvedValue({
+      answers: [],
+      trace: [],
+      unanswerable: [{ label: 'Available date' }],
+    })
+    // The step is still answerable until the cancel lands, so the long poll
+    // returns it at once.
+    mocked.get
+      .mockResolvedValueOnce(snapshot())
+      .mockResolvedValue(snapshot({ status: 'canceled', current_step: null }))
+    await engine.advanceApplication(id, 'worker')
+    expect(mocked.get).toHaveBeenCalledTimes(2)
+    expect(
+      (await db.select().from(schema.applications).where(eq(schema.applications.id, id)))[0]
+        ?.status,
+    ).toBe('canceled')
+  })
   it('submits the profile answers when the model fails but nothing required is missing', async () => {
     mocked.build.mockResolvedValue({
       answers: [{ field_id: 'full_name', value: 'Ada Lovelace' }],

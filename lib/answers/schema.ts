@@ -64,13 +64,29 @@ export type GeneratedAnswer = z.infer<typeof generatedAnswerSchema>
 export type AnswerGeneration = z.infer<typeof answerGenerationSchema>
 
 /**
- * Pull the value out of whichever slot the model declared.
- * Returns undefined for `skip`, or when the declared slot is empty.
+ * Pull the value out of whichever slot the model declared. Returns undefined
+ * for `skip`, or when no slot holds a value.
+ *
+ * Models sometimes declare one kind and fill another (`kind: "typeahead"` with
+ * the school name in `text`). When the declared slot is empty, the one slot
+ * that IS filled is the answer: coercion then shapes it for the real field
+ * type, and the server still validates it for free.
  */
 export function slotValue(
   answer: GeneratedAnswer,
 ): string | number | boolean | string[] | Record<string, unknown> | undefined {
-  switch (answer.kind) {
+  if (answer.kind === 'skip') return undefined
+  const declared = slot(answer, answer.kind)
+  if (declared !== undefined) return declared
+  for (const kind of answerKinds) {
+    const value = kind === 'skip' ? undefined : slot(answer, kind)
+    if (value !== undefined) return value
+  }
+  return undefined
+}
+
+function slot(answer: GeneratedAnswer, kind: Exclude<(typeof answerKinds)[number], 'skip'>) {
+  switch (kind) {
     case 'text':
       return answer.text ?? undefined
     case 'number':
@@ -86,8 +102,6 @@ export function slotValue(
             selection: { value: answer.typeahead.value, label: answer.typeahead.label },
           }
         : undefined
-    case 'skip':
-      return undefined
     default:
       return undefined
   }

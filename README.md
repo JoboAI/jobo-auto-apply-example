@@ -148,7 +148,7 @@ Generate each secret separately, for example with `openssl rand -hex 32`. The wo
 | [`lib/queue.ts`](lib/queue.ts) | Durable queue in Postgres: enqueue, claim with leases, concurrency caps, retries |
 | [`lib/worker.ts`](lib/worker.ts), [`scripts/worker.ts`](scripts/worker.ts) | The worker loop and its process entry point |
 | [`lib/jobo/client.ts`](lib/jobo/client.ts) | SDK client setup and redacted request recording |
-| [`lib/answers/`](lib/answers/) | Answer pipeline: deterministic rules, one model call, coercion, repair after validation errors |
+| [`lib/answers/`](lib/answers/) | Answer pipeline: deterministic rules, one model call (retried once for required fields it fumbles), coercion, repair after validation errors |
 | [`lib/resume/`](lib/resume/) | PDF text extraction, structuring into a profile, the profile schema, file storage |
 | [`lib/jobs.ts`](lib/jobs.ts) | Sandbox job catalog and the destination checks every application passes |
 | [`lib/jobo/jobs-api.ts`](lib/jobo/jobs-api.ts), [`job-filters.ts`](lib/jobo/job-filters.ts), [`supported-ats.ts`](lib/jobo/supported-ats.ts) | Production mode: Jobs API search, job and company lookups, URL filter state, supported application systems |

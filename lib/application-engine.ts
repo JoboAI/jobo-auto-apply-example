@@ -62,6 +62,9 @@ import { assertLease, updateLeased } from '@/lib/queue'
 const DEADLINE_RESERVE_MS = 20_000
 /** Long-poll length for `applications.get`, in seconds. */
 const MAX_WAIT_SECONDS = 90
+/** Snapshot reads, and the pause between them, while a cancel settles. */
+const CANCEL_POLLS = 5
+const CANCEL_POLL_MS = 500
 /**
  * Jobo honours an Idempotency-Key for 24 hours. A create still unconfirmed
  * after 20 is given up rather than replayed into a window where the key may
@@ -178,8 +181,7 @@ export async function advanceApplication(id: string, leaseOwner: string): Promis
     if (fresh.cancelRequested && !isTerminal(application.status)) {
       await assertLease(id, leaseOwner)
       await api.applications.cancel(application.id)
-      // Cancels settle at the next safe checkpoint; wait for the terminal state.
-      application = await api.applications.get(application.id, { waitSeconds: MAX_WAIT_SECONDS })
+      application = await awaitCancel(api, application.id)
       await persistApplication(id, application, leaseOwner)
       return
     }
@@ -245,8 +247,7 @@ async function answerStep(
     await completeStep({ status: 'canceled', error: reason, ...traceOf(built) })
     await updateLeased(local.id, leaseOwner, { stopReason: reason, cancelRequested: true })
     await api.applications.cancel(joboId)
-    // Cancels settle at the next safe checkpoint; wait for the terminal state.
-    return api.applications.get(joboId, { waitSeconds: MAX_WAIT_SECONDS })
+    return awaitCancel(api, joboId)
   }
 
   if (step.fields.some((f) => f.format === 'one_time_code'))
@@ -330,10 +331,13 @@ async function answerStep(
     )
   if (built.unanswerable.length > 0) {
     const missing = built.unanswerable.map((f) => f.label).join(', ')
+    const fumbled = built.modelFailures?.map((f) => f.label).join(', ')
     return cancelCleanly(
       built.llmError
         ? `The AI answer step failed (${built.llmError}), so these required questions have no answer: ${missing}. Please try again.`
-        : `Your profile is missing required information: ${missing}`,
+        : fumbled
+          ? `The AI could not produce a valid answer for: ${fumbled}. Please try again.`
+          : `Your profile is missing required information: ${missing}`,
       built,
     )
   }
@@ -397,6 +401,22 @@ async function answerStep(
       'answers accepted',
     )
     return next
+  }
+}
+
+/**
+ * Wait for a requested cancel to reach its terminal state. Cancels settle at
+ * the next safe checkpoint. A running application long-polls there directly,
+ * but one awaiting answers already counts as answerable, so the long poll
+ * returns at once until the cancel lands: poll briefly instead. Still not
+ * terminal after that, the snapshot is returned and the next claim checks again.
+ */
+async function awaitCancel(api: ReturnType<typeof jobo>, joboId: string): Promise<Application> {
+  for (let attempt = 1; ; attempt++) {
+    const application = await api.applications.get(joboId, { waitSeconds: MAX_WAIT_SECONDS })
+    if (isTerminal(application.status) || attempt >= CANCEL_POLLS) return application
+    if (application.status === 'awaiting_answers')
+      await new Promise((resolve) => setTimeout(resolve, CANCEL_POLL_MS))
   }
 }
 
