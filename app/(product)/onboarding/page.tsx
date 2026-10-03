@@ -1,5 +1,8 @@
+import type { Metadata } from 'next'
 import { ResumeUpload } from '@/components/ResumeUpload'
 import { requireUser } from '@/lib/session'
+
+export const metadata: Metadata = { title: 'Set up your profile' }
 export default async function Page() {
   const user = await requireUser()
   return (

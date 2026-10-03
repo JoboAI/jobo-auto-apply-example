@@ -1,6 +1,6 @@
 import { PageLink } from '@/components/PageLink'
 import { ArrowRight, ArrowUpRight, BriefcaseBusiness, Building2, Globe, Star } from 'lucide-react'
-import type { CompanyLinkKind, CompanyProfile } from '@/lib/jobo/jobs-api'
+import type { CompanyLinkKind, CompanyProfile } from '@/lib/jobo/company-profile'
 import { AtsBadge } from './AtsBadge'
 import { BrandIcon, isBrand } from './BrandIcon'
 

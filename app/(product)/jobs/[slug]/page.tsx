@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import { PageLink } from '@/components/PageLink'
 import { isApplicationReady } from '@/lib/resume/completeness'
 import Link from 'next/link'
@@ -17,13 +18,9 @@ import { profiles, applications, savedJobs } from '@/db/schema'
 import { requireUser } from '@/lib/session'
 import { getJobs, isProductionJobId } from '@/lib/jobs'
 import type { Job } from '@/lib/jobs-types'
-import {
-  getCompanyProfile,
-  getProductionJobDetail,
-  JobsApiError,
-  type CompanyProfile,
-  type JobDetail,
-} from '@/lib/jobo/jobs-api'
+import { getCompanyProfile, getProductionJobDetail, JobsApiError } from '@/lib/jobo/jobs-api'
+import type { CompanyProfile } from '@/lib/jobo/company-profile'
+import type { JobDetail } from '@/lib/jobo/job-format'
 import { atsLogo, supportedAts } from '@/lib/jobo/supported-ats'
 import { AtsBadge } from '@/components/AtsBadge'
 import { CompanyPanel } from '@/components/CompanyPanel'
@@ -32,6 +29,8 @@ import { JobDetailPanel } from '@/components/JobDetailPanel'
 import { productionApiKey } from '@/lib/user-settings'
 import { ApplyButton, SaveButton } from '@/components/JobActions'
 import { ProductionJobLink, SandboxJobLink } from '@/components/SandboxJobLink'
+
+export const metadata: Metadata = { title: 'Job' }
 export default async function JobPage({ params }: { params: Promise<{ slug: string }> }) {
   const user = await requireUser(),
     { slug } = await params

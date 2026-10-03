@@ -2,217 +2,23 @@
 import { useRef, useState } from 'react'
 import { pushWithFallback, useBusy } from '@/lib/use-busy'
 import { useRouter } from 'next/navigation'
-import { Check, Plus, Trash2, ArrowRight } from 'lucide-react'
-import {
-  degreeOptions,
-  jobTypeOptions,
-  skillYearsOptions,
-  type ResumeProfile,
-} from '@/lib/resume/profile-schema'
+import { Check, ArrowRight } from 'lucide-react'
+import type { ResumeProfile } from '@/lib/resume/profile-schema'
+import { SectionFields, label, type Value } from './SectionFields'
 import { EmploymentFields, PersonalFields, PreferenceFields } from './ProfileSetupFields'
 import { contactIssues, employmentIssues } from '@/lib/resume/completeness'
 import { updateProfileAction } from '@/app/actions/profiles'
-type Value = string | number | boolean | null | Value[] | { [key: string]: Value }
-type RecordValue = { [key: string]: Value }
 /** The resume-backed sections, edited in the review step. */
 const reviewSections = ['experience', 'education', 'projects', 'skills', 'languages'] as const
 const STEPS = ['Personal info', 'Employment info', 'Job preferences', 'Review & confirm']
 const LAST = STEPS.length - 1
-const titles: Record<string, string> = {
-  experience: 'Work experience',
-  education: 'Education',
-  projects: 'Projects',
-  skills: 'Skills',
-  languages: 'Languages',
-  major: 'Major / field of study',
-  gpa: 'GPA',
-  grad_month: 'Graduation month',
-  grad_year: 'Graduation year',
-  type: 'Employment type',
-  currently_working: 'I currently work here',
-  years: 'Years of experience',
-  favorite: 'Favorite skill',
-  link: 'Link',
-  title: 'Title',
-}
-const templates: Record<string, RecordValue> = {
-  experience: {
-    company: '',
-    title: '',
-    location: null,
-    type: null,
-    start_month: null,
-    start_year: null,
-    end_month: null,
-    end_year: null,
-    currently_working: false,
-    description: '',
-  },
-  education: {
-    school: '',
-    degree: 'bachelors',
-    major: null,
-    gpa: null,
-    start_month: null,
-    start_year: null,
-    grad_month: null,
-    grad_year: null,
-  },
-  projects: {
-    name: '',
-    title: null,
-    location: null,
-    start_month: null,
-    start_year: null,
-    end_month: null,
-    end_year: null,
-    currently_working: false,
-    description: '',
-    link: null,
-  },
-  skills: { name: '', years: null, favorite: false },
-}
-const MONTHS = Array.from(
-  { length: 12 },
-  (_, i) =>
-    [
-      String(i + 1),
-      new Date(Date.UTC(2000, i, 1)).toLocaleString('en', { month: 'long', timeZone: 'UTC' }),
-    ] as const,
-)
-/** Select fields, with whether "Not specified" is allowed. */
-const enums: Record<
-  string,
-  { options: readonly (readonly [string, string])[]; nullable: boolean }
-> = {
-  degree: { options: degreeOptions, nullable: false },
-  type: { options: jobTypeOptions, nullable: true },
-  years: { options: skillYearsOptions, nullable: true },
-}
-const label = (key: string) =>
-  titles[key] ?? key.replaceAll('_', ' ').replace(/^./, (c) => c.toUpperCase())
-const booleans = new Set(['currently_working', 'favorite'])
-const isNumber = (key: string) => key === 'gpa' || key.endsWith('_year')
-const longText = new Set(['description'])
-function Fields({ value, onChange }: { value: RecordValue; onChange: (v: RecordValue) => void }) {
-  return (
-    <div className="editor-fields">
-      {Object.entries(value).map(([key, v]) => {
-        const change = (next: Value) => onChange({ ...value, [key]: next })
-        if (Array.isArray(v)) {
-          if (templates[key])
-            return (
-              <div className="array-section" key={key}>
-                {v.map((item, i) => (
-                  <div className="array-item" key={i}>
-                    <div className="spread">
-                      <strong>
-                        {label(key)} {i + 1}
-                      </strong>
-                      <button
-                        type="button"
-                        className="icon-button"
-                        aria-label={`Remove ${label(key)} ${i + 1}`}
-                        onClick={() => change(v.filter((_, n) => n !== i))}
-                      >
-                        <Trash2 size={15} />
-                      </button>
-                    </div>
-                    <Fields
-                      value={item as RecordValue}
-                      onChange={(next) => change(v.map((old, n) => (n === i ? next : old)))}
-                    />
-                  </div>
-                ))}
-                <button
-                  className="button secondary small"
-                  type="button"
-                  onClick={() => change([...v, { ...templates[key] }])}
-                >
-                  <Plus size={15} />
-                  Add {label(key).toLowerCase()}
-                </button>
-              </div>
-            )
-          return (
-            <label key={key} className="wide-field">
-              {label(key)}
-              <textarea
-                rows={3}
-                value={v.join('\n')}
-                placeholder="One per line"
-                onChange={(e) => change(e.target.value.split('\n'))}
-              />
-            </label>
-          )
-        }
-        if (v && typeof v === 'object') return <Fields key={key} value={v} onChange={change} />
-        if (booleans.has(key))
-          return (
-            <label key={key} className="choice">
-              <input
-                type="checkbox"
-                checked={v === true}
-                onChange={(e) => change(e.target.checked)}
-              />
-              {label(key)}
-            </label>
-          )
-        if (enums[key] || key.endsWith('_month')) {
-          const { options, nullable } = enums[key] ?? { options: MONTHS, nullable: true }
-          const numeric = key.endsWith('_month')
-          return (
-            <label key={key}>
-              {label(key)}
-              <select
-                value={String(v ?? '')}
-                onChange={(e) =>
-                  change(
-                    e.target.value === ''
-                      ? null
-                      : numeric
-                        ? Number(e.target.value)
-                        : e.target.value,
-                  )
-                }
-              >
-                {nullable && <option value="">Not specified</option>}
-                {options.map(([o, text]) => (
-                  <option key={o} value={o}>
-                    {text}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )
-        }
-        return (
-          <label key={key} className={longText.has(key) ? 'wide-field' : ''}>
-            {label(key)}
-            {longText.has(key) ? (
-              <textarea rows={4} value={String(v ?? '')} onChange={(e) => change(e.target.value)} />
-            ) : (
-              <input
-                type={isNumber(key) ? 'number' : key === 'link' ? 'url' : 'text'}
-                step={key === 'gpa' ? 0.01 : undefined}
-                value={String(v ?? '')}
-                onChange={(e) =>
-                  change(
-                    isNumber(key)
-                      ? e.target.value === ''
-                        ? null
-                        : Number(e.target.value)
-                      : e.target.value || (v === null ? null : ''),
-                  )
-                }
-              />
-            )}
-          </label>
-        )
-      })}
-    </div>
-  )
-}
+
+/**
+ * The four-step profile review: personal info, employment info (work
+ * authorization and self-identification), job preferences, then the resume
+ * sections. Saves through updateProfileAction; confirming marks the profile
+ * reviewed, which is what allows applying with it.
+ */
 export function ProfileEditor({
   id,
   data,
@@ -343,7 +149,7 @@ export function ProfileEditor({
                 {label(key)}
                 <span className="subtle">Edit details</span>
               </summary>
-              <Fields
+              <SectionFields
                 value={{ [key]: profile[key] as Value }}
                 onChange={(next) => changeProfile({ ...profile, [key]: next[key] })}
               />

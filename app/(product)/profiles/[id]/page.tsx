@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { and, eq } from 'drizzle-orm'
@@ -6,6 +7,8 @@ import { db } from '@/db/client'
 import { profiles } from '@/db/schema'
 import { requireUser } from '@/lib/session'
 import { ProfileEditor } from '@/components/ProfileEditor'
+
+export const metadata: Metadata = { title: 'Review profile' }
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {
   const user = await requireUser(),
     { id } = await params

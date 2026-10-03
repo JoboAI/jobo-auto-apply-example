@@ -234,11 +234,9 @@ Before going live:
 npm run db:up      # tests need Postgres
 npm run check      # lint, format check, typecheck, unit and integration tests
 npm run build
-npx playwright install chromium   # once
-npm run test:e2e
 ```
 
-Each test file gets its own throwaway database, cloned from a migrated template. Use `TEST_DATABASE_URL` to point tests at a Postgres login that can create databases. The browser suite starts an isolated server with stubbed Jobo, OpenRouter and email responses. It never sends real email, calls a model or submits a real application.
+Each test file gets its own throwaway database, cloned from a migrated template. Use `TEST_DATABASE_URL` to point tests at a Postgres login that can create databases. Jobo, OpenRouter and email are stubbed: the tests never send real email, call a model or submit a real application.
 
 ## Troubleshooting
 

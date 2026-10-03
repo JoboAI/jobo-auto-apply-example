@@ -3,7 +3,5 @@ node_modules/
 package-lock.json
 db/migrations/
 public/
-test-results/
-playwright-report/
 next-env.d.ts
 *.md

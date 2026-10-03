@@ -1,7 +1,10 @@
+import type { Metadata } from 'next'
 import { requireUser } from '@/lib/session'
 import { getDemoSettings } from '@/lib/user-settings'
 import { AccountSettings } from '@/components/AccountSettings'
-import { ProductionKeySettings } from '@/components/ModeToggle'
+import { ProductionKeySettings } from '@/components/ProductionKeySettings'
+
+export const metadata: Metadata = { title: 'Settings' }
 export default async function Page() {
   const user = await requireUser()
   const settings = await getDemoSettings(user.id)

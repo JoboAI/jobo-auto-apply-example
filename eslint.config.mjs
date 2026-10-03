@@ -6,7 +6,7 @@ const compat = new FlatCompat({ baseDirectory: dirname(fileURLToPath(import.meta
 
 /** Next.js's recommended rules (React, hooks, accessibility basics, TypeScript). */
 const config = [
-  { ignores: ['.next/', 'node_modules/', 'next-env.d.ts', 'playwright-report/', 'test-results/'] },
+  { ignores: ['.next/', 'node_modules/', 'next-env.d.ts'] },
   ...compat.extends('next/core-web-vitals', 'next/typescript'),
   {
     rules: {

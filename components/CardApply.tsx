@@ -92,40 +92,14 @@ export function CardApply({
   const submitted = current?.status === 'submitted'
   const queued = current?.status === 'queued'
   const retry = current?.retryable ?? false
-  const visualState =
-    pending || active
-      ? 'pending'
-      : submitted
-        ? 'submitted'
-        : !available && (!current || retry)
-          ? 'unavailable'
-          : retry
-            ? 'retry'
-            : current || !profileId
-              ? 'secondary'
-              : 'ready'
-  const label = pending
-    ? 'Queueing application…'
-    : current?.cancelRequested && active
-      ? 'Canceling…'
-      : active
-        ? queued
-          ? 'Queued'
-          : current?.status === 'creating'
-            ? 'Opening application…'
-            : 'Applying…'
-        : submitted
-          ? 'Submitted'
-          : retry
-            ? 'Retry with Auto Apply'
-            : current
-              ? 'View application'
-              : !available
-                ? 'Unavailable'
-                : !profileId
-                  ? 'Set up a profile'
-                  : 'Apply with Auto Apply'
-
+  const { state: visualState, label } = buttonPresentation({
+    pending,
+    active,
+    current,
+    retry,
+    available,
+    profileId,
+  })
   return (
     <div className={`card-apply ${submitted ? 'card-apply-submitted' : ''}`}>
       <button
@@ -175,19 +149,7 @@ export function CardApply({
             <span className={submitted ? 'done' : ''} />
           </div>
           <p role="status" aria-live="polite">
-            {submitted
-              ? 'Submission confirmed by the API.'
-              : current.cancelRequested && active
-                ? 'Waiting for cancellation confirmation.'
-                : current.status === 'recovery_required'
-                  ? 'Checking the API result before continuing.'
-                  : active && queued
-                    ? 'Saved to the queue. The worker will start automatically.'
-                    : current.status === 'creating'
-                      ? 'The API is discovering the application fields.'
-                      : active
-                        ? `${current.answeredSteps} ${current.answeredSteps === 1 ? 'step' : 'steps'} answered · Running in the background.`
-                        : current.message || current.label}
+            {progressMessage(current, active)}
           </p>
           <Link href={`/applications/${current.id}`} className="text-link">
             View application progress <ArrowUpRight size={13} />
@@ -207,4 +169,51 @@ export function CardApply({
       )}
     </div>
   )
+}
+
+/**
+ * What the Apply button shows: its look (`data-state`, styled in globals.css)
+ * and its label. Checked top to bottom; the first match wins.
+ */
+function buttonPresentation({
+  pending,
+  active,
+  current,
+  retry,
+  available,
+  profileId,
+}: {
+  pending: boolean
+  active: boolean
+  current?: CardApplication
+  retry: boolean
+  available: boolean
+  profileId?: string
+}): { state: string; label: string } {
+  if (pending) return { state: 'pending', label: 'Queueing application…' }
+  if (active) {
+    if (current?.cancelRequested) return { state: 'pending', label: 'Canceling…' }
+    if (current?.status === 'queued') return { state: 'pending', label: 'Queued' }
+    if (current?.status === 'creating') return { state: 'pending', label: 'Opening application…' }
+    return { state: 'pending', label: 'Applying…' }
+  }
+  if (current?.status === 'submitted') return { state: 'submitted', label: 'Submitted' }
+  if (retry) return { state: available ? 'retry' : 'unavailable', label: 'Retry with Auto Apply' }
+  if (current) return { state: 'secondary', label: 'View application' }
+  if (!available) return { state: 'unavailable', label: 'Unavailable' }
+  if (!profileId) return { state: 'secondary', label: 'Set up a profile' }
+  return { state: 'ready', label: 'Apply with Auto Apply' }
+}
+
+/** The line under the button describing where the application is. */
+function progressMessage(current: CardApplication, active: boolean): string {
+  if (current.status === 'submitted') return 'Submission confirmed by the API.'
+  if (current.cancelRequested && active) return 'Waiting for cancellation confirmation.'
+  if (current.status === 'recovery_required') return 'Checking the API result before continuing.'
+  if (active && current.status === 'queued')
+    return 'Saved to the queue. The worker will start automatically.'
+  if (current.status === 'creating') return 'The API is discovering the application fields.'
+  if (active)
+    return `${current.answeredSteps} ${current.answeredSteps === 1 ? 'step' : 'steps'} answered · Running in the background.`
+  return current.message || current.label
 }

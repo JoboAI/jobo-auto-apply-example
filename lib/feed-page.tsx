@@ -15,6 +15,8 @@ import {
 import { parseFilters, type JobFilters, type SearchParams } from './jobo/job-filters'
 import { supportedAts } from './jobo/supported-ats'
 import { getDemoSettings, productionApiKey } from './user-settings'
+import { FeedAside } from '@/components/FeedAside'
+import { FeedHeader } from '@/components/FeedHeader'
 import { JobFeed } from '@/components/JobFeed'
 import { ExplorerSummary, JobExplorer } from '@/components/JobExplorer'
 import { applicationLabel, canRetry, type CardApplication } from './presentation'
@@ -141,29 +143,46 @@ export async function FeedPage({
     )
   }
   const ats = explored ? await supportedAts() : []
+  const profileId = profile.find(isApplicationReady)?.id
   return (
-    <JobFeed
-      jobs={jobs}
-      savedIds={saved.map((s) => s.jobId)}
-      name={user.name}
-      savedOnly={savedOnly}
-      mode={settings.mode}
-      search={
-        explored && {
-          filters: explored.filters,
-          total: explored.result.total,
-          page: explored.result.page,
-          totalPages: explored.result.totalPages,
-          explorer: <JobExplorer filters={explored.filters} result={explored.result} ats={ats} />,
-          summary: (
-            <ExplorerSummary filters={explored.filters} result={explored.result} ats={ats} />
-          ),
+    <>
+      <FeedHeader
+        savedOnly={savedOnly}
+        production={production}
+        explorer={!!explored}
+        profileReady={!!profileId}
+      />
+      <JobFeed
+        jobs={jobs}
+        savedIds={saved.map((s) => s.jobId)}
+        savedOnly={savedOnly}
+        mode={settings.mode}
+        search={
+          explored && {
+            filters: explored.filters,
+            total: explored.result.total,
+            page: explored.result.page,
+            totalPages: explored.result.totalPages,
+            explorer: <JobExplorer filters={explored.filters} result={explored.result} ats={ats} />,
+            summary: (
+              <ExplorerSummary filters={explored.filters} result={explored.result} ats={ats} />
+            ),
+          }
         }
-      }
-      profileId={profile.find(isApplicationReady)?.id}
-      applicationStates={applicationStates}
-      applicationCount={apps.length}
-      submittedCount={apps.filter((a) => a.status === 'submitted').length}
-    />
+        profileId={profileId}
+        applicationStates={applicationStates}
+        aside={
+          !explored && (
+            <FeedAside
+              name={user.name}
+              profileReady={!!profileId}
+              production={production}
+              applicationCount={apps.length}
+              submittedCount={apps.filter((a) => a.status === 'submitted').length}
+            />
+          )
+        }
+      />
+    </>
   )
 }

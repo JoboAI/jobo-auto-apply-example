@@ -1,7 +1,7 @@
 import { PageLink } from '@/components/PageLink'
 import { Check, Code2, Gift, GraduationCap, MapPin, Award, Sparkles, X } from 'lucide-react'
 import type { Job } from '@/lib/jobs-types'
-import type { JobDetail, QualificationSet } from '@/lib/jobo/jobs-api'
+import type { JobDetail, QualificationSet } from '@/lib/jobo/job-format'
 import { highlightJson } from '@/lib/json-highlight'
 import { curlCommand } from '@/lib/jobo/api-preview'
 import { AtsBadge } from './AtsBadge'

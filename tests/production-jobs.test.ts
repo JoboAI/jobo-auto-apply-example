@@ -2,19 +2,21 @@ import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
-  descriptionBlocks,
-  fullPay,
   getCompanyProfile,
   getProductionJob,
   getProductionJobDetail,
   JobsApiError,
-  postedAgo,
-  salaryRange,
   searchProductionJobs,
-  toJob,
-  toJobDetail,
   verifyApiKey,
 } from '@/lib/jobo/jobs-api'
+import {
+  descriptionBlocks,
+  fullPay,
+  postedAgo,
+  salaryRange,
+  toJob,
+  toJobDetail,
+} from '@/lib/jobo/job-format'
 import { parseFilters } from '@/lib/jobo/job-filters'
 import {
   atsLogo,

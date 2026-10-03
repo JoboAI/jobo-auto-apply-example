@@ -22,7 +22,7 @@ import { useCallback, useRef, useState } from 'react'
  *    instead of a client navigation.
  *
  * If you adopt a Next.js release where this no longer reproduces, these can
- * go back to the framework defaults; the e2e suite exercises every path.
+ * go back to the framework defaults.
  */
 
 /**

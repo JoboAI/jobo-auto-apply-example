@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import { isApplicationReady } from '@/lib/resume/completeness'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
@@ -16,6 +17,8 @@ import { ApplicationAnswers } from '@/components/ApplicationAnswers'
 import { ProductionJobLink, SandboxJobLink } from '@/components/SandboxJobLink'
 import { atsLogo } from '@/lib/jobo/supported-ats'
 import { fullName } from '@/lib/resume/profile-schema'
+
+export const metadata: Metadata = { title: 'Application' }
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {
   const user = await requireUser(),
     { id } = await params

@@ -18,5 +18,3 @@ next-env.d.ts
 
 # Not needed to run the app.
 tests
-test-results
-playwright-report

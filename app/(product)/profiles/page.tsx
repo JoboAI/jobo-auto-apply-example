@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import { isApplicationReady } from '@/lib/resume/completeness'
 import Link from 'next/link'
 import { and, desc, eq } from 'drizzle-orm'
@@ -7,6 +8,8 @@ import { profiles } from '@/db/schema'
 import { requireUser } from '@/lib/session'
 import { ResumeUpload } from '@/components/ResumeUpload'
 import { ProfileControls } from '@/components/ProfileControls'
+
+export const metadata: Metadata = { title: 'Profiles' }
 export default async function ProfilesPage() {
   const user = await requireUser()
   const rows = await db

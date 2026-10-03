@@ -25,7 +25,6 @@ branch is very welcome. We will port it upstream and credit you.
 npm ci
 npm run db:up
 npm run check      # lint, formatting, types, tests
-npm run test:e2e   # browser suite (after `npx playwright install chromium`)
 ```
 
 Conventions the codebase follows:

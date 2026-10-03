@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import { PageLink } from '@/components/PageLink'
 import Link from 'next/link'
 import { desc, eq } from 'drizzle-orm'
@@ -8,6 +9,8 @@ import { requireUser } from '@/lib/session'
 import { applicationLabel, displayDate } from '@/lib/presentation'
 import { isTerminal } from '@/lib/status'
 import { LiveRefresh } from '@/components/ApplicationLive'
+
+export const metadata: Metadata = { title: 'Applications' }
 export default async function Page({
   searchParams,
 }: {

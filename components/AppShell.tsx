@@ -1,26 +1,14 @@
-'use client'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
 import { ApiDocsLink, SourceLink } from '@/components/SourceLink'
 import { ModeToggle, type ModeProps } from '@/components/ModeToggle'
 import { PageLink } from '@/components/PageLink'
-import {
-  BriefcaseBusiness,
-  Bookmark,
-  LayoutList,
-  UserRound,
-  ArrowUpRight,
-  Sparkles,
-  Settings,
-} from 'lucide-react'
-// `fullLoad`: the job feed pages are the heaviest, and soft navigations into
-// them intermittently fail to commit (see components/PageLink.tsx).
-const links = [
-  { href: '/jobs', label: 'Discover jobs', icon: BriefcaseBusiness, fullLoad: true },
-  { href: '/saved', label: 'Saved jobs', icon: Bookmark, fullLoad: true },
-  { href: '/applications', label: 'Applications', icon: LayoutList, fullLoad: false },
-  { href: '/profiles', label: 'My profile', icon: UserRound, fullLoad: false },
-]
+import { MainNav } from '@/components/MainNav'
+import { UserRound, ArrowUpRight, Sparkles, Settings } from 'lucide-react'
+/**
+ * The signed-in layout: sidebar navigation, top bar with the mode switch,
+ * and footer. A server component; only the navigation (which highlights the
+ * current page) and the mode switch run in the browser.
+ */
 export function AppShell({
   name,
   email,
@@ -32,7 +20,6 @@ export function AppShell({
   settings: ModeProps
   children: React.ReactNode
 }) {
-  const path = usePathname()
   const production = settings.mode === 'production'
   return (
     <div className="app-shell">
@@ -47,23 +34,7 @@ export function AppShell({
         <div className={`workspace-label ${production ? 'production' : ''}`}>
           {production ? 'PRODUCTION MODE' : 'DEVELOPER SANDBOX'}
         </div>
-        <nav aria-label="Main navigation">
-          {links.map(({ href, label, icon: Icon, fullLoad }) => {
-            const NavLink = fullLoad ? PageLink : Link
-            return (
-              <NavLink
-                key={href}
-                href={href}
-                className={`nav-item ${path.startsWith(href) ? 'active' : ''}`}
-                aria-current={path.startsWith(href) ? 'page' : undefined}
-              >
-                <Icon size={19} />
-                <span>{label}</span>
-                {path.startsWith(href) && <span className="nav-dot" />}
-              </NavLink>
-            )
-          })}
-        </nav>
+        <MainNav />
         <div className="sidebar-bottom">
           <div className="sandbox-note">
             <span className="mini-icon">
