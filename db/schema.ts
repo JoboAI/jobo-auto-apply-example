@@ -23,22 +23,26 @@ import type { AnswerTrace } from '@/lib/answers/types'
 const epochMs = (name: string) => bigint(name, { mode: 'number' })
 const nowMs = sql`(extract(epoch from now()) * 1000)::bigint`
 /** better-auth's own columns are real timestamps. */
-const authTime = (name: string) =>
-  timestamp(name, { mode: 'date', withTimezone: true })
+const authTime = (name: string) => timestamp(name, { mode: 'date', withTimezone: true })
 
 /**
- * Account-owned product data. Nullable owner IDs preserve legacy demo records
- * without exposing them to new accounts. Application snapshots and durable
- * leases keep execution independent of browser sessions and profile edits.
+ * The database has three groups of tables:
+ *
+ *  - better-auth's own tables (`user`, `session`, `account`, `verification`),
+ *    in the shape its Drizzle adapter expects.
+ *  - Candidate data: `profiles` (one reviewed resume each), `saved_jobs` and
+ *    `user_settings`. Every row belongs to one user and is deleted with them.
+ *  - The application engine: `applications` (one durable row per Apply click,
+ *    with snapshots of the profile and job so later edits cannot change a run
+ *    in flight, plus the worker lease), `steps` (one audit row per answered
+ *    step round) and `api_exchanges` (redacted HTTP captures).
  */
 
 export const user = pgTable('user', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
   email: text('email').notNull().unique(),
-  emailVerified: boolean('email_verified')
-    .notNull()
-    .default(false),
+  emailVerified: boolean('email_verified').notNull().default(false),
   image: text('image'),
   createdAt: authTime('created_at').notNull(),
   updatedAt: authTime('updated_at').notNull(),
@@ -87,9 +91,7 @@ export const savedJobs = pgTable(
       .notNull()
       .references(() => user.id, { onDelete: 'cascade' }),
     jobId: text('job_id').notNull(),
-    createdAt: epochMs('created_at')
-      .notNull()
-      .default(nowMs),
+    createdAt: epochMs('created_at').notNull().default(nowMs),
   },
   (t) => [primaryKey({ columns: [t.userId, t.jobId] })],
 )
@@ -106,13 +108,13 @@ export interface ProfileSnapshot {
 
 export const profiles = pgTable('profiles', {
   id: text('id').primaryKey(),
-  userId: text('user_id').references(() => user.id),
+  userId: text('user_id')
+    .notNull()
+    .references(() => user.id, { onDelete: 'cascade' }),
   reviewedAt: epochMs('reviewed_at'),
   archived: boolean('archived').notNull().default(false),
   name: text('name').notNull(),
-  isDefault: boolean('is_default')
-    .notNull()
-    .default(false),
+  isDefault: boolean('is_default').notNull().default(false),
 
   /**
    * The structured profile, as JSON — including the candidate's voluntary
@@ -133,12 +135,8 @@ export const profiles = pgTable('profiles', {
    */
   resumeText: text('resume_text').notNull(),
 
-  createdAt: epochMs('created_at')
-    .notNull()
-    .default(nowMs),
-  updatedAt: epochMs('updated_at')
-    .notNull()
-    .default(nowMs),
+  createdAt: epochMs('created_at').notNull().default(nowMs),
+  updatedAt: epochMs('updated_at').notNull().default(nowMs),
 })
 
 /**
@@ -156,9 +154,7 @@ export const userSettings = pgTable('user_settings', {
   apiKeyHint: text('api_key_hint'),
   /** When the visitor accepted the one-time "real employers" warning. */
   productionAcknowledgedAt: epochMs('production_acknowledged_at'),
-  updatedAt: epochMs('updated_at')
-    .notNull()
-    .default(nowMs),
+  updatedAt: epochMs('updated_at').notNull().default(nowMs),
 })
 export type UserSettingsRow = typeof userSettings.$inferSelect
 
@@ -168,20 +164,32 @@ export const applications = pgTable(
     /** Our local id — the one in the browser URL. */
     id: text('id').primaryKey(),
 
-    /** Written before the create call. See the note at the top of this file. */
-    userId: text('user_id').references(() => user.id),
-    jobId: text('job_id'),
-    jobSnapshot: jsonb('job_snapshot').$type<Job>(),
-    profileSnapshot: jsonb('profile_snapshot').$type<ProfileSnapshot>(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    /** Sandbox slug (`multi-step`) or, in production mode, the Jobo job UUID. */
+    jobId: text('job_id').notNull(),
+    /** Frozen copies taken at Apply time: a run never sees later edits. */
+    jobSnapshot: jsonb('job_snapshot').$type<Job>().notNull(),
+    profileSnapshot: jsonb('profile_snapshot').$type<ProfileSnapshot>().notNull(),
+    /**
+     * Worker lease. A worker owns the row while `leaseUntil` is in the future
+     * and renews it on a heartbeat; every engine write is conditional on the
+     * owner, so a worker that lost its lease cannot overwrite the new owner.
+     */
     leaseOwner: text('lease_owner'),
     leaseUntil: epochMs('lease_until'),
     attemptCount: integer('attempt_count').notNull().default(0),
     nextAttemptAt: epochMs('next_attempt_at').notNull().default(0),
-    cancelRequested: boolean('cancel_requested')
-      .notNull()
-      .default(false),
+    cancelRequested: boolean('cancel_requested').notNull().default(false),
+    /** Why this app stopped the run, shown to the candidate. */
     stopReason: text('stop_reason'),
     workerError: text('worker_error'),
+    /**
+     * Generated and stored at enqueue, before the first create call. Replaying
+     * create with the same key after a timeout or crash re-attaches to the
+     * application Jobo already started instead of submitting a second one.
+     */
     idempotencyKey: text('idempotency_key').notNull().unique(),
 
     /** Null until the blocking create returns. */
@@ -204,8 +212,9 @@ export const applications = pgTable(
     scenarioSlug: text('scenario_slug'),
 
     /**
-     * Jobo's six statuses, plus two local-only ones: `creating` (the blocking
-     * create is in flight) and `create_failed` (it never reached Jobo).
+     * Jobo's application statuses, plus three local-only ones: `creating` (the
+     * blocking create is in flight), `create_failed` (it never reached Jobo)
+     * and `recovery_required` (repeated failures; paused for reconciliation).
      */
     status: text('status').notNull(),
 
@@ -218,15 +227,10 @@ export const applications = pgTable(
 
     /** e.g. `unsupported_ats` — distinct from a post-creation failure. */
     createErrorCode: text('create_error_code'),
-    createErrorMessage: text('create_error_message'),
 
     lastSyncedAt: epochMs('last_synced_at'),
-    createdAt: epochMs('created_at')
-      .notNull()
-      .default(nowMs),
-    updatedAt: epochMs('updated_at')
-      .notNull()
-      .default(nowMs),
+    createdAt: epochMs('created_at').notNull().default(nowMs),
+    updatedAt: epochMs('updated_at').notNull().default(nowMs),
   },
   (table) => [
     index('applications_status_idx').on(table.status),
@@ -259,9 +263,7 @@ export const steps = pgTable(
     /** The complete answer snapshot this app submitted for this round. */
     answersJson: jsonb('answers_json').$type<Answer[]>(),
     /** Why the PREVIOUS round was rejected — the ATS's own errors. */
-    commandErrorsJson: jsonb('command_errors_json').$type<
-      CommandError[]
-    >(),
+    commandErrorsJson: jsonb('command_errors_json').$type<CommandError[]>(),
 
     /** answering | submitted | canceled | error. Local, not a Jobo status. */
     status: text('status').notNull(),
@@ -276,9 +278,7 @@ export const steps = pgTable(
     error: text('error'),
 
     /** When the blocking call handed this round's fields to us. */
-    receivedAt: epochMs('received_at')
-      .notNull()
-      .default(nowMs),
+    receivedAt: epochMs('received_at').notNull().default(nowMs),
     /** When submitAnswers accepted the snapshot. Null if never submitted. */
     submittedAt: epochMs('submitted_at'),
   },
@@ -293,17 +293,23 @@ export type ApplicationRow = typeof applications.$inferSelect
 export type StepRow = typeof steps.$inferSelect
 
 /** Redacted HTTP exchanges; access is inherited from the owning application. */
-export const apiExchanges = pgTable('api_exchanges', {
-  id: text('id').primaryKey(),
-  applicationId: text('application_id').notNull().references(() => applications.id, { onDelete: 'cascade' }),
-  method: text('method').notNull(),
-  url: text('url').notNull(),
-  requestJson: text('request_json').notNull(),
-  responseJson: text('response_json'),
-  statusCode: integer('status_code'),
-  error: text('error'),
-  startedAt: epochMs('started_at').notNull(),
-  finishedAt: epochMs('finished_at'),
-  elapsedMs: integer('elapsed_ms'),
-}, t => [index('api_exchanges_application_idx').on(t.applicationId, t.startedAt)])
+export const apiExchanges = pgTable(
+  'api_exchanges',
+  {
+    id: text('id').primaryKey(),
+    applicationId: text('application_id')
+      .notNull()
+      .references(() => applications.id, { onDelete: 'cascade' }),
+    method: text('method').notNull(),
+    url: text('url').notNull(),
+    requestJson: text('request_json').notNull(),
+    responseJson: text('response_json'),
+    statusCode: integer('status_code'),
+    error: text('error'),
+    startedAt: epochMs('started_at').notNull(),
+    finishedAt: epochMs('finished_at'),
+    elapsedMs: integer('elapsed_ms'),
+  },
+  (t) => [index('api_exchanges_application_idx').on(t.applicationId, t.startedAt)],
+)
 export type ApiExchangeRow = typeof apiExchanges.$inferSelect

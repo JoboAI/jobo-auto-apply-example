@@ -1,3 +1,4 @@
+import { PageLink } from '@/components/PageLink'
 import { ArrowRight, ArrowUpRight, BriefcaseBusiness, Building2, Globe, Star } from 'lucide-react'
 import type { CompanyLinkKind, CompanyProfile } from '@/lib/jobo/jobs-api'
 import { AtsBadge } from './AtsBadge'
@@ -55,13 +56,15 @@ export function CompanyPanel({
 }) {
   const tags = [...company.categories, ...company.industries]
   const facts = ats
-    ? [...company.facts, { label: 'Hires through', value: <AtsBadge name={ats.name} logoUrl={ats.logoUrl} /> }]
+    ? [
+        ...company.facts,
+        { label: 'Hires through', value: <AtsBadge name={ats.name} logoUrl={ats.logoUrl} /> },
+      ]
     : company.facts
   return (
     <section className="company-tab" aria-label={`About ${company.name}`}>
       <div className="company-tab-head">
         {company.logoUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
           <img className="company-mark large-mark company-logo" src={company.logoUrl} alt="" />
         ) : (
           <span className="company-mark large-mark purple">
@@ -87,7 +90,9 @@ export function CompanyPanel({
               title={LINK_LABELS[link.kind]}
             >
               <LinkIcon kind={link.kind} />
-              {(link.kind === 'website' || link.kind === 'careers') && <span>{LINK_LABELS[link.kind]}</span>}
+              {(link.kind === 'website' || link.kind === 'careers') && (
+                <span>{LINK_LABELS[link.kind]}</span>
+              )}
             </a>
           ))}
         </nav>
@@ -120,7 +125,6 @@ export function CompanyPanel({
               {company.leadership.map((leader) => (
                 <li key={leader.name}>
                   {leader.avatarUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
                     <img className="leader-avatar" src={leader.avatarUrl} alt="" loading="lazy" />
                   ) : (
                     <span className="leader-avatar">{initials(leader.name)}</span>
@@ -210,7 +214,8 @@ export function CompanyPanel({
                   <strong>{r.rating}</strong>
                   <span>
                     {r.source}
-                    {r.reviewCount !== undefined && ` · ${r.reviewCount.toLocaleString('en')} reviews`}
+                    {r.reviewCount !== undefined &&
+                      ` · ${r.reviewCount.toLocaleString('en')} reviews`}
                   </span>
                 </>
               )
@@ -242,7 +247,9 @@ export function CompanyPanel({
                 ) : (
                   <span>{p.title}</span>
                 )}
-                {(p.publisher || p.date) && <small>{[p.publisher, p.date].filter(Boolean).join(' · ')}</small>}
+                {(p.publisher || p.date) && (
+                  <small>{[p.publisher, p.date].filter(Boolean).join(' · ')}</small>
+                )}
               </li>
             ))}
           </ul>
@@ -273,9 +280,9 @@ export function CompanyPanel({
           )}
         </Section>
       )}
-      <a href={`/jobs?co=${company.id}`} className="button secondary company-more">
+      <PageLink href={`/jobs?co=${company.id}`} className="button secondary company-more">
         More jobs at {company.name} <ArrowRight size={15} />
-      </a>
+      </PageLink>
     </section>
   )
 }

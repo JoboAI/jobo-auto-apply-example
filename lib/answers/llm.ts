@@ -10,7 +10,7 @@ import type { AnswerContext } from './types'
  * could not.
  *
  * One call, not one per field: latency is the binding constraint inside the
- * step deadline (answers_expire_at, ~3 minutes — a real browser is holding the
+ * step deadline (answers_expire_at, ~5 minutes — a real browser is holding the
  * form open), and the model answers better when it can see the whole form at
  * once (a "years of experience" question and a "tell us about yourself"
  * question should agree with each other).
@@ -35,7 +35,7 @@ export interface LlmResult {
 export async function generateAnswers(
   fields: Field[],
   gaps: LlmGap[],
-  ctx: AnswerContext
+  ctx: AnswerContext,
 ): Promise<LlmResult> {
   const c = config()
 
@@ -46,8 +46,8 @@ export async function generateAnswers(
       syntheticId: gap.syntheticId,
       itemField: gap.itemField,
       groupLabel: gap.groupLabel,
-      item: gap.item
-    }))
+      item: gap.item,
+    })),
   })
 
   const result = await complete({
@@ -67,12 +67,12 @@ export async function generateAnswers(
     // it on, a 12-field form timed out at 45s, fell back to the deterministic
     // pass alone, and cancelled the application for five unanswerable fields.
     // The task is mapping a known profile onto known fields, not deduction.
-    reasoning: false
+    reasoning: false,
   })
 
   return {
     answers: new Map(result.data.answers.map((answer) => [answer.field_id, answer])),
     model: result.model,
-    elapsedMs: result.elapsedMs
+    elapsedMs: result.elapsedMs,
   }
 }

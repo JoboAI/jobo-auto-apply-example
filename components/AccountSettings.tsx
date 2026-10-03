@@ -1,13 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { authClient } from '@/lib/auth-client'
-export function AccountSettings({
-  name,
-  email,
-}: {
-  name: string
-  email: string
-}) {
+export function AccountSettings({ name, email }: { name: string; email: string }) {
   const [busy, setBusy] = useState(false),
     [message, setMessage] = useState('')
   return (
@@ -71,12 +65,7 @@ export function AccountSettings({
         >
           <label>
             Current password
-            <input
-              name="current"
-              type="password"
-              autoComplete="current-password"
-              required
-            />
+            <input name="current" type="password" autoComplete="current-password" required />
           </label>
           <label>
             New password

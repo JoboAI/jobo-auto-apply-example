@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { ApiDocsLink, SourceLink } from '@/components/SourceLink'
 import { ModeToggle, type ModeProps } from '@/components/ModeToggle'
+import { PageLink } from '@/components/PageLink'
 import {
   BriefcaseBusiness,
   Bookmark,
@@ -12,11 +13,13 @@ import {
   Sparkles,
   Settings,
 } from 'lucide-react'
+// `fullLoad`: the job feed pages are the heaviest, and soft navigations into
+// them intermittently fail to commit (see components/PageLink.tsx).
 const links = [
-  { href: '/jobs', label: 'Discover jobs', icon: BriefcaseBusiness },
-  { href: '/saved', label: 'Saved jobs', icon: Bookmark },
-  { href: '/applications', label: 'Applications', icon: LayoutList },
-  { href: '/profiles', label: 'My profile', icon: UserRound },
+  { href: '/jobs', label: 'Discover jobs', icon: BriefcaseBusiness, fullLoad: true },
+  { href: '/saved', label: 'Saved jobs', icon: Bookmark, fullLoad: true },
+  { href: '/applications', label: 'Applications', icon: LayoutList, fullLoad: false },
+  { href: '/profiles', label: 'My profile', icon: UserRound, fullLoad: false },
 ]
 export function AppShell({
   name,
@@ -37,26 +40,29 @@ export function AppShell({
         Skip to content
       </a>
       <aside className="sidebar">
-        <Link className="logo" href="/jobs">
+        <PageLink className="logo" href="/jobs">
           <img src="/logos/jobo-logo.svg" alt="Jobo" />
           <span>auto apply</span>
-        </Link>
+        </PageLink>
         <div className={`workspace-label ${production ? 'production' : ''}`}>
           {production ? 'PRODUCTION MODE' : 'DEVELOPER SANDBOX'}
         </div>
         <nav aria-label="Main navigation">
-          {links.map(({ href, label, icon: Icon }) => (
-            <Link
-              key={href}
-              href={href}
-              className={`nav-item ${path.startsWith(href) ? 'active' : ''}`}
-              aria-current={path.startsWith(href) ? 'page' : undefined}
-            >
-              <Icon size={19} />
-              <span>{label}</span>
-              {path.startsWith(href) && <span className="nav-dot" />}
-            </Link>
-          ))}
+          {links.map(({ href, label, icon: Icon, fullLoad }) => {
+            const NavLink = fullLoad ? PageLink : Link
+            return (
+              <NavLink
+                key={href}
+                href={href}
+                className={`nav-item ${path.startsWith(href) ? 'active' : ''}`}
+                aria-current={path.startsWith(href) ? 'page' : undefined}
+              >
+                <Icon size={19} />
+                <span>{label}</span>
+                {path.startsWith(href) && <span className="nav-dot" />}
+              </NavLink>
+            )
+          })}
         </nav>
         <div className="sidebar-bottom">
           <div className="sandbox-note">
@@ -69,11 +75,7 @@ export function AppShell({
                 ? 'You are applying to real jobs on your own Jobo API key. Switch back to sandbox any time.'
                 : 'See the API in action with fictional jobs, then explore the source to build your own integration.'}
             </p>
-            <a
-              href="https://sandbox.jobo.world"
-              target="_blank"
-              rel="noreferrer"
-            >
+            <a href="https://sandbox.jobo.world" target="_blank" rel="noreferrer">
               Explore the sandbox <ArrowUpRight size={14} />
             </a>
           </div>
@@ -90,9 +92,9 @@ export function AppShell({
       <div className="workspace">
         <header className="topbar">
           <span className="topbar-tagline">Auto Apply API · Integration demo</span>
-          <Link href="/jobs" className="mobile-brand logo">
+          <PageLink href="/jobs" className="mobile-brand logo">
             <img src="/logos/jobo-logo.svg" alt="Jobo" />
-          </Link>
+          </PageLink>
           <div className="topbar-actions">
             <ModeToggle {...settings} />
             <ApiDocsLink compact />

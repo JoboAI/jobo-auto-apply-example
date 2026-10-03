@@ -9,15 +9,11 @@ export const metadata: Metadata = {
     template: '%s · Jobo Auto Apply Demo',
   },
   description:
-    'Explore the Jobo Auto Apply API in a working developer demo. Apply to fictional sandbox jobs, track real API progress, and use the open-source integration in your own app.',
+    'Explore the Jobo Auto Apply API in a working developer demo. Apply to sandbox jobs (or, with your own API key, real ones), inspect every API call, and use the open-source integration in your own app.',
   icons: { icon: '/favicon.svg' },
 }
 export const dynamic = 'force-dynamic'
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${inter.variable} ${manrope.variable}`}>
       <body>{children}</body>

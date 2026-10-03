@@ -2,8 +2,9 @@ import type { ResumeProfile } from '@/lib/resume/profile-schema'
 
 /**
  * Sample persona #1. Entirely fictional (the name is a nod, the career is
- * invented; example.com contacts, Ofcom/ITU drama phone range). Ships with the
- * example so the tutorial's profile dropdown is never empty — see db/seed.ts.
+ * invented; example.com contacts, Ofcom/ITU drama phone range). Used by the
+ * tests (tests/support/seed.ts); the matching PDF is a text-based resume you
+ * can upload to try the app.
  */
 
 export const profile = {
@@ -13,7 +14,7 @@ export const profile = {
     preferred_name: null,
     email: 'ada.lovelace@example.com',
     phone: '+442079460958',
-    birthday: '1990-12-10'
+    birthday: '1990-12-10',
   },
   location: {
     address: null,
@@ -23,13 +24,13 @@ export const profile = {
     region: null,
     postal_code: null,
     country_code: 'GB',
-    country_name: 'United Kingdom'
+    country_name: 'United Kingdom',
   },
   links: {
     linkedin: null,
     github: null,
     portfolio: 'https://ada-lovelace.example.com',
-    other: null
+    other: null,
   },
   experience: [
     {
@@ -46,7 +47,7 @@ export const profile = {
         '- Own the job-scheduling platform: a Postgres-backed queue executing 40M tasks/day.\n' +
         '- Designed the idempotency-key contract used by every internal producer, cutting duplicate ' +
         'side effects to zero across three years of incident reports.\n' +
-        '- Led a team of four through the migration from cron sprawl to event-driven workers.'
+        '- Led a team of four through the migration from cron sprawl to event-driven workers.',
     },
     {
       company: 'Difference Works',
@@ -60,7 +61,7 @@ export const profile = {
       currently_working: false,
       description:
         '- Built the public REST API (TypeScript, Node.js) for a payroll product used by 900 SMEs.\n' +
-        '- Wrote the webhook delivery system, including signing and replay protection.'
+        '- Wrote the webhook delivery system, including signing and replay protection.',
     },
     {
       company: 'Jacquard Systems',
@@ -73,8 +74,8 @@ export const profile = {
       end_year: 2019,
       currently_working: false,
       description:
-        '- Shipped inventory ingestion pipelines processing supplier feeds in 14 formats.'
-    }
+        '- Shipped inventory ingestion pipelines processing supplier feeds in 14 formats.',
+    },
   ],
   education: [
     {
@@ -85,8 +86,8 @@ export const profile = {
       start_month: 9,
       start_year: 2012,
       grad_month: 6,
-      grad_year: 2016
-    }
+      grad_year: 2016,
+    },
   ],
   projects: [],
   skills: [
@@ -95,7 +96,7 @@ export const profile = {
     { name: 'PostgreSQL', years: '9+', favorite: true },
     { name: 'Kubernetes', years: null, favorite: false },
     { name: 'Event-driven architecture', years: null, favorite: false },
-    { name: 'Terraform', years: null, favorite: false }
+    { name: 'Terraform', years: null, favorite: false },
   ],
   languages: ['English', 'French'],
   work_authorization: {
@@ -103,7 +104,7 @@ export const profile = {
     canada: false,
     uk: true,
     other_country_codes: ['NL'],
-    requires_sponsorship: false
+    requires_sponsorship: false,
   },
   // Explicit answers, so tests cover the self-identification mapping path.
   eeo: {
@@ -111,14 +112,14 @@ export const profile = {
     ethnicity: ['white'],
     veteran: 'no',
     disability: 'no',
-    lgbtq: 'no'
+    lgbtq: 'no',
   },
   preferences: {
     job_types: ['full_time'],
     work_setups: ['hybrid'],
     locations: ['London'],
-    min_salary: null
-  }
+    min_salary: null,
+  },
 } satisfies ResumeProfile
 
 /** Plain-text resume, matching the checked-in ada-lovelace.pdf. */

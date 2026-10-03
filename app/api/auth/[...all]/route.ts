@@ -1,4 +1,6 @@
-import { auth, authConfigIssues } from '@/lib/auth'
+import { auth } from '@/lib/auth'
+import { authConfigIssues } from '@/lib/config'
+
 export const runtime = 'nodejs'
 async function handler(request: Request) {
   if (authConfigIssues().length)

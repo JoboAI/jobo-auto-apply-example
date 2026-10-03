@@ -1,5 +1,18 @@
 import { z } from 'zod'
 import type { Job } from './jobs-types'
+
+/**
+ * Sandbox jobs: the fictional postings on sandbox.jobo.world, plus the
+ * destination checks that keep every application pointed at a real target.
+ *
+ * Sandbox mode can only ever apply to sandbox.jobo.world: validSandboxUrl is
+ * checked when a job is listed, when it is queued (lib/queue.ts) and again
+ * before the create call (lib/application-engine.ts). Production jobs come
+ * from the Jobo catalog instead (lib/jobo/jobs-api.ts).
+ */
+
+/** The public sandbox catalog. No key needed. */
+export const SANDBOX_JOBS_URL = 'https://sandbox.jobo.world/api/jobs'
 const metadata = z.object({
   slug: z.string().regex(/^[a-z][a-z0-9-]*$/),
   company: z.string(),
@@ -13,9 +26,9 @@ const metadata = z.object({
   available: z.boolean(),
   apply_url: z.string().nullable(),
 })
-// The sandbox feed lists fictional postings only. This guard keeps its test
-// scenarios (login walls, unconfirmable submits, …) out of the demo even if an
-// older sandbox that still served them is live.
+// Sandbox scenarios built to exercise failure paths (login walls,
+// unconfirmable submits, …). They are useful against the API directly but make
+// a confusing demo, so the candidate-facing list leaves them out.
 const excluded = new Set([
   'validation-errors',
   'login-wall',
@@ -24,16 +37,23 @@ const excluded = new Set([
   'email-verification',
 ])
 /**
- * The ISO 3166 alpha-2 country of a posting, from its trailing location token
- * ("Leeds, UK", "Austin, TX, US"). The catalog writes the United Kingdom as
- * `UK`, which is not ISO: read raw, a GB-authorized candidate was answered
- * "not authorized". A location with no country ("Remote — Europe") is
- * undefined, so work-authorization questions are never guessed.
+ * A two-letter country as ISO 3166 alpha-2, or undefined. Job data often
+ * writes the United Kingdom as `UK`, which is not ISO; left as-is it would not
+ * match a candidate authorized to work in `GB`.
+ */
+export function isoCountryCode(value: string | null | undefined): string | undefined {
+  const code = value?.trim().toUpperCase()
+  if (!code || !/^[A-Z]{2}$/.test(code)) return undefined
+  return code === 'UK' ? 'GB' : code
+}
+
+/**
+ * The country of a sandbox posting, from its trailing location token
+ * ("Leeds, UK", "Austin, TX, US"). A location with no country ("Remote —
+ * Europe") is undefined, so work-authorization questions are never guessed.
  */
 export function jobCountryCode(location: string): string | undefined {
-  const code = location.trim().match(/,\s*([A-Z]{2})$/)?.[1]
-  if (!code) return undefined
-  return code === 'UK' ? 'GB' : code
+  return isoCountryCode(location.trim().match(/,\s*([A-Z]{2})$/)?.[1])
 }
 
 export function validSandboxUrl(value: string, slug: string): boolean {
@@ -78,14 +98,11 @@ export function isProductionJobId(id: string): boolean {
 }
 
 export async function getJobs(): Promise<Job[]> {
-  const response = await fetch('https://sandbox.jobo.world/api/jobs', {
+  const response = await fetch(SANDBOX_JOBS_URL, {
     cache: 'no-store',
     signal: AbortSignal.timeout(10000),
   })
-  if (!response.ok)
-    throw new Error(
-      'Jobs are temporarily unavailable. Please try again shortly.',
-    )
+  if (!response.ok) throw new Error('Jobs are temporarily unavailable. Please try again shortly.')
   const { jobs, available } = z
     .object({ available: z.boolean(), jobs: z.array(metadata) })
     .parse(await response.json())

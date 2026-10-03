@@ -1,5 +1,5 @@
 # node_modules must NOT come from the host: the image installs its own for
-# linux/amd64.
+# its own platform.
 node_modules
 .next
 .data*
@@ -11,7 +11,7 @@ build
 .env*.local
 
 .git
-.gitignore
+.github
 *.tsbuildinfo
 next-env.d.ts
 .DS_Store
@@ -20,4 +20,3 @@ next-env.d.ts
 tests
 test-results
 playwright-report
-vitest.config.ts

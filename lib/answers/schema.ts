@@ -28,13 +28,11 @@ import { z } from 'zod'
 export const answerKinds = ['text', 'number', 'boolean', 'strings', 'typeahead', 'skip'] as const
 
 export const generatedAnswerSchema = z.object({
-  field_id: z
-    .string()
-    .describe('Must be one of the field_id values provided in fields_to_answer.'),
+  field_id: z.string().describe('Must be one of the field_id values provided in fields_to_answer.'),
   kind: z
     .enum(answerKinds)
     .describe(
-      'Which slot below holds the answer. Use "skip" if you genuinely cannot answer from the profile — never invent facts.'
+      'Which slot below holds the answer. Use "skip" if you genuinely cannot answer from the profile — never invent facts.',
     ),
   text: z
     .string()
@@ -50,16 +48,16 @@ export const generatedAnswerSchema = z.object({
     .object({
       query: z.string(),
       value: z.string(),
-      label: z.string()
+      label: z.string(),
     })
     .nullable()
     .describe('For kind=typeahead. `value` must be an advertised option value when options exist.'),
   confidence: z.number().describe('0 to 1.'),
-  reasoning: z.string().describe('One short sentence on where this answer came from.')
+  reasoning: z.string().describe('One short sentence on where this answer came from.'),
 })
 
 export const answerGenerationSchema = z.object({
-  answers: z.array(generatedAnswerSchema)
+  answers: z.array(generatedAnswerSchema),
 })
 
 export type GeneratedAnswer = z.infer<typeof generatedAnswerSchema>
@@ -69,7 +67,9 @@ export type AnswerGeneration = z.infer<typeof answerGenerationSchema>
  * Pull the value out of whichever slot the model declared.
  * Returns undefined for `skip`, or when the declared slot is empty.
  */
-export function slotValue(answer: GeneratedAnswer): string | number | boolean | string[] | Record<string, unknown> | undefined {
+export function slotValue(
+  answer: GeneratedAnswer,
+): string | number | boolean | string[] | Record<string, unknown> | undefined {
   switch (answer.kind) {
     case 'text':
       return answer.text ?? undefined
@@ -83,7 +83,7 @@ export function slotValue(answer: GeneratedAnswer): string | number | boolean | 
       return answer.typeahead
         ? {
             query: answer.typeahead.query,
-            selection: { value: answer.typeahead.value, label: answer.typeahead.label }
+            selection: { value: answer.typeahead.value, label: answer.typeahead.label },
           }
         : undefined
     case 'skip':

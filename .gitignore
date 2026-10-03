@@ -1,11 +1,11 @@
 node_modules/
 .next/
-# Any DATA_DIR, not just the default: a run with DATA_DIR=./.data-localtest
-# put a SQLite database and an uploaded resume into a commit that was headed
-# for the public mirror.
-.data*/
 out/
 build/
+
+# Local data: uploaded resume PDFs. Any DATA_DIR name, not just the default.
+.data*/
+
 .env
 .env.local
 .env*.local

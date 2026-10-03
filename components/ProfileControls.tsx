@@ -2,17 +2,8 @@
 import { useState } from 'react'
 import { useBusy } from '@/lib/use-busy'
 import { useRouter } from 'next/navigation'
-import {
-  setDefaultProfileAction,
-  deleteProfileAction,
-} from '@/app/actions/profiles'
-export function ProfileControls({
-  id,
-  isDefault,
-}: {
-  id: string
-  isDefault: boolean
-}) {
+import { setDefaultProfileAction, deleteProfileAction } from '@/app/actions/profiles'
+export function ProfileControls({ id, isDefault }: { id: string; isDefault: boolean }) {
   const [pending, start] = useBusy(),
     [error, setError] = useState(''),
     router = useRouter()

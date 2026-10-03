@@ -1,8 +1,17 @@
+import { PageLink } from '@/components/PageLink'
 import { isApplicationReady } from '@/lib/resume/completeness'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { and, desc, eq } from 'drizzle-orm'
-import { ArrowLeft, MapPin, BriefcaseBusiness, Sparkles, Clock, Banknote, Layers } from 'lucide-react'
+import {
+  ArrowLeft,
+  MapPin,
+  BriefcaseBusiness,
+  Sparkles,
+  Clock,
+  Banknote,
+  Layers,
+} from 'lucide-react'
 import { db } from '@/db/client'
 import { profiles, applications, savedJobs } from '@/db/schema'
 import { requireUser } from '@/lib/session'
@@ -23,11 +32,7 @@ import { JobDetailPanel } from '@/components/JobDetailPanel'
 import { productionApiKey } from '@/lib/user-settings'
 import { ApplyButton, SaveButton } from '@/components/JobActions'
 import { ProductionJobLink, SandboxJobLink } from '@/components/SandboxJobLink'
-export default async function JobPage({
-  params,
-}: {
-  params: Promise<{ slug: string }>
-}) {
+export default async function JobPage({ params }: { params: Promise<{ slug: string }> }) {
   const user = await requireUser(),
     { slug } = await params
   let job: Job | undefined
@@ -40,9 +45,9 @@ export default async function JobPage({
         <div className="empty-state">
           <h1>This is a real job.</h1>
           <p>Switch to production mode with your Jobo API key to view and apply to it.</p>
-          <Link href="/jobs" className="button primary">
+          <PageLink href="/jobs" className="button primary">
             Back to jobs
-          </Link>
+          </PageLink>
         </div>
       )
     try {
@@ -50,8 +55,7 @@ export default async function JobPage({
       job = loaded.job
       detail = loaded
       // A profile that fails to load costs the tab, never the page.
-      if (job.companyId)
-        company = await getCompanyProfile(apiKey, job.companyId).catch(() => null)
+      if (job.companyId) company = await getCompanyProfile(apiKey, job.companyId).catch(() => null)
     } catch (error) {
       if (error instanceof JobsApiError && error.kind === 'not_found') notFound()
       return (
@@ -62,9 +66,9 @@ export default async function JobPage({
               ? error.message
               : 'We couldn’t load this job from Jobo right now.'}
           </p>
-          <Link href="/jobs" className="button primary">
+          <PageLink href="/jobs" className="button primary">
             Back to jobs
-          </Link>
+          </PageLink>
         </div>
       )
     }
@@ -109,14 +113,13 @@ export default async function JobPage({
   const extraLocations = (detail?.detail.locations.length ?? 1) - 1
   return (
     <>
-      <Link href="/jobs" className="back-link">
+      <PageLink href="/jobs" className="back-link">
         <ArrowLeft size={16} /> {production ? 'All jobs' : 'All sandbox jobs'}
-      </Link>
+      </PageLink>
       <div className="detail-layout">
         <article className="surface job-detail">
           <div className="spread">
             {job.logoUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
               <img className="company-mark large-mark company-logo" src={job.logoUrl} alt="" />
             ) : (
               <span className="company-mark large-mark purple">{job.mark}</span>
@@ -129,7 +132,9 @@ export default async function JobPage({
             <span>
               <MapPin size={16} />
               {job.location}
-              {extraLocations > 0 && <small className="more-locations">+{extraLocations} more</small>}
+              {extraLocations > 0 && (
+                <small className="more-locations">+{extraLocations} more</small>
+              )}
             </span>
             <span>
               <BriefcaseBusiness size={16} />
@@ -185,8 +190,8 @@ export default async function JobPage({
             </span>
             <h2>{production ? 'Apply with Auto Apply.' : 'Test Auto Apply on this job.'}</h2>
             <p>
-              Start the API flow with your reviewed profile. The background
-              worker discovers fields, prepares answers, and tracks the result.
+              Start the API flow with your reviewed profile. The background worker discovers fields,
+              prepares answers, and tracks the result.
             </p>
             <div className="selected-resume">
               <span>APPLYING WITH</span>
@@ -210,8 +215,7 @@ export default async function JobPage({
               <SandboxJobLink url={job.applyUrl} slug={job.slug} title={job.role} />
             )}
             <small>
-              We only use facts you’ve provided. If something’s missing, we stop
-              and let you know.
+              We only use facts you’ve provided. If something’s missing, we stop and let you know.
             </small>
           </div>
         </aside>

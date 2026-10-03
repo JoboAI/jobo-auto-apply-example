@@ -166,7 +166,10 @@ export function filterParams(filters: JobFilters): [string, string][] {
   const add = (name: string, values: string[]) => values.forEach((v) => out.push([name, v]))
   const addSigned = (name: string, value: IncludeExclude) => {
     add(name, value.include)
-    add(name, value.exclude.map((v) => `-${v}`))
+    add(
+      name,
+      value.exclude.map((v) => `-${v}`),
+    )
   }
   if (filters.q) out.push(['q', filters.q])
   add('loc', filters.locations)
@@ -224,7 +227,8 @@ export function toggleSigned(
     : { include: without(value.include), exclude: toggle(value.exclude, item) }
 }
 
-export type ListField = 'locations' | 'skills' | 'workModels' | 'experienceLevels' | 'employmentTypes' | 'sources'
+export type ListField =
+  'locations' | 'skills' | 'workModels' | 'experienceLevels' | 'employmentTypes' | 'sources'
 export type SignedField = 'companies' | 'industries' | 'categories'
 
 export function toggleHref(filters: JobFilters, field: ListField, value: string): string {

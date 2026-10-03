@@ -17,8 +17,66 @@ import { jobCountryCode, validProductionTarget, validSandboxUrl } from '@/lib/jo
 import { openApiKey } from '@/lib/user-settings'
 import { log } from '@/lib/logger'
 import { createFailureMessage } from '@/lib/presentation'
-const RESERVE_MS = 20000
+import { assertLease, updateLeased } from '@/lib/queue'
+
+/**
+ * The Auto Apply loop, driven one step per worker claim.
+ *
+ * Auto Apply is synchronous: every call blocks until there is something for
+ * this app to do, and the response IS the next state. One application goes:
+ *
+ *   1. create   `applications.create({ apply_url | job_id }, { idempotencyKey })`
+ *               blocks until Jobo has opened the form and discovered the first
+ *               step's fields. The idempotency key was stored at enqueue, so
+ *               replaying create after a crash or timeout re-attaches to the
+ *               same application instead of starting a second one.
+ *   2. answer   the step comes back as `status: awaiting_answers` with
+ *               `current_step.fields`. lib/answers builds a complete answer
+ *               snapshot (deterministic rules first, one model call for the
+ *               rest), it is stored, then `submitAnswers` sends it. A 400
+ *               JoboValidationError costs nothing: we repair once from the
+ *               per-field errors and resend.
+ *   3. advance  `submitAnswers` blocks while Jobo fills the form and resolves
+ *               to the next step, a correction round (the same step with
+ *               `correction_round + 1` and the ATS's `command_errors`), or a
+ *               terminal application: submitted, failed or canceled.
+ *
+ * Any blocking call may instead return a 202 snapshot that is still `queued`
+ * or `running` (Jobo holds a request for at most ~9 minutes). This engine just
+ * stores it and returns; the next claim re-attaches with
+ * `applications.get(id, { waitSeconds })`, which long-polls until the
+ * application is answerable or terminal. The same call recovers from a
+ * dropped connection or a restarted worker.
+ *
+ * The SDK also offers `applications.run()`, which drives this whole loop in
+ * one call. A web app cannot use it as-is: a run takes minutes, must survive
+ * restarts, and needs every answer persisted before it is sent. So the loop is
+ * unrolled here and each call's result is written to Postgres first.
+ *
+ * Not handled: `one_time_code` fields (an emailed verification code). The
+ * application is canceled with an explanation. The SDK's `mailboxes` resource
+ * can fetch such codes if you connect the candidate's inbox.
+ */
+
+/** Time kept back from a step's answer deadline for the submit request itself. */
+const DEADLINE_RESERVE_MS = 20_000
+/** Long-poll length for `applications.get`, in seconds. */
 const MAX_WAIT_SECONDS = 90
+/**
+ * Jobo honours an Idempotency-Key for 24 hours. A create still unconfirmed
+ * after 20 is given up rather than replayed into a window where the key may
+ * have expired and the replay could start a second application.
+ */
+const IDEMPOTENCY_RECOVERY_WINDOW_MS = 20 * 60 * 60 * 1000
+
+class MissingApiKeyError extends Error {
+  constructor() {
+    super(
+      'The Jobo API key for this application is no longer available. Reconnect your key and retry.',
+    )
+    this.name = 'MissingApiKeyError'
+  }
+}
 
 /**
  * The client for one application. Sandbox runs use the deployment's key;
@@ -37,81 +95,71 @@ function clientFor(local: Pick<ApplicationRow, 'id' | 'sandbox' | 'apiKeyCiphert
   return jobo(local.id, apiKey)
 }
 
-class MissingApiKeyError extends Error {
-  constructor() {
-    super('The Jobo API key for this application is no longer available. Reconnect your key and retry.')
-    this.name = 'MissingApiKeyError'
-  }
+async function readApplication(id: string): Promise<ApplicationRow | undefined> {
+  const [row] = await db.select().from(applications).where(eq(applications.id, id)).limit(1)
+  return row
 }
-async function assertLease(id: string, owner: string) {
-  const [row] = await db
-    .select()
-    .from(applications)
-    .where(eq(applications.id, id))
-    .limit(1)
-  if (row?.leaseOwner !== owner || (row.leaseUntil ?? 0) <= Date.now())
-    throw new Error('Application lease lost')
-}
-export async function advanceApplication(
-  id: string,
-  leaseOwner: string,
-): Promise<void> {
-  const [local] = await db
-    .select()
-    .from(applications)
-    .where(eq(applications.id, id))
-    .limit(1)
-  if (
-    !local ||
-    !local.userId ||
-    !local.profileSnapshot ||
-    !local.jobSnapshot ||
-    isTerminal(local.status)
-  )
-    return
+
+/**
+ * Advance one application by one blocking exchange. Called by a worker that
+ * holds the row's lease; returns when the state has been persisted. Errors
+ * that a retry might fix are thrown (the worker backs off and retries);
+ * conditions no retry can fix stop the run here with an explanation.
+ */
+export async function advanceApplication(id: string, leaseOwner: string): Promise<void> {
+  const local = await readApplication(id)
+  if (!local || isTerminal(local.status)) return
   await assertLease(id, leaseOwner)
-  if (local.sandbox) {
-    if (!validSandboxUrl(local.applyUrl, local.jobId ?? ''))
-      throw new Error('Application destination is not in the sandbox.')
-  } else if (!validProductionTarget(local.jobId ?? '', local.applyUrl))
-    throw new Error('Application destination is not a Jobo job.')
+  const stop = (values: Partial<typeof applications.$inferInsert>) =>
+    updateLeased(id, leaseOwner, { apiKeyCiphertext: null, updatedAt: Date.now(), ...values })
+
+  // Defence in depth before anything is created: enqueue already checked it.
+  if (!local.joboApplicationId) {
+    const validDestination = local.sandbox
+      ? validSandboxUrl(local.applyUrl, local.jobId)
+      : validProductionTarget(local.jobId, local.applyUrl)
+    if (!validDestination) {
+      const reason = 'This application’s destination is not a valid job, so it was not started.'
+      return stop({ status: 'create_failed', stopReason: reason, failureMessage: reason })
+    }
+  }
+
   let api: ReturnType<typeof jobo>
   try {
     api = clientFor(local)
   } catch (error) {
     if (!(error instanceof MissingApiKeyError)) throw error
-    // No retry can succeed without the key: stop instead of looping.
-    await db
-      .update(applications)
-      .set({
-        status: local.joboApplicationId ? 'failed' : 'create_failed',
-        stopReason: error.message,
-        failureMessage: error.message,
-        apiKeyCiphertext: null,
-        updatedAt: Date.now(),
-      })
-      .where(eq(applications.id, id))
-    return
-  }
-  if (
-    !local.joboApplicationId &&
-    Date.now() - local.createdAt > 20 * 60 * 60 * 1000
-  )
-    throw new Error(
-      'Creation could not be reconciled within the idempotency window. No new submission was attempted.',
+    // No retry can succeed without the key. Before create, nothing happened
+    // upstream; after it, Jobo may still be running the application, and
+    // only the key's owner can see its outcome now.
+    return stop(
+      local.joboApplicationId
+        ? {
+            status: 'recovery_required',
+            stopReason:
+              'The Jobo API key this application ran on is no longer available, so its final status cannot be checked here. See the applications in your Jobo dashboard.',
+          }
+        : { status: 'create_failed', stopReason: error.message, failureMessage: error.message },
     )
+  }
+
+  if (!local.joboApplicationId && Date.now() - local.createdAt > IDEMPOTENCY_RECOVERY_WINDOW_MS)
+    return stop({
+      status: 'recovery_required',
+      cancelRequested: true,
+      stopReason:
+        'We could not confirm whether this application started. It is paused for review to prevent a duplicate submission.',
+    })
+
   try {
     let application: Application
-
     if (!local.joboApplicationId) {
-      // Stuck in `creating`: the original blocking create is still held (or
-      // the process died mid-hold). Replaying create with the SAME stored
-      // Idempotency-Key re-attaches to the in-flight application and its
-      // wait — this is why the key was written before the first attempt.
-      // Production runs create by Jobo job id: Jobo resolves the ATS and the
+      // First attempt, or a replay after a timeout or crash: the same stored
+      // Idempotency-Key re-attaches to the application Jobo already started.
+      // Production runs create by Jobo job id; Jobo resolves the ATS and the
       // apply URL from its own catalog record of that job.
       application = await api.applications.create(
-        local.sandbox ? { apply_url: local.applyUrl } : { job_id: local.jobId! },
+        local.sandbox ? { apply_url: local.applyUrl } : { job_id: local.jobId },
         { idempotencyKey: local.idempotencyKey },
       )
     } else {
@@ -123,62 +171,39 @@ export async function advanceApplication(
         working ? { waitSeconds: MAX_WAIT_SECONDS } : undefined,
       )
     }
-
     await persistApplication(id, application, leaseOwner)
 
-    const [fresh] = await db
-      .select()
-      .from(applications)
-      .where(eq(applications.id, id))
-      .limit(1)
-    if (fresh!.cancelRequested && !isTerminal(application.status)) {
+    const fresh = await readApplication(id)
+    if (!fresh) return
+    if (fresh.cancelRequested && !isTerminal(application.status)) {
       await assertLease(id, leaseOwner)
       await api.applications.cancel(application.id)
-      application = await api.applications.get(application.id, {
-        waitSeconds: MAX_WAIT_SECONDS,
-      })
+      // Cancels settle at the next safe checkpoint; wait for the terminal state.
+      application = await api.applications.get(application.id, { waitSeconds: MAX_WAIT_SECONDS })
       await persistApplication(id, application, leaseOwner)
       return
     }
     if (application.status === 'awaiting_answers' && application.current_step) {
-      application = await answerStep(
-        local,
-        application,
-        application.current_step,
-        leaseOwner,
-      )
+      application = await answerStep(fresh, application, application.current_step, leaseOwner)
       await persistApplication(id, application, leaseOwner)
     }
   } catch (error) {
-    // A definitive intake refusal created no application. A lost response is
-    // different: leave its key intact for reconciliation, never start over.
+    // A definitive intake refusal (4xx other than timeout/conflict/rate limit)
+    // created no application. A lost response is different: leave its key
+    // intact for reconciliation, never start over.
     if (
       !local.joboApplicationId &&
       error instanceof JoboAPIError &&
       error.status >= 400 &&
       error.status < 500 &&
-      ![408, 409, 429].includes(error.status)
-    ) {
-      await assertLease(id, leaseOwner)
-      const [current] = await db
-        .select()
-        .from(applications)
-        .where(eq(applications.id, id))
-        .limit(1)
-      if (!current?.joboApplicationId) {
-        await db
-          .update(applications)
-          .set({
-            status: 'create_failed',
-            createErrorCode: error.code,
-            apiKeyCiphertext: null,
-            failureMessage: createFailureMessage(error.code),
-            updatedAt: Date.now(),
-          })
-          .where(eq(applications.id, id))
-        return
-      }
-    }
+      ![408, 409, 429].includes(error.status) &&
+      !(await readApplication(id))?.joboApplicationId
+    )
+      return stop({
+        status: 'create_failed',
+        createErrorCode: error.code,
+        failureMessage: createFailureMessage(error.code),
+      })
     throw error
   }
 }
@@ -197,58 +222,33 @@ async function answerStep(
 ): Promise<Application> {
   const startedAt = Date.now()
   const joboId = application.id
+  const api = clientFor(local)
+  const thisRound = and(eq(steps.stepId, step.id), eq(steps.correctionRound, step.correction_round))
 
-  // If this exact round was already submitted (a second tab, a retried browser
-  // request), do not answer it again — just re-attach to the wait.
-  const [existing] = await db
-    .select()
-    .from(steps)
-    .where(
-      and(
-        eq(steps.stepId, step.id),
-        eq(steps.correctionRound, step.correction_round),
-      ),
-    )
-    .limit(1)
-  if (existing?.submittedAt) {
-    return clientFor(local).applications.get(joboId, { waitSeconds: MAX_WAIT_SECONDS })
-  }
+  // If this exact round was already submitted (the response was lost, or the
+  // worker restarted), do not answer it again — just re-attach to the wait.
+  const [existing] = await db.select().from(steps).where(thisRound).limit(1)
+  if (existing?.submittedAt) return api.applications.get(joboId, { waitSeconds: MAX_WAIT_SECONDS })
 
-  const completeStep = async (
-    values: Partial<typeof steps.$inferInsert> & { status: string },
-  ) => {
+  const completeStep = async (values: Partial<typeof steps.$inferInsert> & { status: string }) => {
     await assertLease(local.id, leaseOwner)
     await db
       .update(steps)
       .set({ ...values, totalMs: Date.now() - startedAt })
-      .where(
-        and(
-          eq(steps.stepId, step.id),
-          eq(steps.correctionRound, step.correction_round),
-        ),
-      )
+      .where(thisRound)
   }
 
-  const cancelCleanly = async (
-    reason: string,
-    extra: Partial<typeof steps.$inferInsert> = {},
-  ): Promise<Application> => {
-    log.warn(
-      { id: local.id, step: step.sequence, reason },
-      'canceling application',
-    )
-    await completeStep({ status: 'canceled', error: reason, ...extra })
-    await db
-      .update(applications)
-      .set({ stopReason: reason, cancelRequested: true })
-      .where(eq(applications.id, local.id))
-    await clientFor(local).applications.cancel(joboId)
+  // Stop this application on purpose, recording why (and, once answers were
+  // built, how) on the step row.
+  const cancelCleanly = async (reason: string, built?: BuildResult): Promise<Application> => {
+    log.warn({ id: local.id, step: step.sequence, reason }, 'canceling application')
+    await completeStep({ status: 'canceled', error: reason, ...traceOf(built) })
+    await updateLeased(local.id, leaseOwner, { stopReason: reason, cancelRequested: true })
+    await api.applications.cancel(joboId)
     // Cancels settle at the next safe checkpoint; wait for the terminal state.
-    return clientFor(local).applications.get(joboId, { waitSeconds: MAX_WAIT_SECONDS })
+    return api.applications.get(joboId, { waitSeconds: MAX_WAIT_SECONDS })
   }
 
-  const profile = local.profileSnapshot
-  if (!profile) return cancelCleanly('The saved profile is unavailable.')
   if (step.fields.some((f) => f.format === 'one_time_code'))
     return cancelCleanly(
       'This application requires a verification code and cannot be completed hands-free.',
@@ -264,45 +264,32 @@ async function answerStep(
             .select()
             .from(steps)
             .where(
-              and(
-                eq(steps.stepId, step.id),
-                eq(steps.correctionRound, step.correction_round - 1),
-              ),
+              and(eq(steps.stepId, step.id), eq(steps.correctionRound, step.correction_round - 1)),
             )
             .limit(1)
         )[0]?.answersJson ?? [])
       : []
 
-  // The budget is derived from the step deadline: a real browser is holding
-  // the employer's form open until answers_expire_at (~3 minutes; 60s for
-  // one-time codes), and missing it fails the application with answers_timeout.
-  const expiresAt = step.answers_expire_at
-    ? Date.parse(step.answers_expire_at)
-    : Number.NaN
-  const remaining = Number.isFinite(expiresAt)
-    ? expiresAt - Date.now()
-    : config().ANSWER_BUDGET_MS
-  const budgetMs = Math.min(
-    Math.max(remaining - RESERVE_MS, 0),
-    config().ANSWER_BUDGET_MS,
-  )
+  // A real browser is holding the employer's form open until
+  // answers_expire_at (~5 minutes; 60 s for one-time codes). Most providers
+  // keep waiting past it on a fresh browser, but answering inside the window
+  // is fastest, so the model gets whatever is left minus a submit reserve.
+  const expiresAt = step.answers_expire_at ? Date.parse(step.answers_expire_at) : Number.NaN
+  const remaining = Number.isFinite(expiresAt) ? expiresAt - Date.now() : config().ANSWER_BUDGET_MS
+  const budgetMs = Math.min(Math.max(remaining - DEADLINE_RESERVE_MS, 0), config().ANSWER_BUDGET_MS)
 
+  const job = local.jobSnapshot
+  const profile = local.profileSnapshot
   const ctx: AnswerContext = {
     profile: profile.data,
     // File fields need a public HTTPS URL Jobo can download the resume from.
     // Without PUBLIC_BASE_URL the engine skips them and records a trace note.
-    resumeUrl: config().PUBLIC_BASE_URL
-      ? signApplicationResumeUrl(local.id)
-      : null,
+    resumeUrl: config().PUBLIC_BASE_URL ? signApplicationResumeUrl(local.id) : null,
     resumeFilename: profile.resumeFilename,
     resumeContentType: profile.resumeContentType,
     resumeText: profile.resumeText,
-    jobCountryCode: local.jobSnapshot
-      ? (local.jobSnapshot.countryCode ?? jobCountryCode(local.jobSnapshot.location))
-      : undefined,
-    jobDescription: local.jobSnapshot
-      ? `${local.jobSnapshot.role} at ${local.jobSnapshot.company}\n${local.jobSnapshot.about}\n${local.jobSnapshot.responsibilities.join('\n')}`
-      : undefined,
+    jobCountryCode: job.countryCode ?? jobCountryCode(job.location),
+    jobDescription: `${job.role} at ${job.company}\n${job.about}\n${job.responsibilities.join('\n')}`,
     applyUrl: local.applyUrl,
     providerName: application.provider_name ?? undefined,
     commandErrors: step.command_errors ?? [],
@@ -323,7 +310,7 @@ async function answerStep(
   )
 
   // Persisted before submit: a process restart must replay the identical answers.
-  const result: BuildResult = existing?.answersJson
+  const built: BuildResult = existing?.answersJson
     ? {
         answers: existing.answersJson,
         trace: existing.trace ?? [],
@@ -336,27 +323,22 @@ async function answerStep(
   // A failed model call is not fatal: the deterministic answers may already
   // cover every required field, and Jobo leaves unanswered optional fields
   // alone. Only a refused key stops here, because no retry can succeed.
-  const traceExtras = {
-    trace: result.trace,
-    llmModel: result.llmModel ?? null,
-    llmMs: result.llmMs ?? null,
-  }
-  if (result.llmFatal)
+  if (built.llmFatal)
     return cancelCleanly(
       'The answer service rejected its API key, so no questions could be answered. Please try again later.',
-      traceExtras,
+      built,
     )
-  if (result.unanswerable.length > 0) {
-    const missing = result.unanswerable.map((f) => f.label).join(', ')
+  if (built.unanswerable.length > 0) {
+    const missing = built.unanswerable.map((f) => f.label).join(', ')
     return cancelCleanly(
-      result.llmError
-        ? `The AI answer step failed (${result.llmError}), so these required questions have no answer: ${missing}. Please try again.`
+      built.llmError
+        ? `The AI answer step failed (${built.llmError}), so these required questions have no answer: ${missing}. Please try again.`
         : `Your profile is missing required information: ${missing}`,
-      traceExtras,
+      built,
     )
   }
 
-  let answers = result.answers
+  let answers = built.answers
   try {
     // The one write in the loop. Validated synchronously (a 400 here is free),
     // then BLOCKS while Jobo fills the form and clicks through — the response
@@ -369,22 +351,12 @@ async function answerStep(
     // round burned. Repair mechanically from the server's own error list and
     // retry once; a snapshot that cannot be repaired will never be accepted,
     // so cancel cleanly rather than looping.
-    const repaired = repairAnswers(
-      answers,
-      error.errors,
-      step.fields,
-      result.trace,
-    )
-    if (!repaired) {
+    const repaired = repairAnswers(answers, error.errors, step.fields, built.trace)
+    if (!repaired)
       return cancelCleanly(
         `validation failed and nothing was repairable: ${summarize(error.errors)}`,
-        {
-          trace: result.trace,
-          llmModel: result.llmModel ?? null,
-          llmMs: result.llmMs ?? null,
-        },
+        built,
       )
-    }
     answers = repaired
     try {
       return await submitAndRecord()
@@ -392,33 +364,16 @@ async function answerStep(
       if (!(secondError instanceof JoboValidationError)) throw secondError
       return cancelCleanly(
         `validation failed after one repair pass: ${summarize(secondError.errors)}`,
-        {
-          trace: result.trace,
-          llmModel: result.llmModel ?? null,
-          llmMs: result.llmMs ?? null,
-        },
+        built,
       )
     }
   }
 
   async function submitAndRecord(): Promise<Application> {
-    await assertLease(local.id, leaseOwner)
-    const [current] = await db
-      .select()
-      .from(applications)
-      .where(eq(applications.id, local.id))
-      .limit(1)
-    if (current?.cancelRequested) {
-      return cancelCleanly('Canceled at your request.')
-    }
-    await completeStep({
-      status: 'answering',
-      answersJson: answers,
-      trace: result.trace,
-      llmModel: result.llmModel ?? null,
-      llmMs: result.llmMs ?? null,
-    })
-    const next = await clientFor(local).applications.submitAnswers(joboId, answers, {
+    const current = await readApplication(local.id)
+    if (current?.cancelRequested) return cancelCleanly('Canceled at your request.', built)
+    await completeStep({ status: 'answering', answersJson: answers, ...traceOf(built) })
+    const next = await api.applications.submitAnswers(joboId, answers, {
       // Optimistic guard: refuse to answer a different round than the one this
       // snapshot was built for (409 stale_correction_round on mismatch).
       correctionRound: step.correction_round,
@@ -426,10 +381,8 @@ async function answerStep(
     await completeStep({
       status: 'submitted',
       answersJson: answers,
-      trace: result.trace,
-      llmModel: result.llmModel ?? null,
-      llmMs: result.llmMs ?? null,
-      error: result.llmError ?? null,
+      ...traceOf(built),
+      error: built.llmError ?? null,
       submittedAt: Date.now(),
     })
     log.info(
@@ -438,7 +391,7 @@ async function answerStep(
         step: step.sequence,
         correctionRound: step.correction_round,
         answered: answers.length,
-        llmMs: result.llmMs,
+        llmMs: built.llmMs,
         nextStatus: next.status,
       },
       'answers accepted',
@@ -453,33 +406,28 @@ async function answerStep(
  * that step round in the audit table. Recording the receipt here means the
  * audit trail shows every round that ARRIVED, even if answering it later
  * fails, and it is what makes the create response's fields visible in the UI
- * before the first advance runs.
+ * before the first answer is built.
  */
 async function persistApplication(
   localId: string,
   application: Application,
   leaseOwner: string,
 ): Promise<void> {
-  await assertLease(localId, leaseOwner)
-  await db
-    .update(applications)
-    .set({
-      joboApplicationId: application.id,
-      status: application.status,
-      providerId: application.provider_id,
-      providerName: application.provider_name,
-      failureCode: application.failure?.code ?? null,
-      failureMessage: application.failure?.message ?? null,
-      failureRetryable: application.failure?.retryable ?? null,
-      // A finished run never needs the visitor's key again.
-      ...(isTerminal(application.status) ? { apiKeyCiphertext: null } : {}),
-      lastSyncedAt: Date.now(),
-      updatedAt: Date.now(),
-    })
-    .where(eq(applications.id, localId))
+  await updateLeased(localId, leaseOwner, {
+    joboApplicationId: application.id,
+    status: application.status,
+    providerId: application.provider_id,
+    providerName: application.provider_name,
+    failureCode: application.failure?.code ?? null,
+    failureMessage: application.failure?.message ?? null,
+    failureRetryable: application.failure?.retryable ?? null,
+    // A finished run never needs the visitor's key again.
+    ...(isTerminal(application.status) ? { apiKeyCiphertext: null } : {}),
+    lastSyncedAt: Date.now(),
+    updatedAt: Date.now(),
+  })
 
-  const step =
-    application.status === 'awaiting_answers' ? application.current_step : null
+  const step = application.status === 'awaiting_answers' ? application.current_step : null
   if (step) {
     await db
       .insert(steps)
@@ -496,9 +444,14 @@ async function persistApplication(
   }
 }
 
-function summarize(
-  errors: { field_id: string | null; code: string }[],
-): string {
+/** The answer engine's provenance columns for a step row. */
+function traceOf(built?: BuildResult) {
+  return built
+    ? { trace: built.trace, llmModel: built.llmModel ?? null, llmMs: built.llmMs ?? null }
+    : {}
+}
+
+function summarize(errors: { field_id: string | null; code: string }[]): string {
   return errors
     .slice(0, 5)
     .map((e) => `${e.field_id ?? '(request)'}: ${e.code}`)

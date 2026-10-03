@@ -1,13 +1,9 @@
 'use client'
 import { useEffect, useRef, useState } from 'react'
-import { useBusy } from '@/lib/use-busy'
+import { pushWithFallback, useBusy } from '@/lib/use-busy'
 import { useRouter } from 'next/navigation'
 import { ArrowUpRight, KeyRound, TriangleAlert, X } from 'lucide-react'
-import {
-  connectProductionAction,
-  forgetApiKeyAction,
-  setModeAction,
-} from '@/app/actions/mode'
+import { connectProductionAction, forgetApiKeyAction, setModeAction } from '@/app/actions/mode'
 import type { DemoSettings } from '@/lib/user-settings'
 
 export type ModeProps = Pick<
@@ -28,7 +24,7 @@ export function ModeToggle(props: ModeProps) {
   const [pending, start] = useBusy()
   const [error, setError] = useState('')
   // The mode on screen, recorded after commit: the refresh below can render
-  // the new mode and never commit it (see components/ApplicationLive.tsx).
+  // the new mode and never commit it (see lib/use-busy.ts).
   const rendered = useRef(props.mode)
   useEffect(() => {
     rendered.current = props.mode
@@ -47,11 +43,11 @@ export function ModeToggle(props: ModeProps) {
         setError(result.error)
         return
       }
-      router.push('/jobs')
-      router.refresh()
-      window.setTimeout(() => {
-        if (rendered.current !== mode) window.location.assign('/jobs')
-      }, 2500)
+      pushWithFallback(router, '/jobs', {
+        refresh: true,
+        landed: () => rendered.current === mode,
+        afterMs: 2500,
+      })
     })
   }
 
@@ -100,15 +96,17 @@ export function ModeToggle(props: ModeProps) {
         onClose={() => setOpen(false)}
         onConnected={() => {
           setOpen(false)
-          router.push('/jobs')
-          router.refresh()
+          pushWithFallback(router, '/jobs', {
+            refresh: true,
+            landed: () => rendered.current === 'production',
+          })
         }}
       />
     </div>
   )
 }
 
-export function ApiKeyDialog({
+function ApiKeyDialog({
   open,
   onClose,
   onConnected,
@@ -122,7 +120,6 @@ export function ApiKeyDialog({
   onConnected: () => void
 }) {
   const ref = useRef<HTMLDialogElement>(null)
-  const router = useRouter()
   const [pending, start] = useBusy()
   const [error, setError] = useState('')
   const [agreed, setAgreed] = useState(false)
@@ -166,29 +163,26 @@ export function ApiKeyDialog({
         </h2>
         {!productionAvailable ? (
           <p>
-            Production mode is not configured on this deployment. Set
-            API_KEY_ENCRYPTION_SECRET to let visitors connect their own key.
+            Production mode is not enabled on this deployment, so only sandbox jobs are available
+            here.
           </p>
         ) : (
           <>
             <p>
-              Production mode searches the live Jobo catalog — only jobs on
-              ATSes Auto Apply supports — and runs every application on your
-              key, in your Jobo account.
+              Production mode searches the live Jobo catalog — only jobs on ATSes Auto Apply
+              supports — and runs every application on your key, in your Jobo account.
             </p>
             {hasKey && (
               <p className="key-dialog-current">
-                Connected key ending <strong>{keyHint}</strong>. Paste a new
-                key to replace it.
+                Connected key ending <strong>{keyHint}</strong>. Paste a new key to replace it.
               </p>
             )}
             {!acknowledged && (
               <div className="notice warning key-dialog-warning">
                 <TriangleAlert size={18} />
                 <div>
-                  <strong>These are real applications.</strong> Clicking Apply
-                  submits your profile to a real employer under your Jobo
-                  account. Job searches use your key’s credits.
+                  <strong>These are real applications.</strong> Clicking Apply submits your profile
+                  to a real employer under your Jobo account. Job searches use your key’s credits.
                   <label className="key-dialog-check">
                     <input
                       type="checkbox"
@@ -240,8 +234,8 @@ export function ApiKeyDialog({
                 Get a key in the Jobo dashboard <ArrowUpRight size={14} />
               </a>
               <small>
-                Stored encrypted so applications can finish in the background.
-                Disconnecting deletes it.
+                Stored encrypted so applications can finish in the background. Disconnecting deletes
+                it.
               </small>
               {error && (
                 <p className="inline-error" role="alert">
@@ -256,20 +250,22 @@ export function ApiKeyDialog({
                     disabled={pending}
                     onClick={() =>
                       start(async () => {
-                        await forgetApiKeyAction()
+                        try {
+                          await forgetApiKeyAction()
+                        } catch {
+                          setError('Could not disconnect the key. Please try again.')
+                          return
+                        }
                         onClose()
-                        router.push('/jobs')
-                        router.refresh()
+                        // Back to sandbox: a full load, as the header and feed both change.
+                        window.location.assign('/jobs')
                       })
                     }
                   >
                     Disconnect key
                   </button>
                 )}
-                <button
-                  className="button primary"
-                  disabled={pending || (!acknowledged && !agreed)}
-                >
+                <button className="button primary" disabled={pending || (!acknowledged && !agreed)}>
                   {pending ? 'Checking key…' : hasKey ? 'Replace key' : 'Connect and switch'}
                 </button>
               </div>

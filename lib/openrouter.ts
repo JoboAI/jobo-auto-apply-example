@@ -31,7 +31,7 @@ export interface CompletionOptions<T extends z.ZodTypeAny> {
   user: string
   schema: T
   schemaName: string
-  /** Hard wall-clock ceiling. The caller derives this from the event deadline. */
+  /** Hard wall-clock ceiling. The caller derives this from the step deadline. */
   timeoutMs: number
   temperature?: number
   maxTokens?: number
@@ -56,11 +56,11 @@ export interface CompletionResult<T> {
  * One structured completion. One attempt — no internal retry.
  *
  * On the answer path a retry would risk blowing the step deadline
- * (answers_expire_at, ~3 minutes) for a marginal gain, and the free
+ * (answers_expire_at, ~5 minutes) for a marginal gain, and the free
  * validation-and-repair loop is already the real retry mechanism.
  */
 export async function complete<T extends z.ZodTypeAny>(
-  options: CompletionOptions<T>
+  options: CompletionOptions<T>,
 ): Promise<CompletionResult<z.infer<T>>> {
   const c = config()
   const startedAt = Date.now()
@@ -78,7 +78,7 @@ export async function complete<T extends z.ZodTypeAny>(
         Authorization: `Bearer ${c.OPENROUTER_API_KEY}`,
         'Content-Type': 'application/json',
         ...(c.OPENROUTER_APP_URL ? { 'HTTP-Referer': c.OPENROUTER_APP_URL } : {}),
-        ...(c.OPENROUTER_APP_NAME ? { 'X-Title': c.OPENROUTER_APP_NAME } : {})
+        ...(c.OPENROUTER_APP_NAME ? { 'X-Title': c.OPENROUTER_APP_NAME } : {}),
       },
       body: JSON.stringify({
         model: options.model,
@@ -86,7 +86,7 @@ export async function complete<T extends z.ZodTypeAny>(
         max_tokens: options.maxTokens ?? 4096,
         messages: [
           { role: 'system', content: options.system },
-          { role: 'user', content: options.user }
+          { role: 'user', content: options.user },
         ],
         // OpenRouter's unified control; `exclude` also keeps the reasoning
         // out of the response body for providers that always produce it.
@@ -96,17 +96,17 @@ export async function complete<T extends z.ZodTypeAny>(
         // routes by price, and the cheapest hosts are often the slowest.
         provider: {
           require_parameters: true,
-          ...(c.OPENROUTER_PROVIDER_SORT === 'price' ? {} : { sort: c.OPENROUTER_PROVIDER_SORT })
+          ...(c.OPENROUTER_PROVIDER_SORT === 'price' ? {} : { sort: c.OPENROUTER_PROVIDER_SORT }),
         },
-        response_format: responseFormat(options.schemaName, options.schema)
-      })
+        response_format: responseFormat(options.schemaName, options.schema),
+      }),
     })
   } catch (error) {
     if (error instanceof Error && error.name === 'TimeoutError') {
       throw new OpenRouterError(`OpenRouter timed out after ${options.timeoutMs}ms`)
     }
     throw new OpenRouterError(
-      `OpenRouter request failed: ${error instanceof Error ? error.message : String(error)}`
+      `OpenRouter request failed: ${error instanceof Error ? error.message : String(error)}`,
     )
   }
 
@@ -145,13 +145,13 @@ export async function complete<T extends z.ZodTypeAny>(
       `OpenRouter response did not match the schema: ${validated.error.issues
         .slice(0, 3)
         .map((i) => `${i.path.join('.')}: ${i.message}`)
-        .join('; ')}`
+        .join('; ')}`,
     )
   }
 
   return {
     data: validated.data,
     model: body.model ?? options.model,
-    elapsedMs: Date.now() - startedAt
+    elapsedMs: Date.now() - startedAt,
   }
 }

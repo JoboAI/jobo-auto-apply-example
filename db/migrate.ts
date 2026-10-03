@@ -19,14 +19,12 @@ export async function runMigrations(url: string) {
       migrationsFolder: join(process.cwd(), 'db/migrations'),
     })
   } finally {
-    await client
-      .query('select pg_advisory_unlock($1)', [MIGRATION_LOCK])
-      .catch(() => {})
+    await client.query('select pg_advisory_unlock($1)', [MIGRATION_LOCK]).catch(() => {})
     await client.end()
   }
 }
 
-/** The init container can start before Postgres accepts connections. */
+/** Postgres may still be starting (a fresh container, a deploy that starts both at once). */
 async function connectWithRetry(url: string, attempts = 30): Promise<Client> {
   for (let attempt = 1; ; attempt++) {
     // A pg Client cannot be reused after a failed connect.

@@ -6,23 +6,13 @@ import { db } from '@/db/client'
 import { profiles } from '@/db/schema'
 import { requireUser } from '@/lib/session'
 import { ProfileEditor } from '@/components/ProfileEditor'
-export default async function Page({
-  params,
-}: {
-  params: Promise<{ id: string }>
-}) {
+export default async function Page({ params }: { params: Promise<{ id: string }> }) {
   const user = await requireUser(),
     { id } = await params
   const [row] = await db
     .select()
     .from(profiles)
-    .where(
-      and(
-        eq(profiles.id, id),
-        eq(profiles.userId, user.id),
-        eq(profiles.archived, false),
-      ),
-    )
+    .where(and(eq(profiles.id, id), eq(profiles.userId, user.id), eq(profiles.archived, false)))
     .limit(1)
   if (!row) notFound()
   return (
@@ -33,11 +23,7 @@ export default async function Page({
       <div className="page-heading">
         <div>
           <div className="eyebrow">MAKE IT YOURS</div>
-          <h1>
-            {row.reviewedAt
-              ? 'Your application profile.'
-              : 'Does this look like you?'}
-          </h1>
+          <h1>{row.reviewedAt ? 'Your application profile.' : 'Does this look like you?'}</h1>
           <p>Check your details and fill in anything we missed.</p>
         </div>
         <a
@@ -50,12 +36,7 @@ export default async function Page({
           View PDF
         </a>
       </div>
-      <ProfileEditor
-        id={id}
-        data={row.data}
-        name={row.name}
-        reviewed={!!row.reviewedAt}
-      />
+      <ProfileEditor id={id} data={row.data} name={row.name} reviewed={!!row.reviewedAt} />
     </div>
   )
 }

@@ -18,7 +18,6 @@ export function AtsBadge({
   return (
     <span className={`ats-badge ${className}`.trim()}>
       {logoUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element
         <img src={logoUrl} alt="" width={size} height={size} />
       ) : (
         <Workflow size={size} aria-hidden="true" />

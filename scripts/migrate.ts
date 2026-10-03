@@ -1,13 +1,22 @@
-// CommonJS: a named ESM import of loadEnvConfig fails at runtime.
-import nextEnv from '@next/env'
+/** Apply pending database migrations: `npm run db:migrate` (also run by `npm run dev`). */
+import './load-env'
 import { runMigrations } from '../db/migrate'
 
-// Reads .env.local locally; in a container, real env vars win.
-nextEnv.loadEnvConfig(process.cwd())
 const url = process.env.DATABASE_URL
 if (!url) {
-  console.error('DATABASE_URL is not set. Run `npm run db:up` and copy .env.example to .env.local.')
+  console.error(
+    'DATABASE_URL is not set. Copy .env.example to .env.local, then run `npm run db:up`.',
+  )
   process.exit(1)
 }
-await runMigrations(url)
+try {
+  await runMigrations(url)
+} catch (error) {
+  const host = new URL(url).host
+  console.error(
+    `Could not migrate the database at ${host}: ${error instanceof Error ? error.message : error}\n` +
+      'Is Postgres running? `npm run db:up` starts the local one (Docker).',
+  )
+  process.exit(1)
+}
 console.log('Database migrations complete.')

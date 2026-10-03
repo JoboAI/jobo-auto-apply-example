@@ -56,9 +56,7 @@ export function AuthForm({
                   token: token ?? '',
                 })
       if (result.error) {
-        setError(
-          result.error.message ?? 'Something went wrong. Please try again.',
-        )
+        setError(result.error.message ?? 'Something went wrong. Please try again.')
         return
       }
       if (mode === 'login') window.location.assign('/jobs')
@@ -78,9 +76,7 @@ export function AuthForm({
         {sent ? (
           <div className="auth-success">
             <CheckCircle2 size={40} />
-            <h1>
-              {mode === 'reset' ? 'Password updated.' : 'Check your inbox.'}
-            </h1>
+            <h1>{mode === 'reset' ? 'Password updated.' : 'Check your inbox.'}</h1>
             <p>
               {mode === 'signup'
                 ? `We sent a verification link to ${email}. Open it to finish creating your account.`
@@ -136,16 +132,10 @@ export function AuthForm({
                   <input
                     name="password"
                     type="password"
-                    autoComplete={
-                      mode === 'login' ? 'current-password' : 'new-password'
-                    }
+                    autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
                     minLength={mode === 'login' ? 1 : 12}
                     required
-                    placeholder={
-                      mode === 'login'
-                        ? 'Your password'
-                        : 'At least 12 characters'
-                    }
+                    placeholder={mode === 'login' ? 'Your password' : 'At least 12 characters'}
                   />
                 </label>
               )}
@@ -192,12 +182,8 @@ export function AuthForm({
                       email,
                       callbackURL: '/onboarding',
                     })
-                    if (r.error)
-                      setError(r.error.message ?? 'Could not send email.')
-                    else
-                      setError(
-                        'If verification is needed, a new link is on its way.',
-                      )
+                    if (r.error) setError(r.error.message ?? 'Could not send email.')
+                    else setError('If verification is needed, a new link is on its way.')
                   } catch {
                     setError('Could not send email.')
                   } finally {
@@ -223,7 +209,9 @@ export function AuthForm({
         )}
       </section>
       <div className="auth-caption">
-        <p>Jobo Auto Apply Demo · Fictional jobs. No real employers contacted.</p>
+        <p>
+          Jobo Auto Apply Demo · Sandbox jobs by default. Real employers only in production mode.
+        </p>
         <SourceLink />
       </div>
     </div>

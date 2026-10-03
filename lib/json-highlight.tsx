@@ -5,8 +5,7 @@ import type { ReactNode } from 'react'
  * recorded payload cannot inject markup). Anything that is not a token is
  * passed through untouched, so non-JSON text still renders verbatim.
  */
-const TOKEN =
-  /("(?:\\.|[^"\\])*")(\s*:)?|\b(true|false|null)\b|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/g
+const TOKEN = /("(?:\\.|[^"\\])*")(\s*:)?|\b(true|false|null)\b|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/g
 
 export function highlightJson(text: string): ReactNode[] {
   const nodes: ReactNode[] = []
@@ -17,13 +16,30 @@ export function highlightJson(text: string): ReactNode[] {
     const [whole, string, colon, literal, number] = match
     const key = nodes.length
     if (string !== undefined && colon !== undefined)
-      nodes.push(<span key={key} className="tok-key">{string}</span>, colon)
+      nodes.push(
+        <span key={key} className="tok-key">
+          {string}
+        </span>,
+        colon,
+      )
     else if (string !== undefined)
-      nodes.push(<span key={key} className="tok-string">{string}</span>)
+      nodes.push(
+        <span key={key} className="tok-string">
+          {string}
+        </span>,
+      )
     else if (literal !== undefined)
-      nodes.push(<span key={key} className="tok-literal">{literal}</span>)
+      nodes.push(
+        <span key={key} className="tok-literal">
+          {literal}
+        </span>,
+      )
     else if (number !== undefined)
-      nodes.push(<span key={key} className="tok-number">{number}</span>)
+      nodes.push(
+        <span key={key} className="tok-number">
+          {number}
+        </span>,
+      )
     else nodes.push(whole)
     last = index + whole.length
   }

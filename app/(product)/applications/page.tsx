@@ -1,3 +1,4 @@
+import { PageLink } from '@/components/PageLink'
 import Link from 'next/link'
 import { desc, eq } from 'drizzle-orm'
 import { ArrowUpRight, ArrowRight, Layers, Send, Clock3 } from 'lucide-react'
@@ -27,8 +28,7 @@ export default async function Page({
       status === 'all' ||
       (status === 'active' && !isTerminal(r.status)) ||
       (status === 'submitted' && r.status === 'submitted') ||
-      (status === 'incomplete' &&
-        ['Couldn’t complete', 'Canceled'].includes(applicationLabel(r))),
+      (status === 'incomplete' && ['Couldn’t complete', 'Canceled'].includes(applicationLabel(r))),
   )
   return (
     <>
@@ -79,23 +79,17 @@ export default async function Page({
       </div>
       <div className="surface application-list">
         {filtered.map((row) => (
-          <Link
-            className="application-row"
-            key={row.id}
-            href={`/applications/${row.id}`}
-          >
-            <span className="company-mark purple">
-              {row.jobSnapshot?.mark ?? 'JB'}
-            </span>
+          <Link className="application-row" key={row.id} href={`/applications/${row.id}`}>
+            <span className="company-mark purple">{row.jobSnapshot?.mark ?? 'JB'}</span>
             <div className="application-role">
-              <strong>{row.jobSnapshot?.role ?? (row.sandbox ? 'Sandbox application' : 'Application')}</strong>
+              <strong>
+                {row.jobSnapshot?.role ?? (row.sandbox ? 'Sandbox application' : 'Application')}
+              </strong>
               <span>
                 {row.jobSnapshot?.company} · {row.jobSnapshot?.location}
               </span>
             </div>
-            <span className={`status-badge status-${row.status}`}>
-              {applicationLabel(row)}
-            </span>
+            <span className={`status-badge status-${row.status}`}>{applicationLabel(row)}</span>
             <time>{displayDate(row.createdAt)}</time>
             <ArrowUpRight size={18} />
           </Link>
@@ -104,14 +98,12 @@ export default async function Page({
           <div className="empty-state">
             <Send size={29} />
             <h2>
-              {rows.length
-                ? 'Nothing in this view yet.'
-                : 'Start your first sandbox application.'}
+              {rows.length ? 'Nothing in this view yet.' : 'Start your first sandbox application.'}
             </h2>
             <p>Click Apply on a sandbox job to test the integration end to end.</p>
-            <Link className="button primary" href="/jobs">
+            <PageLink className="button primary" href="/jobs">
               Discover jobs <ArrowRight size={16} />
-            </Link>
+            </PageLink>
           </div>
         )}
       </div>

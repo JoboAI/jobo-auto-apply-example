@@ -1,12 +1,4 @@
-import {
-  Ban,
-  Building2,
-  Code2,
-  Globe2,
-  Search,
-  TriangleAlert,
-  X,
-} from 'lucide-react'
+import { Ban, Building2, Code2, Globe2, Search, TriangleAlert, X } from 'lucide-react'
 import { CodeBlock } from './CodeBlock'
 import { ExplorerShell } from './ExplorerShell'
 import { highlightJson } from '@/lib/json-highlight'
@@ -37,11 +29,11 @@ import {
   type PostedWindow,
   type SignedField,
 } from '@/lib/jobo/job-filters'
+import { PageLink } from './PageLink'
 
-// Filters are plain <a> links, not next/link: every pick is a full,
-// server-rendered page load. Next 15.5 soft navigations started right after a
-// page load intermittently never commit (the URL and page just stay put), and
-// the explorer holds no client state worth a soft navigation.
+// Filters are PageLinks (full, server-rendered page loads), not next/link:
+// see components/PageLink.tsx. The explorer holds no client state worth a
+// soft navigation anyway.
 
 type Bucket = { key: string; count: number }
 
@@ -76,32 +68,31 @@ function Row({
 }) {
   return (
     <li className={`facet-row${selected ? ' selected' : ''}${excluded ? ' excluded' : ''}`}>
-      <a
+      <PageLink
         href={href}
         className="facet-option"
-       
+
         aria-label={`${excluded ? 'Excluded: ' : selected ? 'Selected: ' : ''}${label}${
-          count === undefined ? '' : `, ${count.toLocaleString('en')} ${count === 1 ? 'job' : 'jobs'}`
+          count === undefined
+            ? ''
+            : `, ${count.toLocaleString('en')} ${count === 1 ? 'job' : 'jobs'}`
         }`}
       >
         <span className="facet-box" aria-hidden="true" />
-        {icon && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img className="facet-icon" src={icon} alt="" width={14} height={14} />
-        )}
+        {icon && <img className="facet-icon" src={icon} alt="" width={14} height={14} />}
         <span className="facet-label">{label}</span>
         {count !== undefined && <span className="facet-count">{count.toLocaleString('en')}</span>}
-      </a>
+      </PageLink>
       {excludeHref && (
-        <a
+        <PageLink
           href={excludeHref}
           className="facet-exclude"
-         
+
           aria-label={excluded ? `Stop excluding ${label}` : `Exclude ${label}`}
           title={excluded ? 'Stop excluding' : 'Exclude'}
         >
           <Ban size={12} />
-        </a>
+        </PageLink>
       )}
     </li>
   )
@@ -227,16 +218,18 @@ export function JobExplorer({
   const industries = signedHref(filters, 'industries')
   const categories = signedHref(filters, 'categories')
   const companies = signedHref(filters, 'companies')
-  const showCategories = !!facets.company_categories || filters.categories.include.length + filters.categories.exclude.length > 0
+  const showCategories =
+    !!facets.company_categories ||
+    filters.categories.include.length + filters.categories.exclude.length > 0
   const facet = (name: FacetName) => facets[name]
   return (
     <ExplorerShell active={activeFilterCount(filters)}>
       <div className="explorer-head">
         <span className="eyebrow">FILTER WITH THE JOBS API</span>
         {activeFilterCount(filters) > 0 && (
-          <a href="/jobs" className="text-link">
+          <PageLink href="/jobs" className="text-link">
             Clear all
-          </a>
+          </PageLink>
         )}
       </div>
 
@@ -258,21 +251,30 @@ export function JobExplorer({
         {(filters.companies.include.length > 0 || filters.companies.exclude.length > 0) && (
           <div className="chip-row">
             {filters.companies.include.map((c) => (
-              <a key={`i-${c}`} className="chip" href={companies.include(c)} aria-label={`Remove company ${companyLabel(result, c)}`}>
+              <PageLink
+                key={`i-${c}`}
+                className="chip"
+                href={companies.include(c)}
+                aria-label={`Remove company ${companyLabel(result, c)}`}
+              >
                 <Building2 size={12} /> {companyLabel(result, c)} <X size={12} />
-              </a>
+              </PageLink>
             ))}
             {filters.companies.exclude.map((c) => (
-              <a key={`e-${c}`} className="chip excluded" href={companies.exclude(c)} aria-label={`Stop excluding company ${companyLabel(result, c)}`}>
+              <PageLink
+                key={`e-${c}`}
+                className="chip excluded"
+                href={companies.exclude(c)}
+                aria-label={`Stop excluding company ${companyLabel(result, c)}`}
+              >
                 <Ban size={12} /> {companyLabel(result, c)} <X size={12} />
-              </a>
+              </PageLink>
             ))}
           </div>
         )}
         {result.unmatchedCompanies.length > 0 && (
           <p className="facet-note warn">
-            <TriangleAlert size={13} /> No company found for{' '}
-            {result.unmatchedCompanies.join(', ')}.
+            <TriangleAlert size={13} /> No company found for {result.unmatchedCompanies.join(', ')}.
           </p>
         )}
         <form className="explorer-form stacked" method="get" action="/jobs">
@@ -311,7 +313,11 @@ export function JobExplorer({
                 key={c}
                 href={categories.include(c)}
                 label={valueLabel(c)}
-                count={hasValue(filters.categories.exclude, c) ? undefined : countOf(facet('company_categories'), c)}
+                count={
+                  hasValue(filters.categories.exclude, c)
+                    ? undefined
+                    : countOf(facet('company_categories'), c)
+                }
                 selected={hasValue(filters.categories.include, c)}
                 excluded={hasValue(filters.categories.exclude, c)}
                 excludeHref={categories.exclude(c)}
@@ -321,7 +327,8 @@ export function JobExplorer({
         </Section>
       )}
 
-      {(facet('industries') || filters.industries.include.length + filters.industries.exclude.length > 0) && (
+      {(facet('industries') ||
+        filters.industries.include.length + filters.industries.exclude.length > 0) && (
         <Section title="Industry">
           <BucketFacet
             buckets={facet('industries')}
@@ -344,18 +351,33 @@ export function JobExplorer({
           <Carry filters={withFilters(filters, {})} />
           <label className="search-field">
             <Globe2 size={16} />
-            <input aria-label="Add a location" name="loc" placeholder="City, region or country" required />
+            <input
+              aria-label="Add a location"
+              name="loc"
+              placeholder="City, region or country"
+              required
+            />
           </label>
           <button className="button secondary small">Add</button>
         </form>
       </Section>
 
       <Section title="Seniority">
-        <EnumFacet filters={filters} field="experienceLevels" options={EXPERIENCE_LEVELS} buckets={facet('experience_level')} />
+        <EnumFacet
+          filters={filters}
+          field="experienceLevels"
+          options={EXPERIENCE_LEVELS}
+          buckets={facet('experience_level')}
+        />
       </Section>
 
       <Section title="Work model">
-        <EnumFacet filters={filters} field="workModels" options={WORK_MODELS} buckets={facet('work_model')} />
+        <EnumFacet
+          filters={filters}
+          field="workModels"
+          options={WORK_MODELS}
+          buckets={facet('work_model')}
+        />
       </Section>
 
       <Section title="Salary" hint="disclosed, annual USD">
@@ -363,7 +385,9 @@ export function JobExplorer({
           {SALARY_FLOORS.map((min) => (
             <Row
               key={min}
-              href={filtersHref(withFilters(filters, { minSalary: filters.minSalary === min ? undefined : min }))}
+              href={filtersHref(
+                withFilters(filters, { minSalary: filters.minSalary === min ? undefined : min }),
+              )}
               label={salaryLabel(min)}
               selected={filters.minSalary === min}
             />
@@ -376,7 +400,9 @@ export function JobExplorer({
           {(Object.keys(POSTED_WINDOWS) as PostedWindow[]).map((w) => (
             <Row
               key={w}
-              href={filtersHref(withFilters(filters, { posted: filters.posted === w ? undefined : w }))}
+              href={filtersHref(
+                withFilters(filters, { posted: filters.posted === w ? undefined : w }),
+              )}
               label={POSTED_LABELS[w]}
               selected={filters.posted === w}
             />
@@ -389,7 +415,9 @@ export function JobExplorer({
           filters={filters}
           field="employmentTypes"
           options={EMPLOYMENT_TYPES.filter(
-            (t) => countOf(facet('employment_type'), t) !== undefined || hasValue(filters.employmentTypes, t),
+            (t) =>
+              countOf(facet('employment_type'), t) !== undefined ||
+              hasValue(filters.employmentTypes, t),
           )}
           buckets={facet('employment_type')}
         />
@@ -421,8 +449,7 @@ export function JobExplorer({
       </Section>
 
       <p className="facet-note">
-        Counts are Jobo’s facet counts for the current filters (top values,
-        approximate).
+        Counts are Jobo’s facet counts for the current filters (top values, approximate).
       </p>
     </ExplorerShell>
   )
@@ -431,11 +458,21 @@ export function JobExplorer({
 const EXAMPLES: { label: string; patch: Partial<JobFilters> }[] = [
   {
     label: 'Senior · remote · SaaS companies',
-    patch: { workModels: ['remote'], experienceLevels: ['senior'], categories: { include: ['saas'], exclude: [] } },
+    patch: {
+      workModels: ['remote'],
+      experienceLevels: ['senior'],
+      categories: { include: ['saas'], exclude: [] },
+    },
   },
-  { label: 'AI companies', patch: { industries: { include: ['Artificial Intelligence'], exclude: [] } } },
+  {
+    label: 'AI companies',
+    patch: { industries: { include: ['Artificial Intelligence'], exclude: [] } },
+  },
   { label: '$160k+ posted this week', patch: { minSalary: 160_000, posted: '7d' } },
-  { label: 'No staffing agencies', patch: { industries: { include: [], exclude: ['HR & Staffing'] } } },
+  {
+    label: 'No staffing agencies',
+    patch: { industries: { include: [], exclude: ['HR & Staffing'] } },
+  },
 ]
 
 /** Active filters as removable chips, plus the exact request behind the page. */
@@ -455,13 +492,27 @@ export function ExplorerSummary({
     )
   const signed = (field: SignedField, label: (v: string) => string = (v) => v) => {
     filters[field].include.forEach((v) =>
-      chips.push({ key: `${field}+${v}`, label: label(v), href: toggleSignedHref(filters, field, v, 'include') }),
+      chips.push({
+        key: `${field}+${v}`,
+        label: label(v),
+        href: toggleSignedHref(filters, field, v, 'include'),
+      }),
     )
     filters[field].exclude.forEach((v) =>
-      chips.push({ key: `${field}-${v}`, label: label(v), href: toggleSignedHref(filters, field, v, 'exclude'), excluded: true }),
+      chips.push({
+        key: `${field}-${v}`,
+        label: label(v),
+        href: toggleSignedHref(filters, field, v, 'exclude'),
+        excluded: true,
+      }),
     )
   }
-  if (filters.q) chips.push({ key: 'q', label: `“${filters.q}”`, href: filtersHref(withFilters(filters, { q: '' })) })
+  if (filters.q)
+    chips.push({
+      key: 'q',
+      label: `“${filters.q}”`,
+      href: filtersHref(withFilters(filters, { q: '' })),
+    })
   signed('companies', (v) => companyLabel(result, v))
   signed('categories', valueLabel)
   signed('industries')
@@ -472,9 +523,17 @@ export function ExplorerSummary({
   list('skills', (v) => v)
   list('sources', (v) => ats.find((a) => a.id === v)?.name ?? v)
   if (filters.minSalary)
-    chips.push({ key: 'salary', label: salaryLabel(filters.minSalary), href: filtersHref(withFilters(filters, { minSalary: undefined })) })
+    chips.push({
+      key: 'salary',
+      label: salaryLabel(filters.minSalary),
+      href: filtersHref(withFilters(filters, { minSalary: undefined })),
+    })
   if (filters.posted)
-    chips.push({ key: 'posted', label: POSTED_LABELS[filters.posted], href: filtersHref(withFilters(filters, { posted: undefined })) })
+    chips.push({
+      key: 'posted',
+      label: POSTED_LABELS[filters.posted],
+      href: filtersHref(withFilters(filters, { posted: undefined })),
+    })
 
   const json = JSON.stringify(result.request.body, null, 2)
   const curl = curlCommand(result.request.method, result.request.url, {
@@ -487,29 +546,33 @@ export function ExplorerSummary({
       {chips.length > 0 ? (
         <div className="filter-bar" aria-label="Active filters">
           {chips.map((chip) => (
-            <a
+            <PageLink
               key={chip.key}
               href={chip.href}
-             
+
               className={`chip${chip.excluded ? ' excluded' : ''}`}
               aria-label={`Remove filter ${chip.excluded ? 'excluding ' : ''}${chip.label}`}
             >
               {chip.excluded && <Ban size={12} />}
               {chip.label}
               <X size={12} />
-            </a>
+            </PageLink>
           ))}
-          <a href="/jobs" className="text-link">
+          <PageLink href="/jobs" className="text-link">
             Clear all
-          </a>
+          </PageLink>
         </div>
       ) : (
         <div className="filter-bar examples">
           <span className="subtle">Try</span>
           {EXAMPLES.map((example) => (
-            <a key={example.label} className="chip example" href={filtersHref(withFilters(filters, example.patch))}>
+            <PageLink
+              key={example.label}
+              className="chip example"
+              href={filtersHref(withFilters(filters, example.patch))}
+            >
               {example.label}
-            </a>
+            </PageLink>
           ))}
         </div>
       )}
@@ -523,10 +586,9 @@ export function ExplorerSummary({
           <Code2 size={16} /> See the API call behind these results
         </summary>
         <p>
-          Every job, count and filter on this page comes from this one request,
-          made with your API key. Facets come back in the same response, and the
-          full company profile on a job page is a free{' '}
-          <code>GET /api/companies/&#123;id&#125;</code>.
+          Every job, count and filter on this page comes from this one request, made with your API
+          key. Facets come back in the same response, and the full company profile on a job page is
+          a free <code>GET /api/companies/&#123;id&#125;</code>.
         </p>
         <CodeBlock
           title={`${result.request.method} /api/jobs/search`}

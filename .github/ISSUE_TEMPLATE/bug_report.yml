@@ -1,0 +1,45 @@
+name: Bug report
+description: Something in the example does not work as documented.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This repository is a mirror; fixes are made upstream and synced here.
+        **Never paste API keys, secrets or personal data.** Security issues go to support@jobo.world.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. …
+        2. …
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Output from `npm run doctor`, the web app or the worker (redacted).
+      render: shell
+  - type: input
+    id: version
+    attributes:
+      label: Commit
+      description: The commit of this repository you are running (`git rev-parse --short HEAD`).
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where
+      options:
+        - Local (npm run dev)
+        - Docker / docker compose
+        - My own deployment
+        - demo.jobo.world

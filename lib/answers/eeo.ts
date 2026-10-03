@@ -5,9 +5,9 @@ import { fieldOptions, findDeclineOption, matchBooleanOption, normalize } from '
 /**
  * Voluntary self-identification (EEO) questions.
  *
- * The candidate answers these once, explicitly, in onboarding — the same five
- * questions Simplify asks. This module maps those answers onto whatever
- * wording a given ATS uses, the job Simplify's per-ATS "values" tables do.
+ * The candidate answers these once, explicitly, in onboarding: the five
+ * standard US self-identification questions. This module maps those answers
+ * onto whatever wording a given ATS uses.
  *
  * Three rules hold throughout:
  *
@@ -33,7 +33,10 @@ export type EeoKind =
 /** Ordered: narrower questions first, so "gender identity" is not "gender". */
 const KINDS: [EeoKind, RegExp][] = [
   ['pronouns', /\bpronouns?\b/],
-  ['transgender', /\btrans ?gender\b|\btrans\b|gender identity (is )?(the )?same|assigned at birth/],
+  [
+    'transgender',
+    /\btrans ?gender\b|\btrans\b|gender identity (is )?(the )?same|assigned at birth/,
+  ],
   ['sexual_orientation', /sexual orientation|\bsexuality\b/],
   ['lgbtq', /\blgbt|\bqueer\b/],
   ['veteran', /veteran|military|armed forces|\bservice member/],
@@ -66,8 +69,7 @@ function find(
 
 const affirmative = (pattern: RegExp) => (text: string) =>
   pattern.test(text) && !NEGATIVE.test(text)
-const negative = (pattern: RegExp) => (text: string) =>
-  pattern.test(text) && NEGATIVE.test(text)
+const negative = (pattern: RegExp) => (text: string) => pattern.test(text) && NEGATIVE.test(text)
 
 function yesNo(
   options: readonly FieldOption[],
@@ -143,7 +145,7 @@ function resolveRace(
   return find(options, (t) => /two or more|multiracial|multiple|mixed/.test(t))?.value
 }
 
-/** Simplify derives pronouns from gender rather than storing them. */
+/** Pronouns are derived from gender rather than stored. */
 export function pronounsFor(gender: ResumeProfile['eeo']['gender']): string | undefined {
   switch (gender) {
     case 'male':
@@ -158,11 +160,7 @@ export function pronounsFor(gender: ResumeProfile['eeo']['gender']): string | un
 }
 
 /** The answer for a classified question, before any decline fallback. */
-function resolveKind(
-  kind: EeoKind,
-  field: Field,
-  eeo: ResumeProfile['eeo'],
-): unknown | undefined {
+function resolveKind(kind: EeoKind, field: Field, eeo: ResumeProfile['eeo']): unknown | undefined {
   const options = fieldOptions(field)
   const hasOptions = options.length > 0
   const asBoolean = (value: boolean, topic: RegExp) =>
@@ -200,10 +198,13 @@ function resolveKind(
       const yes = eeo.veteran === 'yes'
       if (field.type === 'checkbox' || !hasOptions) return asBoolean(yes, /veteran/)
       // Federal forms phrase "yes" as "I identify as one or more of the
-      // classifications of protected veteran"; Simplify maps its Yes there too.
+      // classifications of protected veteran", which is what "Yes" means here.
       return (
         (yes
-          ? find(options, affirmative(/identify as one or more|protected veteran|i am a veteran|^yes\b/))
+          ? find(
+              options,
+              affirmative(/identify as one or more|protected veteran|i am a veteran|^yes\b/),
+            )
           : find(options, negative(/veteran|^no\b/))) ?? yesNo(options, yes, /veteran/)
       )?.value
     }

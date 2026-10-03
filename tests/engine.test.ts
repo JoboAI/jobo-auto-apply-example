@@ -25,10 +25,8 @@ process.env.DATA_DIR = mkdtempSync(join(tmpdir(), 'jobo-engine-'))
 process.env.JOBO_API_KEY = 'jbe_test_fixture'
 process.env.OPENROUTER_API_KEY = 'fixture'
 process.env.PUBLIC_BASE_URL = 'https://demo.jobo.world'
-process.env.RESUME_URL_SIGNING_SECRET =
-  'fixture-signing-secret-with-32-characters'
-process.env.API_KEY_ENCRYPTION_SECRET =
-  'fixture-encryption-secret-with-32-characters'
+process.env.RESUME_URL_SIGNING_SECRET = 'fixture-signing-secret-with-32-characters'
+process.env.API_KEY_ENCRYPTION_SECRET = 'fixture-encryption-secret-with-32-characters'
 let db: typeof import('@/db/client').db,
   schema: typeof import('@/db/schema'),
   queue: typeof import('@/lib/queue'),
@@ -64,25 +62,30 @@ beforeAll(async () => {
   schema = await import('@/db/schema')
   queue = await import('@/lib/queue')
   engine = await import('@/lib/application-engine')
-  await db.insert(schema.user)
-    .values({
-      id: 'alice',
-      name: 'Alice',
-      email: 'alice@example.com',
-      emailVerified: true,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    })
-  const { seedSampleProfiles } = await import('@/db/seed'),
+  await db.insert(schema.user).values({
+    id: 'alice',
+    name: 'Alice',
+    email: 'alice@example.com',
+    emailVerified: true,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  })
+  const { seedSampleProfiles } = await import('@/tests/support/seed'),
     { RESUME_DIR } = await import('@/db/client')
   await seedSampleProfiles(db, RESUME_DIR)
-  for (const row of (await db.select().from(schema.profiles))) {
-    await db.update(schema.profiles).set({ data: {
-      ...row.data,
-      links: { ...row.data.links, linkedin: 'https://www.linkedin.com/in/jobo-test-candidate' },
-    } }).where(eq(schema.profiles.id, row.id))
+  for (const row of await db.select().from(schema.profiles)) {
+    await db
+      .update(schema.profiles)
+      .set({
+        data: {
+          ...row.data,
+          links: { ...row.data.links, linkedin: 'https://www.linkedin.com/in/jobo-test-candidate' },
+        },
+      })
+      .where(eq(schema.profiles.id, row.id))
   }
-  await db.update(schema.profiles)
+  await db
+    .update(schema.profiles)
     .set({ userId: 'alice', reviewedAt: Date.now() })
     .where(eq(schema.profiles.id, 'sample-ada-lovelace'))
 })
@@ -107,9 +110,7 @@ beforeEach(async () => {
   await queue.claimApplication('worker')
   mocked.create.mockResolvedValue(snapshot())
   mocked.get.mockResolvedValue(snapshot())
-  mocked.submitAnswers.mockResolvedValue(
-    snapshot({ status: 'submitted', current_step: null }),
-  )
+  mocked.submitAnswers.mockResolvedValue(snapshot({ status: 'submitted', current_step: null }))
   mocked.cancel.mockResolvedValue({ status: 'canceled' })
   mocked.build.mockResolvedValue({
     answers: [{ field_id: 'full_name', value: 'Ada Lovelace' }],
@@ -123,13 +124,10 @@ describe('background application exchanges', () => {
   it('submits from snapshots and records the actual model and authoritative status', async () => {
     await engine.advanceApplication(id, 'worker')
     expect(
-      (await db
-        .select()
-        .from(schema.applications)
-        .where(eq(schema.applications.id, id)))[0]?.status,
+      (await db.select().from(schema.applications).where(eq(schema.applications.id, id)))[0]
+        ?.status,
     ).toBe('submitted')
-    const [step] = await db.select().from(schema.steps)
-      .limit(1)
+    const [step] = await db.select().from(schema.steps).limit(1)
     expect(step.llmModel).toBe('deepseek/deepseek-v4-flash-0731')
     expect(step.submittedAt).toBeTruthy()
     const context = mocked.build.mock.calls[0][1]
@@ -139,9 +137,7 @@ describe('background application exchanges', () => {
   })
   it('replays identical persisted answers after interruption without another model call', async () => {
     mocked.submitAnswers.mockRejectedValueOnce(new Error('Connection lost'))
-    await expect(engine.advanceApplication(id, 'worker')).rejects.toThrow(
-      'Connection lost',
-    )
+    await expect(engine.advanceApplication(id, 'worker')).rejects.toThrow('Connection lost')
     expect((await db.select().from(schema.steps))[0]?.answersJson).toEqual([
       { field_id: 'full_name', value: 'Ada Lovelace' },
     ])
@@ -150,28 +146,30 @@ describe('background application exchanges', () => {
     await engine.advanceApplication(id, 'replacement')
     expect(mocked.create).toHaveBeenCalledTimes(1)
     expect(mocked.build).toHaveBeenCalledTimes(1)
-    expect(mocked.submitAnswers.mock.calls[1][1]).toEqual(
-      mocked.submitAnswers.mock.calls[0][1],
-    )
+    expect(mocked.submitAnswers.mock.calls[1][1]).toEqual(mocked.submitAnswers.mock.calls[0][1])
   })
   it('reuses the persisted create key after a dropped create response', async () => {
     mocked.create.mockRejectedValueOnce(new Error('Connection lost'))
     await expect(engine.advanceApplication(id, 'worker')).rejects.toThrow()
     await engine.advanceApplication(id, 'worker')
-    expect(mocked.create.mock.calls[0][1]).toEqual(
-      mocked.create.mock.calls[1][1],
-    )
+    expect(mocked.create.mock.calls[0][1]).toEqual(mocked.create.mock.calls[1][1])
   })
   it('stops when a required field has no answer, naming the model failure', async () => {
     mocked.build.mockResolvedValue({
       answers: [],
-      trace: [{ field_id: 'full_name', label: 'Full name', type: 'text', source: 'dropped', reason: 'model declined to answer' }],
+      trace: [
+        {
+          field_id: 'full_name',
+          label: 'Full name',
+          type: 'text',
+          source: 'dropped',
+          reason: 'model declined to answer',
+        },
+      ],
       unanswerable: [{ label: 'Work authorization' }],
       llmError: 'OpenRouter timed out after 90000ms',
     })
-    mocked.get.mockResolvedValue(
-      snapshot({ status: 'canceled', current_step: null }),
-    )
+    mocked.get.mockResolvedValue(snapshot({ status: 'canceled', current_step: null }))
     await engine.advanceApplication(id, 'worker')
     expect(mocked.submitAnswers).not.toHaveBeenCalled()
     expect(mocked.cancel).toHaveBeenCalled()
@@ -182,8 +180,7 @@ describe('background application exchanges', () => {
     expect(stopReason).toContain('OpenRouter timed out')
     expect(stopReason).toContain('Work authorization')
     // The trace survives the cancel, so the answers tab can explain it.
-    const [step] = await db.select().from(schema.steps)
-      .limit(1)
+    const [step] = await db.select().from(schema.steps).limit(1)
     expect(step.trace?.[0]?.reason).toBe('model declined to answer')
     expect(step.answersJson).toBeNull()
   })
@@ -193,15 +190,11 @@ describe('background application exchanges', () => {
       trace: [],
       unanswerable: [{ label: 'Available date' }],
     })
-    mocked.get.mockResolvedValue(
-      snapshot({ status: 'canceled', current_step: null }),
-    )
+    mocked.get.mockResolvedValue(snapshot({ status: 'canceled', current_step: null }))
     await engine.advanceApplication(id, 'worker')
     expect(
-      (await db
-        .select()
-        .from(schema.applications)
-        .where(eq(schema.applications.id, id)))[0]?.stopReason,
+      (await db.select().from(schema.applications).where(eq(schema.applications.id, id)))[0]
+        ?.stopReason,
     ).toBe('Your profile is missing required information: Available date')
   })
   it('submits the profile answers when the model fails but nothing required is missing', async () => {
@@ -226,16 +219,12 @@ describe('background application exchanges', () => {
       llmError: 'OpenRouter 402: Insufficient credits',
       llmFatal: true,
     })
-    mocked.get.mockResolvedValue(
-      snapshot({ status: 'canceled', current_step: null }),
-    )
+    mocked.get.mockResolvedValue(snapshot({ status: 'canceled', current_step: null }))
     await engine.advanceApplication(id, 'worker')
     expect(mocked.submitAnswers).not.toHaveBeenCalled()
     expect(
-      (await db
-        .select()
-        .from(schema.applications)
-        .where(eq(schema.applications.id, id)))[0]?.stopReason,
+      (await db.select().from(schema.applications).where(eq(schema.applications.id, id)))[0]
+        ?.stopReason,
     ).toContain('answer service')
   })
   it('stops verification without asking the model to invent a code', async () => {
@@ -255,35 +244,58 @@ describe('background application exchanges', () => {
         },
       }),
     )
-    mocked.get.mockResolvedValue(
-      snapshot({ status: 'canceled', current_step: null }),
-    )
+    mocked.get.mockResolvedValue(snapshot({ status: 'canceled', current_step: null }))
     await engine.advanceApplication(id, 'worker')
     expect(mocked.build).not.toHaveBeenCalled()
     expect(mocked.submitAnswers).not.toHaveBeenCalled()
   })
   it('honors cancellation before generating or submitting answers', async () => {
-    await db.update(schema.applications)
+    await db
+      .update(schema.applications)
       .set({ cancelRequested: true })
       .where(eq(schema.applications.id, id))
-    mocked.get.mockResolvedValue(
-      snapshot({ status: 'canceled', current_step: null }),
-    )
+    mocked.get.mockResolvedValue(snapshot({ status: 'canceled', current_step: null }))
     await engine.advanceApplication(id, 'worker')
     expect(mocked.cancel).toHaveBeenCalled()
     expect(mocked.build).not.toHaveBeenCalled()
   })
-  it('rejects stale workers and avoids replaying expired idempotency keys', async () => {
-    await expect(
-      engine.advanceApplication(id, 'not-the-owner'),
-    ).rejects.toThrow(/lease/)
-    await db.update(schema.applications)
+  it('rejects stale workers and pauses, rather than replays, an expired idempotency window', async () => {
+    await expect(engine.advanceApplication(id, 'not-the-owner')).rejects.toThrow(/lease/)
+    await db
+      .update(schema.applications)
       .set({ createdAt: Date.now() - 21 * 3600000 })
       .where(eq(schema.applications.id, id))
-    await expect(engine.advanceApplication(id, 'worker')).rejects.toThrow(
-      /idempotency/,
-    )
+    await engine.advanceApplication(id, 'worker')
     expect(mocked.create).not.toHaveBeenCalled()
+    const [row] = await db.select().from(schema.applications).where(eq(schema.applications.id, id))
+    expect(row.status).toBe('recovery_required')
+    expect(row.stopReason).toMatch(/duplicate submission/)
+    // Paused for review: no worker may pick it up and try create again.
+    await queue.releaseLease(id, 'worker')
+    expect(await queue.claimApplication('another-worker')).toBeNull()
+  })
+  it('discards the writes of a worker whose lease was taken over mid-call', async () => {
+    // The create call outlives the lease; another worker claims the row and
+    // records its own state. The first worker's late result must not land.
+    mocked.create.mockImplementationOnce(async () => {
+      await db
+        .update(schema.applications)
+        .set({
+          leaseOwner: 'replacement',
+          leaseUntil: Date.now() + queue.LEASE_MS,
+          status: 'running',
+        })
+        .where(eq(schema.applications.id, id))
+      return snapshot()
+    })
+    await expect(engine.advanceApplication(id, 'worker')).rejects.toBeInstanceOf(
+      queue.LeaseLostError,
+    )
+    const [row] = await db.select().from(schema.applications).where(eq(schema.applications.id, id))
+    expect(row.leaseOwner).toBe('replacement')
+    expect(row.status).toBe('running')
+    expect(row.joboApplicationId).toBeNull()
+    expect(mocked.submitAnswers).not.toHaveBeenCalled()
   })
 })
 
@@ -312,7 +324,7 @@ describe('correction and retry recovery', () => {
       correctionRound: 1,
       previousAnswers: [{ field_id: 'full_name', value: 'Ada Lovelace' }],
     })
-    expect((await db.select().from(schema.steps))).toHaveLength(2)
+    expect(await db.select().from(schema.steps)).toHaveLength(2)
     expect(mocked.submitAnswers.mock.calls[1][2]).toMatchObject({
       correctionRound: 1,
     })
@@ -320,16 +332,15 @@ describe('correction and retry recovery', () => {
   it('pauses unknown intake after six failures instead of repeatedly creating applications', async () => {
     for (let attempt = 0; attempt < 6; attempt++) {
       await queue.releaseLease(id, 'worker', 'Network failure')
-      await db.update(schema.applications)
+      await db
+        .update(schema.applications)
         .set({ nextAttemptAt: 0 })
         .where(eq(schema.applications.id, id))
       if (attempt < 5) expect((await queue.claimApplication('worker'))?.id).toBe(id)
     }
     expect(
-      (await db
-        .select()
-        .from(schema.applications)
-        .where(eq(schema.applications.id, id)))[0]?.status,
+      (await db.select().from(schema.applications).where(eq(schema.applications.id, id)))[0]
+        ?.status,
     ).toBe('recovery_required')
     expect(await queue.claimApplication('worker')).toBeNull()
   })
@@ -390,7 +401,8 @@ describe('production mode', () => {
   })
   it('stops instead of retrying when the stored key is gone', async () => {
     const prodId = await enqueueProduction()
-    await db.update(schema.applications)
+    await db
+      .update(schema.applications)
       .set({ apiKeyCiphertext: 'v1.garbage.garbage.garbage' })
       .where(eq(schema.applications.id, prodId))
     await engine.advanceApplication(prodId, 'worker')

@@ -11,6 +11,7 @@ const REQUIRED = {
   BETTER_AUTH_SECRET: 'b'.repeat(32),
   BETTER_AUTH_URL: 'https://example.com',
   BREVO_API_KEY: 'test-brevo',
+  AUTH_EMAIL_FROM: 'noreply@example.com',
   JOBO_API_KEY: 'jbe_test_key',
   PUBLIC_BASE_URL: 'https://example.com',
   RESUME_URL_SIGNING_SECRET: 'a'.repeat(32),

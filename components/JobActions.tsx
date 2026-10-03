@@ -5,30 +5,36 @@ import { useRouter } from 'next/navigation'
 import { ArrowUpRight, Bookmark, Sparkles } from 'lucide-react'
 import { saveJobAction } from '@/app/actions/jobs'
 import { startApplicationAction } from '@/app/actions/applications'
-export function SaveButton({
-  jobId,
-  saved,
-}: {
-  jobId: string
-  saved: boolean
-}) {
+/**
+ * Bookmark toggle. The new state shows as soon as the action succeeds, rather
+ * than waiting for the server re-render to commit (see lib/use-busy.ts).
+ */
+export function SaveButton({ jobId, saved }: { jobId: string; saved: boolean }) {
   const [pending, start] = useBusy(),
+    [isSaved, setSaved] = useState(saved),
+    [serverSaved, setServerSaved] = useState(saved),
     [error, setError] = useState('')
+  // A fresh server render (another tab, a reload) is the source of truth.
+  if (saved !== serverSaved) {
+    setServerSaved(saved)
+    setSaved(saved)
+  }
   return (
     <span className="save-control">
       <button
-        className={`icon-button ${saved ? 'saved' : ''}`}
-        aria-label={saved ? 'Unsave job' : 'Save job'}
-        aria-pressed={saved}
+        className={`icon-button ${isSaved ? 'saved' : ''}`}
+        aria-label={isSaved ? 'Unsave job' : 'Save job'}
+        aria-pressed={isSaved}
         disabled={pending}
         onClick={() =>
           start(async () => {
-            const result = await saveJobAction(jobId, !saved)
+            const result = await saveJobAction(jobId, !isSaved)
+            if (result.ok) setSaved(!isSaved)
             setError(result.ok ? '' : (result.error ?? 'Please try again.'))
           })
         }
       >
-        <Bookmark size={19} fill={saved ? 'currentColor' : 'none'} />
+        <Bookmark size={19} fill={isSaved ? 'currentColor' : 'none'} />
       </button>
       {error && <small role="alert">{error}</small>}
     </span>

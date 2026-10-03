@@ -26,8 +26,10 @@ export function liveVersion(
   ].join(':')
 }
 
-/** The live fingerprint for one of the user's applications, or null. */
-export async function readLiveVersion(userId: string, id: string) {
+export type LiveState = { version: string; status: string; active: boolean }
+
+/** The live state of one of the user's applications, or null. */
+export async function readLiveVersion(userId: string, id: string): Promise<LiveState | null> {
   const [row] = await db
     .select({
       status: applications.status,
@@ -52,6 +54,7 @@ export async function readLiveVersion(userId: string, id: string) {
     .limit(100)
   return {
     version: liveVersion(row, history, exchanges),
+    status: row.status,
     active: !isTerminal(row.status),
   }
 }

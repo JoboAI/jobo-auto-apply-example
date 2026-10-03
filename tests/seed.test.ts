@@ -5,14 +5,14 @@ import { join } from 'node:path'
 import { eq } from 'drizzle-orm'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { db as database } from '@/db/client'
-import { profiles } from '@/db/schema'
-import { SAMPLE_PROFILES, seedSampleProfiles } from '@/db/seed'
+import { profiles, user } from '@/db/schema'
+import { SAMPLE_PROFILES, seedSampleProfiles } from '@/tests/support/seed'
 import { resumeProfileSchema } from '@/lib/resume/profile-schema'
 import { employmentIssues } from '@/lib/resume/completeness'
 
 /**
- * The sample-profile seed. What matters: it is idempotent (runs on every
- * process start), it never displaces a default the user chose, and the
+ * The sample-profile test fixtures. What matters: seeding is idempotent, it
+ * never displaces a default the user chose, and the
  * checked-in personas actually satisfy the schema the rest of the app
  * assumes — zod is the source of truth, TypeScript alone misses the
  * described invariants.
@@ -67,18 +67,28 @@ describe('seedSampleProfiles', () => {
     const resumeDir = mkdtempSync(join(tmpdir(), 'jobo-seed-'))
 
     await database
-      .insert(profiles)
+      .insert(user)
       .values({
-        id: 'user-profile',
-        name: 'A Real Person',
-        isDefault: true,
-        data: SAMPLE_PROFILES[0].data,
-        resumeFilename: 'real.pdf',
-        resumeContentType: 'application/pdf',
-        resumeBytes: 3,
-        resumeSha256: 'abc',
-        resumeText: 'real resume'
+        id: 'sample-owner',
+        name: 'Owner',
+        email: 'sample-owner@example.com',
+        emailVerified: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
       })
+      .onConflictDoNothing()
+    await database.insert(profiles).values({
+      id: 'user-profile',
+      userId: 'sample-owner',
+      name: 'A Real Person',
+      isDefault: true,
+      data: SAMPLE_PROFILES[0].data,
+      resumeFilename: 'real.pdf',
+      resumeContentType: 'application/pdf',
+      resumeBytes: 3,
+      resumeSha256: 'abc',
+      resumeText: 'real resume',
+    })
 
     await seedSampleProfiles(database, resumeDir)
 

@@ -1,17 +1,20 @@
 import { z } from 'zod'
 
 /**
- * Environment configuration.
+ * Environment configuration, validated with zod. Every variable the app reads
+ * is declared here except three that must work before the rest is valid:
+ * DATABASE_URL / DATABASE_POOL_MAX (db/client.ts, also used by migrations) and
+ * LOG_LEVEL (lib/logger.ts). .env.example lists them all.
+ *
+ *   config()      the Jobo, OpenRouter, storage and worker settings
+ *   authConfig()  accounts and email (the web app only; the worker skips it)
  *
  * Validation is LAZY on purpose. `next build` evaluates modules, and a config
  * file that throws at import time turns a missing env var into an unreadable
- * build failure. Instead:
- *
- *   - `config()`      throws a precise error, at the point of use
- *   - `configIssues()` returns problems without throwing, for the setup checklist
- *
- * That split is what lets the dashboard render a useful "here's what's missing"
- * page instead of a stack trace.
+ * build failure. Instead the
+ * getters throw a precise error at the point of use, and the `*Issues()`
+ * variants return the problems without throwing, which is what the health
+ * check (app/api/health) and `npm run doctor` report.
  */
 
 /**
@@ -79,10 +82,7 @@ const schema = z.object({
    * after the browser has gone. Unset, the toggle says production mode is not
    * configured and the demo stays sandbox-only.
    */
-  API_KEY_ENCRYPTION_SECRET: z
-    .string()
-    .min(32, 'must be at least 32 characters')
-    .optional(),
+  API_KEY_ENCRYPTION_SECRET: z.string().min(32, 'must be at least 32 characters').optional(),
   /** Public list of the ATSes Auto Apply can route to (no key needed). */
   JOBO_STATUS_URL: z
     .string()
@@ -96,17 +96,11 @@ const schema = z.object({
    * the answer engine skips file fields and records why in the trace.
    */
   PUBLIC_BASE_URL: publicOrigin.optional(),
-  RESUME_URL_SIGNING_SECRET: z
-    .string()
-    .min(16, 'must be at least 16 characters'),
+  RESUME_URL_SIGNING_SECRET: z.string().min(32, 'must be at least 32 characters'),
 
   OPENROUTER_API_KEY: z.string().min(1, 'required'),
-  OPENROUTER_ANSWER_MODEL: z
-    .string()
-    .default('~deepseek/deepseek-v4-flash-latest'),
-  OPENROUTER_RESUME_MODEL: z
-    .string()
-    .default('deepseek/deepseek-v4-flash-0731'),
+  OPENROUTER_ANSWER_MODEL: z.string().default('~deepseek/deepseek-v4-flash-latest'),
+  OPENROUTER_RESUME_MODEL: z.string().default('deepseek/deepseek-v4-flash-0731'),
   OPENROUTER_APP_NAME: z.string().default('Jobo Auto Apply'),
   OPENROUTER_APP_URL: z.string().optional(),
   /**
@@ -115,53 +109,22 @@ const schema = z.object({
    * past the answer budget, which cancelled the application. `throughput`
    * held a steady ~23 s. `price` restores OpenRouter's default.
    */
-  OPENROUTER_PROVIDER_SORT: z
-    .enum(['throughput', 'latency', 'price'])
-    .default('throughput'),
+  OPENROUTER_PROVIDER_SORT: z.enum(['throughput', 'latency', 'price']).default('throughput'),
 
   /**
-   * Ceiling for the answer call. The real limit is answers_expire_at (~3
-   * minutes), which the engine also applies, so this only needs to leave room
-   * for submission.
+   * Ceiling for the answer model call, in ms. The engine also shortens it to
+   * fit the step's own answers_expire_at deadline.
    */
-  /** postgres://user:password@host:port/database. Required: there is no embedded fallback. */
-  DATABASE_URL: z
-    .string()
-    .regex(/^postgres(ql)?:\/\//, 'must be a postgres:// connection URL'),
-
   ANSWER_BUDGET_MS: z.coerce.number().int().positive().default(90_000),
+
+  /** postgres://user:password@host:port/database. */
+  DATABASE_URL: z.string().regex(/^postgres(ql)?:\/\//, 'must be a postgres:// connection URL'),
   /** Resume PDFs only. Jobo downloads them over HTTP for file fields. */
   DATA_DIR: z.string().default('./.data'),
-  DEFAULT_SANDBOX: z
-    .string()
-    .default('true')
-    .transform((v) => v !== 'false'),
 
-  /**
-   * Refuse to create an application against any host outside
-   * ALLOWED_APPLY_HOSTS.
-   *
-   * Off by default — you want the real thing locally. It exists for a shared
-   * deployment, where whoever opens the page is not necessarily whoever pays
-   * for the API key.
-   */
-  RESTRICT_APPLY_HOSTS: z
-    .string()
-    .default('false')
-    .transform((v) => v === 'true'),
-
-  /**
-   * Hosts RESTRICT_APPLY_HOSTS permits, comma-separated.
-   *
-   * Matched on hostname EXACTLY, never by suffix — `endsWith('.greenhouse.io')`
-   * would also accept `greenhouse.io.attacker.com`. A leading `.` marks an
-   * entry as a domain suffix explicitly, which is how the Greenhouse and Ashby
-   * boards are covered without opening the door to lookalikes.
-   *
-   * Default is the sandbox alone. Adding a real ATS means a visitor CAN submit
-   * a genuine application to a genuine employer on this deployment's key.
-   */
-  ALLOWED_APPLY_HOSTS: z.string().default('sandbox.jobo.world'),
+  /** Applications run at once across all workers, and per candidate. */
+  WORKER_CONCURRENCY: z.coerce.number().int().min(1).max(20).default(2),
+  WORKER_USER_CONCURRENCY: z.coerce.number().int().min(1).max(20).default(1),
 })
 
 export type Config = z.infer<typeof schema>
@@ -183,28 +146,64 @@ function raw() {
     OPENROUTER_APP_URL: process.env.OPENROUTER_APP_URL || undefined,
     OPENROUTER_PROVIDER_SORT: process.env.OPENROUTER_PROVIDER_SORT || undefined,
     DATABASE_URL: process.env.DATABASE_URL,
-    ANSWER_BUDGET_MS: process.env.ANSWER_BUDGET_MS,
+    ANSWER_BUDGET_MS: process.env.ANSWER_BUDGET_MS || undefined,
     DATA_DIR: process.env.DATA_DIR,
-    RESTRICT_APPLY_HOSTS: process.env.RESTRICT_APPLY_HOSTS,
-    ALLOWED_APPLY_HOSTS: process.env.ALLOWED_APPLY_HOSTS,
-    DEFAULT_SANDBOX: process.env.DEFAULT_SANDBOX,
+    WORKER_CONCURRENCY: process.env.WORKER_CONCURRENCY || undefined,
+    WORKER_USER_CONCURRENCY: process.env.WORKER_USER_CONCURRENCY || undefined,
   }
 }
 
 /** Throws a readable aggregate error if anything is missing or malformed. */
 export function config(): Config {
-  if (cached) return cached
-  const parsed = schema.safeParse(raw())
-  if (!parsed.success) {
-    const lines = parsed.error.issues.map(
-      (i) => `  ${i.path.join('.')}: ${i.message}`,
-    )
-    throw new Error(
-      `Invalid environment configuration:\n${lines.join('\n')}\n\nCopy .env.example to .env.local and fill it in, then run \`npm run doctor\`.`,
-    )
+  return (cached ??= parseOrThrow(schema, raw()))
+}
+
+/**
+ * Accounts (better-auth) and transactional email (Brevo). Separate from
+ * config() so the worker, which sends no email and serves no sessions, does
+ * not need these set.
+ */
+const authSchema = z.object({
+  /** The app's own origin: account links in emails point here. */
+  BETTER_AUTH_URL: z
+    .string()
+    .url()
+    .refine((value) => {
+      const url = new URL(value)
+      return (
+        url.protocol === 'https:' ||
+        (url.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname))
+      )
+    }, 'must be https (http is allowed only for localhost)'),
+  BETTER_AUTH_SECRET: z.string().min(32, 'must be at least 32 characters'),
+  BREVO_API_KEY: z.string().min(1, 'required'),
+  /** A sender address verified in your Brevo account. */
+  AUTH_EMAIL_FROM: z.string().email('must be an email address'),
+  /**
+   * OPTIONAL. The request header that carries the real client IP, for
+   * better-auth's rate limits. Set it ONLY when a proxy you control
+   * overwrites that header on every request (for example nginx setting
+   * X-Real-IP); otherwise any client could choose its own IP. Unset,
+   * better-auth uses its default (X-Forwarded-For).
+   */
+  TRUSTED_IP_HEADER: z.string().optional(),
+})
+
+export type AuthConfig = z.infer<typeof authSchema>
+let cachedAuth: AuthConfig | null = null
+
+function rawAuth() {
+  return {
+    BETTER_AUTH_URL: process.env.BETTER_AUTH_URL,
+    BETTER_AUTH_SECRET: process.env.BETTER_AUTH_SECRET,
+    BREVO_API_KEY: process.env.BREVO_API_KEY,
+    AUTH_EMAIL_FROM: process.env.AUTH_EMAIL_FROM,
+    TRUSTED_IP_HEADER: process.env.TRUSTED_IP_HEADER || undefined,
   }
-  cached = parsed.data
-  return cached
+}
+
+export function authConfig(): AuthConfig {
+  return (cachedAuth ??= parseOrThrow(authSchema, rawAuth()))
 }
 
 export interface ConfigIssue {
@@ -212,14 +211,42 @@ export interface ConfigIssue {
   message: string
 }
 
-/** Non-throwing variant, for the dashboard setup checklist and `npm run doctor`. */
+/** Non-throwing variant of config(), for the health check and `npm run doctor`. */
 export function configIssues(): ConfigIssue[] {
-  const parsed = schema.safeParse(raw())
+  return issues(schema, raw())
+}
+
+/** Non-throwing variant of authConfig(). */
+export function authConfigIssues(): ConfigIssue[] {
+  return issues(authSchema, rawAuth())
+}
+
+/** Every configured secret value, for redacting recorded API exchanges. */
+export function secretValues(): string[] {
+  const values = [
+    process.env.JOBO_API_KEY,
+    process.env.OPENROUTER_API_KEY,
+    process.env.RESUME_URL_SIGNING_SECRET,
+    process.env.API_KEY_ENCRYPTION_SECRET,
+    process.env.BETTER_AUTH_SECRET,
+    process.env.BREVO_API_KEY,
+  ]
+  return values.filter((value): value is string => !!value)
+}
+
+function parseOrThrow<T extends z.ZodTypeAny>(target: T, input: unknown): z.infer<T> {
+  const parsed = target.safeParse(input)
+  if (parsed.success) return parsed.data
+  const lines = parsed.error.issues.map((i) => `  ${i.path.join('.')}: ${i.message}`)
+  throw new Error(
+    `Invalid environment configuration:\n${lines.join('\n')}\n\nCopy .env.example to .env.local and fill it in, then run \`npm run doctor\`.`,
+  )
+}
+
+function issues(target: z.ZodTypeAny, input: unknown): ConfigIssue[] {
+  const parsed = target.safeParse(input)
   if (parsed.success) return []
-  return parsed.error.issues.map((i) => ({
-    key: String(i.path[0] ?? 'env'),
-    message: i.message,
-  }))
+  return parsed.error.issues.map((i) => ({ key: String(i.path[0] ?? 'env'), message: i.message }))
 }
 
 /**
@@ -230,9 +257,7 @@ export function configIssues(): ConfigIssue[] {
 export function publicUrl(path: string): string {
   const origin = config().PUBLIC_BASE_URL
   if (!origin) {
-    throw new Error(
-      'PUBLIC_BASE_URL is not set — file fields are skipped without a public origin.',
-    )
+    throw new Error('PUBLIC_BASE_URL is not set — file fields are skipped without a public origin.')
   }
   const base = origin.replace(/\/+$/, '')
   return `${base}${path.startsWith('/') ? path : `/${path}`}`

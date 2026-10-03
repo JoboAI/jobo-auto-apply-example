@@ -27,8 +27,7 @@ describe('OpenRouter latest Flash', () => {
     const result = await complete(options)
     expect(config().OPENROUTER_ANSWER_MODEL).toBe(options.model)
     const request = JSON.parse(
-      (fetch.mock.calls[0] as unknown as [string, RequestInit])[1]
-        .body as string,
+      (fetch.mock.calls[0] as unknown as [string, RequestInit])[1].body as string,
     )
     expect(request).toMatchObject({
       model: options.model,
@@ -39,30 +38,22 @@ describe('OpenRouter latest Flash', () => {
     })
     expect(result.model).toBe('deepseek/deepseek-v4-flash-0731')
   })
-  it.each([401, 402, 403])(
-    'surfaces %i without a model fallback',
-    async (status) => {
-      const fetch = vi.fn(async () => new Response('{}', { status }))
-      vi.stubGlobal('fetch', fetch)
-      await expect(complete(options)).rejects.toMatchObject({
-        isAuthError: true,
-        status,
-      })
-      expect(fetch).toHaveBeenCalledTimes(1)
-    },
-  )
-  it.each(['not json', '{"wrong":true}'])(
-    'rejects malformed model output: %s',
-    async (content) => {
-      vi.stubGlobal(
-        'fetch',
-        vi.fn(async () =>
-          Response.json({ choices: [{ message: { content } }] }),
-        ),
-      )
-      await expect(complete(options)).rejects.toBeInstanceOf(OpenRouterError)
-    },
-  )
+  it.each([401, 402, 403])('surfaces %i without a model fallback', async (status) => {
+    const fetch = vi.fn(async () => new Response('{}', { status }))
+    vi.stubGlobal('fetch', fetch)
+    await expect(complete(options)).rejects.toMatchObject({
+      isAuthError: true,
+      status,
+    })
+    expect(fetch).toHaveBeenCalledTimes(1)
+  })
+  it.each(['not json', '{"wrong":true}'])('rejects malformed model output: %s', async (content) => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => Response.json({ choices: [{ message: { content } }] })),
+    )
+    await expect(complete(options)).rejects.toBeInstanceOf(OpenRouterError)
+  })
   it('handles deadlines without trying another model', async () => {
     const fetch = vi.fn(async () => {
       throw new DOMException('Timed out', 'TimeoutError')

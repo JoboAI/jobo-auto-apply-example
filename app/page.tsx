@@ -1,14 +1,25 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { ArrowUpRight, ArrowRight, Check, Sparkles } from 'lucide-react'
-import {
-  ApplicationFlowGraphic,
-  IntegrationGraphic,
-} from '@/components/ApplicationFlowGraphic'
+import { ApplicationFlowGraphic, IntegrationGraphic } from '@/components/ApplicationFlowGraphic'
+import { and, eq } from 'drizzle-orm'
+import { db } from '@/db/client'
+import { profiles } from '@/db/schema'
 import { currentUser } from '@/lib/session'
 import { ApiDocsLink, SourceLink } from '@/components/SourceLink'
 export default async function Home() {
-  if (await currentUser()) redirect('/jobs')
+  // Signed-in visitors go straight to the app: onboarding until they have a
+  // profile. Decided here, outside the (product) group, because a redirect()
+  // inside it happens after streaming starts and can only be done client-side.
+  const user = await currentUser()
+  if (user) {
+    const [profile] = await db
+      .select({ id: profiles.id })
+      .from(profiles)
+      .where(and(eq(profiles.userId, user.id), eq(profiles.archived, false)))
+      .limit(1)
+    redirect(profile ? '/jobs' : '/onboarding')
+  }
   return (
     <div className="landing">
       <header className="landing-nav">
@@ -35,9 +46,9 @@ export default async function Home() {
             <em>Applications, automated.</em>
           </h1>
           <p>
-            See what you can build with the Auto Apply API. Upload a resume,
-            click Apply on a sandbox job, and follow every step through to
-            submission. Then explore the code and build it into your app.
+            See what you can build with the Auto Apply API. Upload a resume, click Apply on a
+            sandbox job, and follow every step through to submission. Then explore the code and
+            build it into your app.
           </p>
           <div className="hero-actions">
             <Link href="/signup" className="button primary large">
@@ -46,8 +57,8 @@ export default async function Home() {
             <ApiDocsLink />
           </div>
           <div className="hero-footnote">
-            <Check size={15} /> Fictional jobs. Real API calls. No real
-            employers contacted.
+            <Check size={15} /> Sandbox jobs by default. Real API calls. Real employers only in
+            production mode, on your own key.
           </div>
         </div>
         <ApplicationFlowGraphic />
@@ -86,25 +97,21 @@ export default async function Home() {
           <span className="eyebrow">YOUR APP</span>
           <h3>You own the candidate experience.</h3>
           <p>
-            Profiles, resumes, and answer generation live in your app. This
-            example uses reviewed profile data and OpenRouter for generated
-            answers.
+            Profiles, resumes, and answer generation live in your app. This example uses reviewed
+            profile data and OpenRouter for generated answers.
           </p>
         </div>
         <div>
           <span className="eyebrow">AUTO APPLY API</span>
           <h3>Jobo handles the application form.</h3>
           <p>
-            Send an application URL, receive typed fields, and return your
-            answers. The API fills the form and returns the next step or final
-            result.
+            Send an application URL, receive typed fields, and return your answers. The API fills
+            the form and returns the next step or final result.
           </p>
         </div>
       </section>
       <footer className="landing-footer">
-        <span>
-          Jobo Auto Apply Demo · Fictional jobs. Real application flows.
-        </span>
+        <span>Jobo Auto Apply Demo · Sandbox and production modes. Real application flows.</span>
         <div className="developer-links">
           <ApiDocsLink />
           <SourceLink />

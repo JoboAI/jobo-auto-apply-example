@@ -73,7 +73,7 @@ export function toStrictJsonSchema(schema: z.ZodTypeAny, description?: string): 
         // Both of these are load-bearing. See the comment at the top.
         additionalProperties: false,
         required: Object.keys(shape),
-        properties
+        properties,
       }
     }
 
@@ -81,7 +81,7 @@ export function toStrictJsonSchema(schema: z.ZodTypeAny, description?: string): 
       return {
         ...node,
         type: withNull('array', nullable),
-        items: toStrictJsonSchema((def.type as z.ZodTypeAny) ?? z.string())
+        items: toStrictJsonSchema((def.type as z.ZodTypeAny) ?? z.string()),
       }
 
     case 'ZodEnum':
@@ -101,7 +101,7 @@ export function toStrictJsonSchema(schema: z.ZodTypeAny, description?: string): 
 
     default:
       throw new Error(
-        `toStrictJsonSchema: unsupported zod type "${typeName}". Add a case, or simplify the schema.`
+        `toStrictJsonSchema: unsupported zod type "${typeName}". Add a case, or simplify the schema.`,
       )
   }
 }
@@ -113,7 +113,7 @@ export function responseFormat(name: string, schema: z.ZodTypeAny) {
     json_schema: {
       name,
       strict: true,
-      schema: toStrictJsonSchema(schema)
-    }
+      schema: toStrictJsonSchema(schema),
+    },
   }
 }

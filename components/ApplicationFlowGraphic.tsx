@@ -1,13 +1,5 @@
 import Link from 'next/link'
-import {
-  ArrowDown,
-  ArrowRight,
-  Check,
-  CodeXml,
-  FileText,
-  Layers,
-  ShieldCheck,
-} from 'lucide-react'
+import { ArrowDown, ArrowRight, Check, CodeXml, FileText, Layers, ShieldCheck } from 'lucide-react'
 
 /** An illustrative API exchange, not the status of a real application. */
 export function ApplicationFlowGraphic() {
@@ -91,15 +83,10 @@ export function ApplicationFlowGraphic() {
                 <span>Fill & submit answers</span>
                 <Check size={12} />
               </div>
-              <span className="flow-engine-caption">
-                Your answers. Our execution.
-              </span>
+              <span className="flow-engine-caption">Your answers. Our execution.</span>
             </div>
           </div>
-          <div
-            className="flow-vertical flow-vertical-result"
-            aria-hidden="true"
-          >
+          <div className="flow-vertical flow-vertical-result" aria-hidden="true">
             <span className="flow-wire" />
             <span className="flow-wire-label">result returned</span>
             <ArrowDown size={12} />
@@ -117,7 +104,7 @@ export function ApplicationFlowGraphic() {
         </div>
         <div className="flow-window-footer">
           <span className="flow-code-status">
-            <span>status</span>: <b>"submitted"</b>
+            <span>status</span>: <b>&quot;submitted&quot;</b>
           </span>
           <span>Every step, accounted for.</span>
         </div>
@@ -131,11 +118,7 @@ export function ApplicationFlowGraphic() {
   )
 }
 
-export function IntegrationGraphic({
-  kind,
-}: {
-  kind: 'profile' | 'application' | 'integration'
-}) {
+export function IntegrationGraphic({ kind }: { kind: 'profile' | 'application' | 'integration' }) {
   return (
     <div className={`integration-graphic graphic-${kind}`} aria-hidden="true">
       {kind === 'profile' ? (

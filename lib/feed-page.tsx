@@ -1,5 +1,4 @@
 import { isApplicationReady } from '@/lib/resume/completeness'
-import { redirect } from 'next/navigation'
 import { and, desc, eq, sql } from 'drizzle-orm'
 import Link from 'next/link'
 import { db } from '@/db/client'
@@ -18,14 +17,15 @@ import { supportedAts } from './jobo/supported-ats'
 import { getDemoSettings, productionApiKey } from './user-settings'
 import { JobFeed } from '@/components/JobFeed'
 import { ExplorerSummary, JobExplorer } from '@/components/JobExplorer'
-import {
-  applicationLabel,
-  canRetry,
-  type CardApplication,
-} from './presentation'
+import { applicationLabel, canRetry, type CardApplication } from './presentation'
 import { isTerminal } from './status'
 export type FeedSearch = SearchParams
 
+/**
+ * The job feed, shared by /jobs and /saved: sandbox jobs, or in production
+ * mode a search of the live Jobo catalog on the visitor's key, merged with the
+ * candidate's saved jobs and latest application per job.
+ */
 export async function FeedPage({
   savedOnly = false,
   search = {},
@@ -34,35 +34,51 @@ export async function FeedPage({
   search?: FeedSearch
 }) {
   const user = await requireUser()
-  const settings = await getDemoSettings(user.id)
+  const [settings, saved, profile, apps, completed] = await Promise.all([
+    getDemoSettings(user.id),
+    db.select().from(savedJobs).where(eq(savedJobs.userId, user.id)),
+    db
+      .select()
+      .from(profiles)
+      .where(and(eq(profiles.userId, user.id), eq(profiles.archived, false)))
+      .orderBy(desc(profiles.isDefault), desc(profiles.createdAt)),
+    db
+      .select()
+      .from(applications)
+      .where(eq(applications.userId, user.id))
+      .orderBy(desc(applications.createdAt)),
+    // Steps answered per application, for the progress shown on job cards.
+    db
+      .select({
+        id: steps.applicationId,
+        count:
+          sql<number>`count(distinct case when ${steps.submittedAt} is not null then ${steps.stepId} end)`.mapWith(
+            Number,
+          ),
+      })
+      .from(steps)
+      .innerJoin(applications, eq(steps.applicationId, applications.id))
+      .where(eq(applications.userId, user.id))
+      .groupBy(steps.applicationId),
+  ])
+  // No redirect() here: inside the streamed (product) group it could only
+  // happen client-side, after the page loaded. Signed-in visitors without a
+  // profile are sent to /onboarding from / instead (app/page.tsx).
+  if (!savedOnly && !profile.length)
+    return (
+      <div className="empty-state">
+        <h1>Start with your resume.</h1>
+        <p>Upload and review a resume, and Auto Apply will use it to answer application forms.</p>
+        <Link href="/onboarding" className="button primary">
+          Upload a resume
+        </Link>
+      </div>
+    )
   const production = settings.mode === 'production'
-  const saved = await db
-    .select()
-    .from(savedJobs)
-    .where(eq(savedJobs.userId, user.id))
-  const profile = await db
-    .select()
-    .from(profiles)
-    .where(and(eq(profiles.userId, user.id), eq(profiles.archived, false)))
-    .orderBy(desc(profiles.isDefault), desc(profiles.createdAt))
-  if (!savedOnly && !profile.length) redirect('/onboarding')
-  const apps = await db
-    .select()
-    .from(applications)
-    .where(eq(applications.userId, user.id))
-    .orderBy(desc(applications.createdAt))
-  const completed = await db
-    .select({
-      id: steps.applicationId,
-      count: sql<number>`count(distinct case when ${steps.submittedAt} is not null then ${steps.stepId} end)`.mapWith(Number),
-    })
-    .from(steps)
-    .innerJoin(applications, eq(steps.applicationId, applications.id))
-    .where(eq(applications.userId, user.id))
-    .groupBy(steps.applicationId)
   const applicationStates: Record<string, CardApplication> = {}
   for (const app of apps) {
-    if (!app.jobId || applicationStates[app.jobId]) continue
+    // Newest first, so each job card shows its latest application.
+    if (applicationStates[app.jobId]) continue
     applicationStates[app.jobId] = {
       id: app.id,
       status: app.status,
@@ -114,7 +130,8 @@ export async function FeedPage({
         </h1>
         <p>
           {production
-            ? (problem?.message ?? 'We couldn’t load jobs from Jobo right now. Please try again in a moment.')
+            ? (problem?.message ??
+              'We couldn’t load jobs from Jobo right now. Please try again in a moment.')
             : 'We couldn’t load sandbox jobs right now. Please try again in a moment.'}
         </p>
         <Link href={savedOnly ? '/saved' : '/jobs'} className="button primary">
@@ -138,7 +155,9 @@ export async function FeedPage({
           page: explored.result.page,
           totalPages: explored.result.totalPages,
           explorer: <JobExplorer filters={explored.filters} result={explored.result} ats={ats} />,
-          summary: <ExplorerSummary filters={explored.filters} result={explored.result} ats={ats} />,
+          summary: (
+            <ExplorerSummary filters={explored.filters} result={explored.result} ats={ats} />
+          ),
         }
       }
       profileId={profile.find(isApplicationReady)?.id}

@@ -1,4 +1,11 @@
-import type { Field, FieldOption, FieldType, GroupItemField, GroupType, RepeatingGroupField } from '@jobo-ai/autoapply'
+import type {
+  Field,
+  FieldOption,
+  FieldType,
+  GroupItemField,
+  GroupType,
+  RepeatingGroupField,
+} from '@jobo-ai/autoapply'
 
 /** Shared test-builder shape for the SDK's discriminated field union. */
 type FieldShape = {
@@ -27,26 +34,26 @@ type GroupItemFieldShape = {
 
 /** Build a Field with sane defaults so tests only state what they care about. */
 export function field(
-  overrides: Partial<FieldShape> & { field_id: string; type: FieldType }
+  overrides: Partial<FieldShape> & { field_id: string; type: FieldType },
 ): Field {
   return {
     label: overrides.field_id,
     required: false,
     requires_answer: false,
-    ...overrides
+    ...overrides,
   } as Field
 }
 
 export function itemField(
   key: string,
-  overrides: Partial<GroupItemFieldShape> = {}
+  overrides: Partial<GroupItemFieldShape> = {},
 ): GroupItemField {
   return {
     key,
     type: 'text',
     label: key,
     required: false,
-    ...overrides
+    ...overrides,
   } as GroupItemField
 }
 
@@ -54,14 +61,14 @@ export function group(
   fieldId: string,
   groupType: GroupType,
   itemFields: GroupItemField[],
-  overrides: Partial<FieldShape> = {}
+  overrides: Partial<FieldShape> = {},
 ): RepeatingGroupField {
   return field({
     field_id: fieldId,
     type: 'repeating_group',
     group_type: groupType,
     item_fields: itemFields,
-    ...overrides
+    ...overrides,
   }) as RepeatingGroupField
 }
 

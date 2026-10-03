@@ -1,5 +1,6 @@
 /** Sanitize before persistence, so credentials never reach storage or the UI. */
-const sensitiveKey = /authorization|cookie|api[-_]?key|password|secret|token|signature|credential|^sig$|^x-amz-/i
+const sensitiveKey =
+  /authorization|cookie|api[-_]?key|password|secret|token|signature|credential|^sig$|^x-amz-/i
 const REDACTED = '[REDACTED]'
 export const MAX_PREVIEW_CHARS = 256 * 1024
 
@@ -13,7 +14,7 @@ export function redactPreview(value: unknown, secrets: string[] = [], depth = 0)
     }
     text = text.replace(/\b(?:jbe_(?:live|test)_|sk-or-v1-)[A-Za-z0-9_-]+/g, REDACTED)
     text = text.replace(/\bBearer\s+[^\s"'<>]+/gi, 'Bearer [REDACTED]')
-    return text.replace(/https?:\/\/[^\s"<>]+/g, raw => {
+    return text.replace(/https?:\/\/[^\s"<>]+/g, (raw) => {
       try {
         const url = new URL(raw)
         if (url.username) url.username = REDACTED
@@ -22,16 +23,20 @@ export function redactPreview(value: unknown, secrets: string[] = [], depth = 0)
           if (sensitiveKey.test(key)) url.searchParams.set(key, REDACTED)
         }
         return url.toString()
-      } catch { return '[Invalid URL omitted]' }
+      } catch {
+        return '[Invalid URL omitted]'
+      }
     })
   }
-  if (Array.isArray(value)) return value.map(item => redactPreview(item, secrets, depth + 1))
+  if (Array.isArray(value)) return value.map((item) => redactPreview(item, secrets, depth + 1))
   if (value && typeof value === 'object') {
-    return Object.fromEntries(Object.entries(value).map(([key, item]) => [
-      // Key names can contain echoed credentials too.
-      String(redactPreview(key, secrets, depth + 1)),
-      sensitiveKey.test(key) ? REDACTED : redactPreview(item, secrets, depth + 1),
-    ]))
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [
+        // Key names can contain echoed credentials too.
+        String(redactPreview(key, secrets, depth + 1)),
+        sensitiveKey.test(key) ? REDACTED : redactPreview(item, secrets, depth + 1),
+      ]),
+    )
   }
   return value
 }
@@ -44,17 +49,25 @@ export function previewJson(value: unknown, secrets: string[] = []): string {
   // preview says so instead of turning everything into one escaped string.
   if (isMessage(safe)) {
     const body = JSON.stringify(safe.body, null, 2) ?? 'null'
-    return JSON.stringify({
-      headers: safe.headers,
-      truncated: true,
-      body_length: body.length,
-      body_excerpt: body.slice(0, MAX_PREVIEW_CHARS),
-    }, null, 2)
+    return JSON.stringify(
+      {
+        headers: safe.headers,
+        truncated: true,
+        body_length: body.length,
+        body_excerpt: body.slice(0, MAX_PREVIEW_CHARS),
+      },
+      null,
+      2,
+    )
   }
-  return JSON.stringify({
-    notice: 'Preview truncated at 256K characters.',
-    excerpt: text.slice(0, MAX_PREVIEW_CHARS),
-  }, null, 2)
+  return JSON.stringify(
+    {
+      notice: 'Preview truncated at 256K characters.',
+      excerpt: text.slice(0, MAX_PREVIEW_CHARS),
+    },
+    null,
+    2,
+  )
 }
 
 function isMessage(value: unknown): value is { headers: Record<string, unknown>; body: unknown } {
@@ -75,21 +88,29 @@ export interface PreviewMessage {
  */
 export function parsePreviewMessage(stored: string): PreviewMessage {
   let value: unknown
-  try { value = JSON.parse(stored) } catch { return { headers: [], body: stored, truncated: false } }
+  try {
+    value = JSON.parse(stored)
+  } catch {
+    return { headers: [], body: stored, truncated: false }
+  }
   if (!value || typeof value !== 'object' || Array.isArray(value))
     return { headers: [], body: JSON.stringify(value, null, 2), truncated: false }
   const record = value as Record<string, unknown>
-  const headers = record.headers && typeof record.headers === 'object'
-    ? Object.entries(record.headers as Record<string, unknown>)
-      .filter(([, v]) => v !== null && v !== undefined)
-      .map(([k, v]) => [k, String(v)] as [string, string])
-    : []
+  const headers =
+    record.headers && typeof record.headers === 'object'
+      ? Object.entries(record.headers as Record<string, unknown>)
+          .filter(([, v]) => v !== null && v !== undefined)
+          .map(([k, v]) => [k, String(v)] as [string, string])
+      : []
   if (typeof record.body_excerpt === 'string')
     return { headers, body: record.body_excerpt, truncated: true }
   if ('body' in record)
-    return { headers, body: record.body === null ? null : JSON.stringify(record.body, null, 2), truncated: false }
-  if (typeof record.excerpt === 'string')
-    return { headers, body: record.excerpt, truncated: true }
+    return {
+      headers,
+      body: record.body === null ? null : JSON.stringify(record.body, null, 2),
+      truncated: false,
+    }
+  if (typeof record.excerpt === 'string') return { headers, body: record.excerpt, truncated: true }
   return { headers, body: JSON.stringify(value, null, 2), truncated: false }
 }
 
@@ -104,7 +125,9 @@ export function curlCommand(method: string, url: string, message: PreviewMessage
 
 export function jsonBody(raw: string): unknown {
   if (!raw) return null
-  try { return JSON.parse(raw) } catch {
+  try {
+    return JSON.parse(raw)
+  } catch {
     // HTML error pages may contain edge cookies or secrets in executable code.
     return { notice: 'Non-JSON body omitted from preview.' }
   }

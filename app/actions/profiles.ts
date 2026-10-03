@@ -10,17 +10,33 @@ import {
   type ResumeProfile,
 } from '@/lib/resume/profile-schema'
 import { profileIssues } from '@/lib/resume/completeness'
+import { z } from 'zod'
+
+/**
+ * Profile edits. New profiles are created by the upload route
+ * (app/api/profiles/import), not here. Every action re-checks ownership, and
+ * validates its arguments: server actions are public HTTP endpoints.
+ */
+
+const profileIdInput = z.string().min(1).max(100)
+const updateInput = z.object({
+  name: z.string().max(200).optional(),
+  // Checked in full against resumeProfileSchema below, with a readable error.
+  data: z.unknown().optional(),
+  confirm: z.boolean().optional(),
+})
 
 export async function updateProfileAction(
-  id: string,
-  update: { name?: string; data?: ResumeProfile; confirm?: boolean },
+  rawId: string,
+  rawUpdate: { name?: string; data?: ResumeProfile; confirm?: boolean },
 ): Promise<{ ok: boolean; error?: string }> {
   const user = await requireUser()
-  const where = and(
-    eq(profiles.id, id),
-    eq(profiles.userId, user.id),
-    eq(profiles.archived, false),
-  )
+  const parsedId = profileIdInput.safeParse(rawId)
+  const parsedUpdate = updateInput.safeParse(rawUpdate)
+  if (!parsedId.success || !parsedUpdate.success) return { ok: false, error: 'Invalid request.' }
+  const id = parsedId.data
+  const update = parsedUpdate.data
+  const where = and(eq(profiles.id, id), eq(profiles.userId, user.id), eq(profiles.archived, false))
   const [row] = await db.select().from(profiles).where(where).limit(1)
   if (!row) return { ok: false, error: 'Profile not found.' }
   const parsed = resumeProfileSchema.safeParse(update.data ?? row.data)
@@ -36,7 +52,8 @@ export async function updateProfileAction(
       ok: false,
       error: missing.join(' '),
     }
-  await db.update(profiles)
+  await db
+    .update(profiles)
     .set({
       name: update.name?.trim().slice(0, 100) || row.name,
       data,
@@ -50,37 +67,32 @@ export async function updateProfileAction(
   revalidatePath('/saved')
   return { ok: true }
 }
-export async function setDefaultProfileAction(id: string) {
+export async function setDefaultProfileAction(rawId: string) {
   const user = await requireUser()
+  const parsed = profileIdInput.safeParse(rawId)
+  if (!parsed.success) return { ok: false }
+  const id = parsed.data
   const found = await db.transaction(async (tx) => {
     const [row] = await tx
       .select()
       .from(profiles)
-      .where(
-        and(
-          eq(profiles.id, id),
-          eq(profiles.userId, user.id),
-          eq(profiles.archived, false),
-        ),
-      )
+      .where(and(eq(profiles.id, id), eq(profiles.userId, user.id), eq(profiles.archived, false)))
       .limit(1)
     if (!row) return false
-    await tx
-      .update(profiles)
-      .set({ isDefault: false })
-      .where(eq(profiles.userId, user.id))
-    await tx
-      .update(profiles)
-      .set({ isDefault: true })
-      .where(eq(profiles.id, id))
+    await tx.update(profiles).set({ isDefault: false }).where(eq(profiles.userId, user.id))
+    await tx.update(profiles).set({ isDefault: true }).where(eq(profiles.id, id))
     return true
   })
   if (!found) return { ok: false }
   revalidatePath('/profiles')
   return { ok: true }
 }
-export async function deleteProfileAction(id: string) {
+/** Archive, not delete: past applications keep pointing at the profile. */
+export async function deleteProfileAction(rawId: string) {
   const user = await requireUser()
+  const parsed = profileIdInput.safeParse(rawId)
+  if (!parsed.success) return { ok: false }
+  const id = parsed.data
   await db.transaction(async (tx) => {
     await tx
       .update(profiles)
@@ -91,10 +103,7 @@ export async function deleteProfileAction(id: string) {
       .from(profiles)
       .where(and(eq(profiles.userId, user.id), eq(profiles.archived, false)))
     if (rows.length && !rows.some((r) => r.isDefault))
-      await tx
-        .update(profiles)
-        .set({ isDefault: true })
-        .where(eq(profiles.id, rows[0].id))
+      await tx.update(profiles).set({ isDefault: true }).where(eq(profiles.id, rows[0].id))
   })
   revalidatePath('/profiles')
   return { ok: true }

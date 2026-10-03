@@ -72,7 +72,7 @@ describe('select and radio', () => {
     const target = field({
       field_id: 's',
       type: 'select',
-      options: [{ value: 'US', label: 'United States' }]
+      options: [{ value: 'US', label: 'United States' }],
     })
     expect(coerceValue('United States', target)).toBe('US')
   })
@@ -81,7 +81,7 @@ describe('select and radio', () => {
     const target = field({
       field_id: 's',
       type: 'select',
-      options: [{ value: 'united-states', label: 'United States' }]
+      options: [{ value: 'united-states', label: 'United States' }],
     })
     expect(coerceValue('US', target)).toBe('united-states')
   })
@@ -118,7 +118,7 @@ describe('multi_select', () => {
       field_id: 'm',
       type: 'multi_select',
       options: options('a', 'b', 'c'),
-      constraints: { max_items: 2 }
+      constraints: { max_items: 2 },
     })
     expect(coerceValue(['a', 'b', 'c'], capped)).toEqual(['a', 'b'])
   })
@@ -138,10 +138,18 @@ describe('dates', () => {
   })
 
   it('extends a value to satisfy minimum_precision', () => {
-    const monthly = field({ field_id: 'p', type: 'partial_date', constraints: { minimum_precision: 'month' } })
+    const monthly = field({
+      field_id: 'p',
+      type: 'partial_date',
+      constraints: { minimum_precision: 'month' },
+    })
     expect(coerceValue('2024', monthly)).toBe('2024-01')
 
-    const daily = field({ field_id: 'p', type: 'partial_date', constraints: { minimum_precision: 'day' } })
+    const daily = field({
+      field_id: 'p',
+      type: 'partial_date',
+      constraints: { minimum_precision: 'day' },
+    })
     expect(coerceValue('2024-06', daily)).toBe('2024-06-01')
     expect(coerceValue('2024', daily)).toBe('2024-01-01')
   })
@@ -152,7 +160,7 @@ describe('typeahead', () => {
     const target = field({ field_id: 't', type: 'typeahead' })
     expect(coerceValue('MIT', target)).toEqual({
       query: 'MIT',
-      selection: { value: 'MIT', label: 'MIT' }
+      selection: { value: 'MIT', label: 'MIT' },
     })
   })
 
@@ -160,16 +168,19 @@ describe('typeahead', () => {
     const target = field({
       field_id: 't',
       type: 'typeahead',
-      options: [{ value: 'mit', label: 'MIT' }]
+      options: [{ value: 'mit', label: 'MIT' }],
     })
-    expect(coerceValue('MIT', target)).toEqual({ query: 'MIT', selection: { value: 'mit', label: 'MIT' } })
+    expect(coerceValue('MIT', target)).toEqual({
+      query: 'MIT',
+      selection: { value: 'mit', label: 'MIT' },
+    })
   })
 
   it('repairs a flat {value,label} object into {query,selection}', () => {
     const target = field({ field_id: 't', type: 'typeahead' })
     expect(coerceValue({ value: 'mit', label: 'MIT' }, target)).toEqual({
       query: 'MIT',
-      selection: { value: 'mit', label: 'MIT' }
+      selection: { value: 'mit', label: 'MIT' },
     })
   })
 
@@ -202,41 +213,74 @@ describe('the round-trip invariant', () => {
     input: unknown
     expected: unknown
   }[] = [
-    { name: 'text', field: field({ field_id: 'x', type: 'text' }), input: '  hello  ', expected: 'hello' },
+    {
+      name: 'text',
+      field: field({ field_id: 'x', type: 'text' }),
+      input: '  hello  ',
+      expected: 'hello',
+    },
     {
       name: 'textarea',
       field: field({ field_id: 'x', type: 'textarea', constraints: { max_length: 10 } }),
       input: 'a'.repeat(50),
-      expected: 'a'.repeat(10)
+      expected: 'a'.repeat(10),
     },
-    { name: 'number', field: field({ field_id: 'x', type: 'number', constraints: { max: 5 } }), input: '$99', expected: 5 },
-    { name: 'checkbox', field: field({ field_id: 'x', type: 'checkbox' }), input: 'yes', expected: true },
+    {
+      name: 'number',
+      field: field({ field_id: 'x', type: 'number', constraints: { max: 5 } }),
+      input: '$99',
+      expected: 5,
+    },
+    {
+      name: 'checkbox',
+      field: field({ field_id: 'x', type: 'checkbox' }),
+      input: 'yes',
+      expected: true,
+    },
     {
       name: 'select',
-      field: field({ field_id: 'x', type: 'select', options: [{ value: 'US', label: 'United States' }] }),
+      field: field({
+        field_id: 'x',
+        type: 'select',
+        options: [{ value: 'US', label: 'United States' }],
+      }),
       input: 'United States',
-      expected: 'US'
+      expected: 'US',
     },
-    { name: 'radio', field: field({ field_id: 'x', type: 'radio', options: options('Yes', 'No') }), input: true, expected: 'Yes' },
+    {
+      name: 'radio',
+      field: field({ field_id: 'x', type: 'radio', options: options('Yes', 'No') }),
+      input: true,
+      expected: 'Yes',
+    },
     {
       name: 'multi_select',
       field: field({ field_id: 'x', type: 'multi_select', options: options('a', 'b') }),
       input: 'a,b',
-      expected: ['a', 'b']
+      expected: ['a', 'b'],
     },
-    { name: 'date', field: field({ field_id: 'x', type: 'date' }), input: '2024-06', expected: '2024-06-01' },
+    {
+      name: 'date',
+      field: field({ field_id: 'x', type: 'date' }),
+      input: '2024-06',
+      expected: '2024-06-01',
+    },
     {
       name: 'partial_date',
-      field: field({ field_id: 'x', type: 'partial_date', constraints: { minimum_precision: 'month' } }),
+      field: field({
+        field_id: 'x',
+        type: 'partial_date',
+        constraints: { minimum_precision: 'month' },
+      }),
       input: '2024',
-      expected: '2024-01'
+      expected: '2024-01',
     },
     {
       name: 'typeahead',
       field: field({ field_id: 'x', type: 'typeahead' }),
       input: 'MIT',
-      expected: { query: 'MIT', selection: { value: 'MIT', label: 'MIT' } }
-    }
+      expected: { query: 'MIT', selection: { value: 'MIT', label: 'MIT' } },
+    },
   ]
 
   for (const testCase of cases) {

@@ -2,10 +2,7 @@ import { Client } from 'pg'
 
 /** A server login that may CREATE DATABASE. Defaults to `npm run db:up`. */
 export function adminUrl() {
-  return (
-    process.env.TEST_DATABASE_URL ??
-    'postgres://auto_apply:auto_apply@127.0.0.1:5433/postgres'
-  )
+  return process.env.TEST_DATABASE_URL ?? 'postgres://auto_apply:auto_apply@127.0.0.1:5433/postgres'
 }
 
 export function databaseUrl(name: string) {
@@ -32,14 +29,10 @@ export async function admin<T>(run: (client: Client) => Promise<T>): Promise<T> 
 
 export async function createDatabase(name: string, template?: string) {
   await admin((client) =>
-    client.query(
-      `create database "${name}"${template ? ` template "${template}"` : ''}`,
-    ),
+    client.query(`create database "${name}"${template ? ` template "${template}"` : ''}`),
   )
 }
 
 export async function dropDatabase(name: string) {
-  await admin((client) =>
-    client.query(`drop database if exists "${name}" with (force)`),
-  )
+  await admin((client) => client.query(`drop database if exists "${name}" with (force)`))
 }

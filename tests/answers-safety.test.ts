@@ -17,7 +17,7 @@ function context(overrides: Partial<AnswerContext> = {}): AnswerContext {
     correctionRound: 0,
     previousAnswers: [],
     budgetMs: 0,
-    ...overrides
+    ...overrides,
   }
 }
 
@@ -28,7 +28,7 @@ describe('LLM safety boundaries', () => {
       type: 'textarea',
       label: 'Why do you want this role?',
       required: true,
-      requires_answer: true
+      requires_answer: true,
     })
     const sensitiveId = 'private-demographic-field'
     const sensitiveLabel = 'SECRET DEMOGRAPHIC LABEL'
@@ -42,7 +42,7 @@ describe('LLM safety boundaries', () => {
         correctionRound: 1,
         previousAnswers: [
           { field_id: safe.field_id, value: 'old safe answer' },
-          { field_id: sensitiveId, value: sensitiveValue }
+          { field_id: sensitiveId, value: sensitiveValue },
         ],
         commandErrors: [
           {
@@ -50,24 +50,24 @@ describe('LLM safety boundaries', () => {
             item_index: null,
             field_key: null,
             code: 'max_length',
-            message: 'The safe answer was too long.'
+            message: 'The safe answer was too long.',
           },
           {
             field_id: sensitiveId,
             item_index: null,
             field_key: null,
             code: 'invalid_option',
-            message: sensitiveError
+            message: sensitiveError,
           },
           {
             field_id: null,
             item_index: null,
             field_key: null,
             code: 'sensitive-global-error',
-            message: 'SECRET GLOBAL ERROR'
-          }
-        ]
-      })
+            message: 'SECRET GLOBAL ERROR',
+          },
+        ],
+      }),
     })
 
     expect(prompt).toContain('old safe answer')
@@ -87,12 +87,12 @@ describe('LLM safety boundaries', () => {
       ethnicity: ['middle_eastern', 'native_hawaiian_pacific_islander'],
       veteran: 'yes',
       disability: 'yes',
-      lgbtq: 'yes'
+      lgbtq: 'yes',
     }
     const prompt = buildUserPrompt({
       fields: [field({ field_id: 'motivation', type: 'textarea', label: 'Why us?' })],
       gaps: [],
-      ctx: context({ profile })
+      ctx: context({ profile }),
     })
     const sent = JSON.parse(prompt).candidate_profile
     expect(sent.eeo).toBeUndefined()
@@ -110,20 +110,25 @@ describe('LLM safety boundaries', () => {
       type: 'select',
       label: 'Voluntary demographic question',
       sensitive: true,
-      options: [{ value: 'group-a', label: 'Group A' }]
+      options: [{ value: 'group-a', label: 'Group A' }],
     })
     const previousValue = 'SECRET PREVIOUS DEMOGRAPHIC ANSWER'
 
-    const result = await buildAnswers([sensitive], context({
-      correctionRound: 1,
-      previousAnswers: [{ field_id: sensitive.field_id, value: previousValue }]
-    }))
+    const result = await buildAnswers(
+      [sensitive],
+      context({
+        correctionRound: 1,
+        previousAnswers: [{ field_id: sensitive.field_id, value: previousValue }],
+      }),
+    )
 
     expect(result.answers).toEqual([])
-    expect(result.trace).toContainEqual(expect.objectContaining({
-      field_id: sensitive.field_id,
-      source: 'declined'
-    }))
+    expect(result.trace).toContainEqual(
+      expect.objectContaining({
+        field_id: sensitive.field_id,
+        source: 'declined',
+      }),
+    )
     expect(JSON.stringify(result)).not.toContain(previousValue)
     expect(result.trace.some((entry) => entry.source === 'previous_round')).toBe(false)
   })

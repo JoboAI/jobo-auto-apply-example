@@ -35,12 +35,21 @@ const MIN_MEANINGFUL_CHARS = 200
 
 export function looksLikePdf(bytes: Uint8Array): boolean {
   // %PDF-
-  return bytes.length > 4 && bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46
+  return (
+    bytes.length > 4 &&
+    bytes[0] === 0x25 &&
+    bytes[1] === 0x50 &&
+    bytes[2] === 0x44 &&
+    bytes[3] === 0x46
+  )
 }
 
 export async function extractResumeText(bytes: Uint8Array): Promise<string> {
   if (!looksLikePdf(bytes)) {
-    throw new ResumeExtractionError('not_a_pdf', 'That file is not a PDF (it does not start with %PDF-).')
+    throw new ResumeExtractionError(
+      'not_a_pdf',
+      'That file is not a PDF (it does not start with %PDF-).',
+    )
   }
 
   let text: string
@@ -56,7 +65,7 @@ export async function extractResumeText(bytes: Uint8Array): Promise<string> {
   } catch (error) {
     throw new ResumeExtractionError(
       'extraction_failed',
-      `Could not read that PDF: ${error instanceof Error ? error.message : String(error)}`
+      `Could not read that PDF: ${error instanceof Error ? error.message : String(error)}`,
     )
   }
 
@@ -69,7 +78,7 @@ export async function extractResumeText(bytes: Uint8Array): Promise<string> {
   if (cleaned.replace(/\s/g, '').length < MIN_MEANINGFUL_CHARS) {
     throw new ResumeExtractionError(
       'no_text',
-      'We extracted almost no text from this PDF — it is probably a scan or an image export. Upload a text-based PDF (export from Word, Google Docs or LaTeX rather than scanning), or create the profile by hand.'
+      'We extracted almost no text from this PDF — it is probably a scan or an image export. Upload a text-based PDF (export from Word, Google Docs or LaTeX rather than scanning), or create the profile by hand.',
     )
   }
 

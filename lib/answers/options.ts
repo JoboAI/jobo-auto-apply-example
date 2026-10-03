@@ -57,7 +57,13 @@ export function groupItemOptions(field: GroupItemField): readonly FieldOption[] 
 const ALIAS_GROUPS: string[][] = [
   ['yes', 'y', 'true', '1'],
   ['no', 'n', 'false', '0'],
-  ['prefer not to say', 'prefer not to answer', 'decline to self identify', 'i do not wish to answer', 'choose not to disclose'],
+  [
+    'prefer not to say',
+    'prefer not to answer',
+    'decline to self identify',
+    'i do not wish to answer',
+    'choose not to disclose',
+  ],
   ['united states', 'united states of america', 'usa', 'us'],
   ['united kingdom', 'uk', 'gb', 'great britain'],
   ['netherlands', 'the netherlands', 'nl', 'holland'],
@@ -74,7 +80,7 @@ const ALIAS_GROUPS: string[][] = [
   ['part time', 'parttime'],
   ['remote', 'fully remote', 'work from home'],
   ['hybrid', 'partially remote'],
-  ['onsite', 'on site', 'in office', 'in person']
+  ['onsite', 'on site', 'in office', 'in person'],
 ]
 
 const ALIAS_LOOKUP = new Map<string, number>()
@@ -113,7 +119,7 @@ function tokenOverlap(a: string, b: string): number {
  */
 export function matchOption(
   options: readonly FieldOption[],
-  candidates: readonly (string | null | undefined)[]
+  candidates: readonly (string | null | undefined)[],
 ): FieldOption | undefined {
   const values = candidates.filter((c): c is string => Boolean(c && String(c).trim()))
   if (options.length === 0 || values.length === 0) return undefined
@@ -131,7 +137,9 @@ export function matchOption(
     if (byLabel) return byLabel
   }
   for (const candidate of values) {
-    const byAlias = options.find((o) => equivalent(o.value, candidate) || equivalent(o.label, candidate))
+    const byAlias = options.find(
+      (o) => equivalent(o.value, candidate) || equivalent(o.label, candidate),
+    )
     if (byAlias) return byAlias
   }
 
@@ -141,7 +149,10 @@ export function matchOption(
     const scored = options
       .map((option) => ({
         option,
-        score: Math.max(tokenOverlap(option.label, candidate), tokenOverlap(option.value, candidate))
+        score: Math.max(
+          tokenOverlap(option.label, candidate),
+          tokenOverlap(option.value, candidate),
+        ),
       }))
       .sort((a, b) => b.score - a.score)
 
@@ -157,7 +168,7 @@ export function matchOption(
 /** Match a boolean onto a yes/no style option list. */
 export function matchBooleanOption(
   options: readonly FieldOption[],
-  value: boolean
+  value: boolean,
 ): FieldOption | undefined {
   return matchOption(options, value ? ['yes', 'true'] : ['no', 'false'])
 }
@@ -173,7 +184,7 @@ export function matchBooleanOption(
 export function findDeclineOption(options: readonly FieldOption[]): FieldOption | undefined {
   return options.find((option) =>
     /prefer not|decline|do not wish|don't wish|do not want|don't want|choose not|not disclose|no answer|rather not/i.test(
-      `${option.label} ${option.value}`
-    )
+      `${option.label} ${option.value}`,
+    ),
   )
 }

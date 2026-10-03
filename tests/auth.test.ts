@@ -3,10 +3,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { beforeAll, afterAll, describe, expect, it, vi } from 'vitest'
 process.env.DATA_DIR = mkdtempSync(join(tmpdir(), 'jobo-auth-'))
-process.env.BETTER_AUTH_SECRET =
-  'test-only-secret-that-is-at-least-32-characters'
+process.env.BETTER_AUTH_SECRET = 'test-only-secret-that-is-at-least-32-characters'
 process.env.BETTER_AUTH_URL = 'http://localhost:3333'
 process.env.BREVO_API_KEY = 'test-only-brevo'
+process.env.AUTH_EMAIL_FROM = 'noreply@example.com'
 const messages: { to: { email: string }[]; textContent: string }[] = []
 let auth: ReturnType<typeof import('@/lib/auth').auth>
 const email = 'candidate@example.com',
@@ -82,21 +82,15 @@ describe('real account lifecycle', () => {
     expect(reset.status, await reset.clone().text()).toBe(200)
     // Better Auth recovery emails point to its reset redirect endpoint.
     const redirect = await auth.handler(new Request(lastLink()))
-    const token = new URL(redirect.headers.get('location')!).searchParams.get(
-      'token',
-    )
+    const token = new URL(redirect.headers.get('location')!).searchParams.get('token')
     expect(token).toBeTruthy()
     const update = await request('reset-password', {
       token,
       newPassword: 'another-long-password',
     })
     expect(update.status, await update.clone().text()).toBe(200)
-    expect(
-      await (await request('get-session', undefined, cookie)).json(),
-    ).toBeNull()
-    expect((await request('sign-in/email', { email, password })).status).toBe(
-      401,
-    )
+    expect(await (await request('get-session', undefined, cookie)).json()).toBeNull()
+    expect((await request('sign-in/email', { email, password })).status).toBe(401)
     vi.setSystemTime(new Date(Date.now() + 15000))
     const login = await request('sign-in/email', {
       email,
@@ -110,17 +104,9 @@ describe('real account lifecycle', () => {
   })
   it('logs out and rejects expired or forged sessions', async () => {
     expect((await request('sign-out', {}, cookie)).status).toBe(200)
+    expect(await (await request('get-session', undefined, cookie)).json()).toBeNull()
     expect(
-      await (await request('get-session', undefined, cookie)).json(),
-    ).toBeNull()
-    expect(
-      await (
-        await request(
-          'get-session',
-          undefined,
-          'better-auth.session_token=forged',
-        )
-      ).json(),
+      await (await request('get-session', undefined, 'better-auth.session_token=forged')).json(),
     ).toBeNull()
   })
 })

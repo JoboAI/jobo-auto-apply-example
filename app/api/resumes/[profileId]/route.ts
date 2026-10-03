@@ -1,45 +1,35 @@
-import { currentUser } from '@/lib/session'
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { db } from '@/db/client'
 import { profiles } from '@/db/schema'
-import { readResume } from '@/lib/resume/storage'
+import { pdfResponse, readResume } from '@/lib/resume/storage'
+import { currentUser } from '@/lib/session'
 
-/** Private profile PDF downloads. The worker uses application-specific signed snapshots. */
+/**
+ * A candidate's own profile PDF, for the "view resume" link. Owner only.
+ * Jobo never uses this route: it downloads each application's frozen copy
+ * through the signed app/api/application-resumes/[id] route.
+ */
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 export async function GET(
-  request: Request,
+  _request: Request,
   { params }: { params: Promise<{ profileId: string }> },
 ): Promise<Response> {
   const { profileId } = await params
-
   const user = await currentUser()
   if (!user) return new Response('Unauthorized', { status: 401 })
   const [profile] = await db
     .select()
     .from(profiles)
-    .where(eq(profiles.id, profileId))
+    .where(
+      and(eq(profiles.id, profileId), eq(profiles.userId, user.id), eq(profiles.archived, false)),
+    )
     .limit(1)
-  if (!profile || profile.userId !== user.id || profile.archived)
-    return new Response('Not found', { status: 404 })
-
-  let bytes: Buffer
+  if (!profile) return new Response('Not found', { status: 404 })
   try {
-    bytes = await readResume(profileId)
+    return pdfResponse(await readResume(profileId), profile.resumeFilename)
   } catch {
     return new Response('Resume file missing', { status: 404 })
   }
-
-  return new Response(new Uint8Array(bytes), {
-    status: 200,
-    headers: {
-      'Content-Type': profile.resumeContentType,
-      'Content-Length': String(bytes.byteLength),
-      // `inline` rather than `attachment`: Jobo is a machine, and some ATSes
-      // preview the file in a browser context.
-      'Content-Disposition': `inline; filename="${encodeURIComponent(profile.resumeFilename)}"`,
-      'Cache-Control': 'no-store',
-    },
-  })
 }

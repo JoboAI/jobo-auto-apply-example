@@ -26,7 +26,8 @@ interface SchemaNode {
 function assertStrict(node: SchemaNode, path = '$'): number {
   let checked = 0
 
-  const isObject = node.type === 'object' || (Array.isArray(node.type) && node.type.includes('object'))
+  const isObject =
+    node.type === 'object' || (Array.isArray(node.type) && node.type.includes('object'))
 
   if (isObject) {
     checked += 1
@@ -34,7 +35,7 @@ function assertStrict(node: SchemaNode, path = '$'): number {
 
     const properties = Object.keys(node.properties ?? {})
     expect([...(node.required ?? [])].sort(), `${path} must require every property`).toEqual(
-      properties.sort()
+      properties.sort(),
     )
 
     for (const [key, child] of Object.entries(node.properties ?? {})) {
@@ -50,7 +51,7 @@ function assertStrict(node: SchemaNode, path = '$'): number {
 describe('toStrictJsonSchema', () => {
   it('requires every property, including optional ones', () => {
     const schema = toStrictJsonSchema(
-      z.object({ a: z.string(), b: z.string().optional() })
+      z.object({ a: z.string(), b: z.string().optional() }),
     ) as SchemaNode
     expect(schema.required).toEqual(['a', 'b'])
     expect(schema.additionalProperties).toBe(false)
@@ -79,14 +80,16 @@ describe('toStrictJsonSchema', () => {
 
   it('recurses into arrays of objects', () => {
     const schema = toStrictJsonSchema(
-      z.object({ rows: z.array(z.object({ a: z.string(), b: z.number().nullable() })) })
+      z.object({ rows: z.array(z.object({ a: z.string(), b: z.number().nullable() })) }),
     ) as SchemaNode
     expect(schema.properties?.rows.items?.required).toEqual(['a', 'b'])
     expect(schema.properties?.rows.items?.additionalProperties).toBe(false)
   })
 
   it('carries descriptions through, since they steer the model', () => {
-    const schema = toStrictJsonSchema(z.object({ x: z.string().describe('the thing') })) as unknown as {
+    const schema = toStrictJsonSchema(
+      z.object({ x: z.string().describe('the thing') }),
+    ) as unknown as {
       properties: Record<string, { description?: string }>
     }
     expect(schema.properties.x.description).toBe('the thing')
@@ -120,7 +123,7 @@ describe('the schemas we actually send', () => {
       'reasoning',
       'strings',
       'text',
-      'typeahead'
+      'typeahead',
     ])
     expect(answer?.properties?.kind.enum).toContain('skip')
   })

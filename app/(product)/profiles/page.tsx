@@ -19,14 +19,10 @@ export default async function ProfilesPage() {
       <div className="page-heading">
         <div>
           <div className="eyebrow">CANDIDATE DATA FOR YOUR API DEMO</div>
-          <h1>
-            {rows.length
-              ? 'Your test profiles.'
-              : 'Add a test profile.'}
-          </h1>
+          <h1>{rows.length ? 'Your test profiles.' : 'Add a test profile.'}</h1>
           <p>
-            Manage the candidate data this demo uses to answer application
-            fields. Each application keeps its own saved copy.
+            Manage the candidate data this demo uses to answer application fields. Each application
+            keeps its own saved copy.
           </p>
         </div>
       </div>
@@ -50,13 +46,10 @@ export default async function ProfilesPage() {
                       <h3>{row.name}</h3>
                     </Link>
                     <p>
-                      {row.resumeFilename} · {Math.ceil(row.resumeBytes / 1024)}{' '}
-                      KB
+                      {row.resumeFilename} · {Math.ceil(row.resumeBytes / 1024)} KB
                     </p>
                     <div className="tag-row">
-                      {row.isDefault && (
-                        <span className="tag purple-tag">Default resume</span>
-                      )}
+                      {row.isDefault && <span className="tag purple-tag">Default resume</span>}
                       <span className="tag">
                         {isApplicationReady(row) ? 'Reviewed & ready' : 'Review needed'}
                       </span>
@@ -81,8 +74,8 @@ export default async function ProfilesPage() {
           </span>
           <h2>The facts behind each answer.</h2>
           <p>
-            This demo combines confirmed profile values with generated answers
-            for open-ended application questions.
+            This demo combines confirmed profile values with generated answers for open-ended
+            application questions.
           </p>
           <ol>
             <li>Upload a text-based PDF.</li>
@@ -91,8 +84,8 @@ export default async function ProfilesPage() {
             <li>Confirm your profile and run a sandbox application.</li>
           </ol>
           <small>
-            We won’t invent experience or qualifications. If a required answer
-            is missing, we’ll stop the application.
+            We won’t invent experience or qualifications. If a required answer is missing, we’ll
+            stop the application.
           </small>
         </aside>
       </div>

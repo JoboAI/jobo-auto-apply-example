@@ -16,7 +16,12 @@ import {
   verifyApiKey,
 } from '@/lib/jobo/jobs-api'
 import { parseFilters } from '@/lib/jobo/job-filters'
-import { atsLogo, FALLBACK_ATS, resetSupportedAtsCache, supportedAts } from '@/lib/jobo/supported-ats'
+import {
+  atsLogo,
+  FALLBACK_ATS,
+  resetSupportedAtsCache,
+  supportedAts,
+} from '@/lib/jobo/supported-ats'
 import { isProductionJobId, validProductionTarget } from '@/lib/jobs'
 
 process.env.JOBO_API_KEY = 'jbe_test_deployment_fixture'
@@ -69,8 +74,10 @@ function fakeFetch(routes: Record<string, () => Response>, calls: Call[] = []) {
     return new Response('not found', { status: 404 })
   }) as typeof fetch
 }
-const json = (body: unknown, status = 200) =>
-  () => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
+const json =
+  (body: unknown, status = 200) =>
+  () =>
+    new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
 
 beforeEach(() => resetSupportedAtsCache())
 
@@ -113,9 +120,16 @@ describe('catalog jobs', () => {
     })
   })
   it('marks unsupported or URL-less jobs unavailable and ignores non-ISO countries', () => {
-    expect(toJob(dto({ source: 'icims' }), [{ id: 'greenhouse', name: 'Greenhouse' }]).available).toBe(false)
-    expect(toJob(dto({ apply_url: 'http://insecure.test' }), [{ id: 'greenhouse', name: 'Greenhouse' }]).available).toBe(false)
-    expect(toJob(dto({ locations: [{ country: 'United Kingdom' }] }), []).countryCode).toBeUndefined()
+    expect(
+      toJob(dto({ source: 'icims' }), [{ id: 'greenhouse', name: 'Greenhouse' }]).available,
+    ).toBe(false)
+    expect(
+      toJob(dto({ apply_url: 'http://insecure.test' }), [{ id: 'greenhouse', name: 'Greenhouse' }])
+        .available,
+    ).toBe(false)
+    expect(
+      toJob(dto({ locations: [{ country: 'United Kingdom' }] }), []).countryCode,
+    ).toBeUndefined()
   })
   it('searches only supported ATSes with every filter, on the visitor’s key', async () => {
     const calls: Call[] = []
@@ -222,7 +236,11 @@ describe('catalog jobs', () => {
         updated_at: '2026-10-01T12:00:00Z',
         qualifications: {
           must_have: {
-            skills: [{ name: 'Rust', type: 'hard' }, { name: 'Ownership', type: 'soft' }, { name: 'Rust', type: 'hard' }],
+            skills: [
+              { name: 'Rust', type: 'hard' },
+              { name: 'Ownership', type: 'soft' },
+              { name: 'Rust', type: 'hard' },
+            ],
             education: ["Bachelor's in CS"],
             certifications: [],
           },
@@ -248,7 +266,12 @@ describe('catalog jobs', () => {
       postedOn: 'Sep 28, 2026',
       closesOn: 'Oct 30, 2026',
       updatedAgo: '2d ago',
-      mustHave: { skills: ['Rust'], softSkills: ['Ownership'], education: ["Bachelor's in CS"], certifications: [] },
+      mustHave: {
+        skills: ['Rust'],
+        softSkills: ['Ownership'],
+        education: ["Bachelor's in CS"],
+        certifications: [],
+      },
       preferred: { skills: ['gRPC'], softSkills: [], education: [], certifications: ['AWS SA'] },
       benefits: ['Private health', '25 days PTO'],
       eligibility: [
@@ -257,7 +280,9 @@ describe('catalog jobs', () => {
       ],
     })
     // Same title in another case is not worth a second line.
-    expect(toJobDetail(dto({ normalized_title: 'backend engineer' })).normalizedTitle).toBeUndefined()
+    expect(
+      toJobDetail(dto({ normalized_title: 'backend engineer' })).normalizedTitle,
+    ).toBeUndefined()
   })
   it('splits an HTML, markdown or plain description into blocks', () => {
     expect(
@@ -295,9 +320,13 @@ describe('catalog jobs', () => {
   })
   it('formats pay ranges and posting age compactly', () => {
     expect(salaryRange({ min: 45, max: 60, currency: 'GBP', period: 'hourly' })).toBe('£45–£60/hr')
-    expect(salaryRange({ min: 95000, max: 95000, currency: 'EUR', period: 'yearly' })).toBe('€95k/yr')
+    expect(salaryRange({ min: 95000, max: 95000, currency: 'EUR', period: 'yearly' })).toBe(
+      '€95k/yr',
+    )
     expect(salaryRange({ min: null, max: null })).toBeUndefined()
-    expect(fullPay({ min: 45.5, max: 60, currency: 'GBP', period: 'hourly' })).toBe('£45.5 – £60 GBP per hour')
+    expect(fullPay({ min: 45.5, max: 60, currency: 'GBP', period: 'hourly' })).toBe(
+      '£45.5 – £60 GBP per hour',
+    )
     expect(fullPay({ min: 90000, max: null, currency: 'CHF', period: null })).toBe('90,000 CHF')
     const now = Date.parse('2026-10-02T12:00:00Z')
     expect(postedAgo('2026-10-02T01:00:00Z', now)).toBe('Today')
@@ -328,7 +357,10 @@ describe('catalog jobs', () => {
       calls,
     )
     const company = await getCompanyProfile(KEY, ID, fetchImpl)
-    expect(calls[0]).toMatchObject({ url: `https://connect.example.test/api/companies/${ID}`, key: KEY })
+    expect(calls[0]).toMatchObject({
+      url: `https://connect.example.test/api/companies/${ID}`,
+      key: KEY,
+    })
     expect(company).toMatchObject({
       name: 'Acme Robotics',
       website: 'https://acme.example/',
@@ -369,16 +401,45 @@ describe('catalog jobs', () => {
           stock_symbol: 'GLBX',
           stock_exchange: 'nasdaq',
           leadership: [
-            { name: 'Ada Park', title: 'CEO', linkedin_url: 'https://www.linkedin.com/in/ada', avatar_url: null },
+            {
+              name: 'Ada Park',
+              title: 'CEO',
+              linkedin_url: 'https://www.linkedin.com/in/ada',
+              avatar_url: null,
+            },
             { name: null, title: 'CTO' },
           ],
           founders: ['Ada Park', 'Ada Park', 'Lin Wu'],
           funding_rounds: [
-            { investment_type: 'series_a', announced_on: '2023-02-01', raised_amount: '$12M', lead_investor: 'Seedcamp' },
-            { investment_type: 'series_b', announced_on: '2025-06-10', raised_amount: '$40M', post_money_valuation: '$400M' },
+            {
+              investment_type: 'series_a',
+              announced_on: '2023-02-01',
+              raised_amount: '$12M',
+              lead_investor: 'Seedcamp',
+            },
+            {
+              investment_type: 'series_b',
+              announced_on: '2025-06-10',
+              raised_amount: '$40M',
+              post_money_valuation: '$400M',
+            },
           ],
-          ratings: [{ source: 'glassdoor', rating: 4.3, review_count: 212, url: 'https://glassdoor.example/globex' }],
-          press_references: [{ title: 'Globex raises $40M', publisher: 'TechCrunch', posted_on: '2025-06-10', url: 'https://tc.example/a' }],
+          ratings: [
+            {
+              source: 'glassdoor',
+              rating: 4.3,
+              review_count: 212,
+              url: 'https://glassdoor.example/globex',
+            },
+          ],
+          press_references: [
+            {
+              title: 'Globex raises $40M',
+              publisher: 'TechCrunch',
+              posted_on: '2025-06-10',
+              url: 'https://tc.example/a',
+            },
+          ],
           products: [{ name: 'Globex Pay', description: '<p>Robot wallets</p>' }],
           acquisitions: [{ acquiree_name: 'Initech' }],
           subsidiary_list: ['Globex EU'],
@@ -397,14 +458,30 @@ describe('catalog jobs', () => {
         { kind: 'linkedin', href: 'https://www.linkedin.com/company/globex' },
         { kind: 'github', href: 'https://github.com/globex' },
       ],
-      leadership: [{ name: 'Ada Park', title: 'CEO', linkedinUrl: 'https://www.linkedin.com/in/ada' }],
+      leadership: [
+        { name: 'Ada Park', title: 'CEO', linkedinUrl: 'https://www.linkedin.com/in/ada' },
+      ],
       founders: ['Ada Park', 'Lin Wu'],
       fundingRounds: [
         { type: 'Series B', date: 'Jun 10, 2025', amount: '$40M', valuation: '$400M' },
         { type: 'Series A', date: 'Feb 1, 2023', amount: '$12M', lead: 'Seedcamp' },
       ],
-      ratings: [{ source: 'Glassdoor', rating: '4.3', reviewCount: 212, url: 'https://glassdoor.example/globex' }],
-      press: [{ title: 'Globex raises $40M', publisher: 'TechCrunch', date: 'Jun 10, 2025', url: 'https://tc.example/a' }],
+      ratings: [
+        {
+          source: 'Glassdoor',
+          rating: '4.3',
+          reviewCount: 212,
+          url: 'https://glassdoor.example/globex',
+        },
+      ],
+      press: [
+        {
+          title: 'Globex raises $40M',
+          publisher: 'TechCrunch',
+          date: 'Jun 10, 2025',
+          url: 'https://tc.example/a',
+        },
+      ],
       products: [{ name: 'Globex Pay', description: 'Robot wallets' }],
       acquisitions: ['Initech'],
       subsidiaries: ['Globex EU'],
@@ -450,8 +527,29 @@ describe('connecting a key', () => {
     })
     expect(await verifyApiKey(KEY, fetchImpl)).toEqual({ ok: true })
   })
+  it('accepts a valid key that is out of search credits, but still checks Auto Apply access', async () => {
+    const calls: Call[] = []
+    const fetchImpl = fakeFetch(
+      {
+        'https://connect.example.test/api/jobs/': json({}, 402),
+        'https://connect.example.test/api/auto-apply/applications': json(
+          { code: 'forbidden' },
+          403,
+        ),
+      },
+      calls,
+    )
+    expect(await verifyApiKey(KEY, fetchImpl)).toMatchObject({
+      ok: false,
+      error: expect.stringMatching(/Auto Apply/),
+    })
+    expect(calls.some((c) => c.url.includes('/api/auto-apply/applications'))).toBe(true)
+  })
   it('rejects a key Jobo does not know', async () => {
     const fetchImpl = fakeFetch({ 'https://connect.example.test': json({}, 401) })
-    expect(await verifyApiKey(KEY, fetchImpl)).toMatchObject({ ok: false, error: expect.stringMatching(/rejected/) })
+    expect(await verifyApiKey(KEY, fetchImpl)).toMatchObject({
+      ok: false,
+      error: expect.stringMatching(/rejected/),
+    })
   })
 })

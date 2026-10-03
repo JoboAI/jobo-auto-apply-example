@@ -2,13 +2,16 @@ import { createHash } from 'node:crypto'
 import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { count, eq } from 'drizzle-orm'
-import type { Database } from './client'
-import { profiles } from './schema'
+import type { Database } from '@/db/client'
+import { profiles, user } from '@/db/schema'
 import type { ResumeProfile } from '@/lib/resume/profile-schema'
-import * as ada from './seed/ada-lovelace'
-import * as grace from './seed/grace-hopper'
+import * as ada from '../fixtures/ada-lovelace'
+import * as grace from '../fixtures/grace-hopper'
 
-/** Explicit test fixtures only. Production database initialization never seeds profiles. */
+/**
+ * Test fixtures: two fictional reviewed profiles with real PDFs. The app
+ * itself never seeds data; every profile comes from a candidate's upload.
+ */
 
 export interface SampleProfile {
   id: string
@@ -35,11 +38,27 @@ export const SAMPLE_PROFILES: SampleProfile[] = [
   },
 ]
 
+/**
+ * Insert both samples, owned by `ownerId` (created if missing), and copy their
+ * PDFs into `resumeDir`. Idempotent; tests reassign owners afterwards.
+ */
 export async function seedSampleProfiles(
   database: Database,
   resumeDir: string,
+  ownerId = 'sample-owner',
 ): Promise<void> {
   mkdirSync(resumeDir, { recursive: true })
+  await database
+    .insert(user)
+    .values({
+      id: ownerId,
+      name: ownerId,
+      email: `${ownerId}@example.com`,
+      emailVerified: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    })
+    .onConflictDoNothing()
 
   // Only claim the default slot when nobody holds it — a user-made default
   // (or a surviving sample) is never displaced by a reseed.
@@ -50,7 +69,7 @@ export async function seedSampleProfiles(
   const hasDefault = (defaults?.value ?? 0) > 0
 
   for (const [index, sample] of SAMPLE_PROFILES.entries()) {
-    const source = join(process.cwd(), 'db', 'seed', sample.pdfFile)
+    const source = join(process.cwd(), 'tests', 'fixtures', sample.pdfFile)
     const bytes = readFileSync(source)
 
     const destination = join(resumeDir, `${sample.id}.pdf`)
@@ -60,6 +79,7 @@ export async function seedSampleProfiles(
       .insert(profiles)
       .values({
         id: sample.id,
+        userId: ownerId,
         name: sample.name,
         isDefault: !hasDefault && index === 0,
         data: sample.data,

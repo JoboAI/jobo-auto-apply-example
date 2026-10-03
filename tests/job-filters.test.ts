@@ -45,13 +45,21 @@ describe('explorer filters', () => {
   })
 
   it('round-trips through its own links', () => {
-    const filters = parseFilters({ q: 'rust', co: ['-meta.com'], ind: 'Fintech', wm: 'remote', page: '2' })
-    const again = parseFilters(Object.fromEntries(
-      [...new URL(filtersHref(filters), 'https://demo.test').searchParams].reduce(
-        (all, [k, v]) => all.set(k, [...(all.get(k) ?? []), v]),
-        new Map<string, string[]>(),
+    const filters = parseFilters({
+      q: 'rust',
+      co: ['-meta.com'],
+      ind: 'Fintech',
+      wm: 'remote',
+      page: '2',
+    })
+    const again = parseFilters(
+      Object.fromEntries(
+        [...new URL(filtersHref(filters), 'https://demo.test').searchParams].reduce(
+          (all, [k, v]) => all.set(k, [...(all.get(k) ?? []), v]),
+          new Map<string, string[]>(),
+        ),
       ),
-    ))
+    )
     expect(again).toEqual(filters)
   })
 
@@ -60,10 +68,14 @@ describe('explorer filters', () => {
   })
 
   it('adds a typed company on the side of the button pressed', () => {
-    expect(parseFilters({ co: 'stripe.com', co_new: 'meta.com', co_op: '-' }).companies)
-      .toEqual({ include: ['stripe.com'], exclude: ['meta.com'] })
-    expect(parseFilters({ co_new: 'Stripe', co_op: '+' }).companies)
-      .toEqual({ include: ['Stripe'], exclude: [] })
+    expect(parseFilters({ co: 'stripe.com', co_new: 'meta.com', co_op: '-' }).companies).toEqual({
+      include: ['stripe.com'],
+      exclude: ['meta.com'],
+    })
+    expect(parseFilters({ co_new: 'Stripe', co_op: '+' }).companies).toEqual({
+      include: ['Stripe'],
+      exclude: [],
+    })
   })
 
   it('toggles and always starts over at page one', () => {
@@ -73,16 +85,25 @@ describe('explorer filters', () => {
   })
 
   it('never keeps a value on both sides of an include/exclude filter', () => {
-    expect(toggleSigned({ include: ['Fintech'], exclude: [] }, 'fintech', 'exclude'))
-      .toEqual({ include: [], exclude: ['fintech'] })
-    expect(toggleSignedHref(parseFilters({ ind: '-Fintech' }), 'industries', 'Fintech'))
-      .toBe('/jobs?ind=Fintech')
+    expect(toggleSigned({ include: ['Fintech'], exclude: [] }, 'fintech', 'exclude')).toEqual({
+      include: [],
+      exclude: ['fintech'],
+    })
+    expect(toggleSignedHref(parseFilters({ ind: '-Fintech' }), 'industries', 'Fintech')).toBe(
+      '/jobs?ind=Fintech',
+    )
   })
 
   it('maps to the POST /api/jobs/search body', () => {
     const now = new Date('2026-10-02T12:34:56Z')
     const body = toSearchBody(
-      parseFilters({ ats: ['lever', 'icims'], posted: '24h', salary: '120000', skill: 'Python', page: '2' }),
+      parseFilters({
+        ats: ['lever', 'icims'],
+        posted: '24h',
+        salary: '120000',
+        skill: 'Python',
+        page: '2',
+      }),
       SUPPORTED,
       25,
       now,

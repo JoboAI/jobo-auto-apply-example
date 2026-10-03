@@ -1,13 +1,13 @@
-import { currentUser } from '@/lib/session'
-import { and, eq } from 'drizzle-orm'
 import { randomUUID } from 'node:crypto'
-import { count } from 'drizzle-orm'
+import { and, count, eq, gt } from 'drizzle-orm'
 import { db } from '@/db/client'
 import { profiles } from '@/db/schema'
 import { ResumeExtractionError, extractResumeText } from '@/lib/resume/extract'
 import { MAX_RESUME_BYTES, saveResume } from '@/lib/resume/storage'
 import { structureResume, suggestProfileName } from '@/lib/resume/structure'
 import { log } from '@/lib/logger'
+import { authConfig } from '@/lib/config'
+import { currentUser } from '@/lib/session'
 
 /**
  * Resume upload.
@@ -18,7 +18,14 @@ import { log } from '@/lib/logger'
  * error, which is a miserable thing to debug. Every other mutation in this app
  * IS a Server Action — this one endpoint is the exception, and it is the
  * exception for a reason.
+ *
+ * The flow: check the session, origin and rate limit; extract the text
+ * (lib/resume/extract.ts); structure it into a profile with one model call
+ * (lib/resume/structure.ts); save the PDF; and send the candidate to review it.
  */
+
+/** Uploads per user per hour. Each one costs a model call. */
+const UPLOADS_PER_HOUR = 10
 
 export const runtime = 'nodejs'
 /** Extraction plus one structuring call. Generous, since it runs once. */
@@ -27,36 +34,26 @@ export const maxDuration = 120
 export async function POST(request: Request): Promise<Response> {
   const user = await currentUser()
   if (!user)
-    return Response.json(
-      { error: 'Please sign in to upload your resume.' },
-      { status: 401 },
-    )
-  if (request.headers.get('origin') !== new URL(process.env.BETTER_AUTH_URL!).origin)
+    return Response.json({ error: 'Please sign in to upload your resume.' }, { status: 401 })
+  // Route handlers get no CSRF protection from Next (server actions do), so
+  // only accept uploads posted by this app's own pages.
+  if (request.headers.get('origin') !== new URL(authConfig().BETTER_AUTH_URL).origin)
     return Response.json({ error: 'Invalid request origin.' }, { status: 403 })
-  const owned = await db
-    .select()
+  const [recent] = await db
+    .select({ value: count() })
     .from(profiles)
-    .where(eq(profiles.userId, user.id))
-  if (owned.filter((p) => p.createdAt > Date.now() - 3600000).length >= 10)
-    return Response.json(
-      { error: 'Please wait before uploading more resumes.' },
-      { status: 429 },
-    )
+    .where(and(eq(profiles.userId, user.id), gt(profiles.createdAt, Date.now() - 3_600_000)))
+  if ((recent?.value ?? 0) >= UPLOADS_PER_HOUR)
+    return Response.json({ error: 'Please wait before uploading more resumes.' }, { status: 429 })
   if (Number(request.headers.get('content-length')) > MAX_RESUME_BYTES + 65536)
-    return Response.json(
-      { error: 'The upload limit is 5 MB.' },
-      { status: 413 },
-    )
+    return Response.json({ error: 'The upload limit is 5 MB.' }, { status: 413 })
   let file: File | null = null
   try {
     const form = await request.formData()
     const candidate = form.get('resume')
     if (candidate instanceof File) file = candidate
   } catch {
-    return Response.json(
-      { error: 'Expected a multipart form upload.' },
-      { status: 400 },
-    )
+    return Response.json({ error: 'Expected a multipart form upload.' }, { status: 400 })
   }
 
   if (!file) {
@@ -80,10 +77,7 @@ export async function POST(request: Request): Promise<Response> {
     if (error instanceof ResumeExtractionError) {
       // 422 rather than 400: the request was well-formed, the content was not
       // usable. The message is deliberately actionable — see extract.ts.
-      return Response.json(
-        { error: error.message, code: error.code },
-        { status: 422 },
-      )
+      return Response.json({ error: error.message, code: error.code }, { status: 422 })
     }
     throw error
   }
@@ -92,11 +86,10 @@ export async function POST(request: Request): Promise<Response> {
   try {
     profile = await structureResume(text)
   } catch (error) {
-    log.error({ err: error }, 'resume structuring failed')
+    log.error({ error }, 'resume structuring failed')
     return Response.json(
       {
-        error:
-          'We could not read your resume right now. Please try again shortly.',
+        error: 'We could not read your resume right now. Please try again shortly.',
       },
       { status: 502 },
     )
@@ -110,21 +103,20 @@ export async function POST(request: Request): Promise<Response> {
     .where(and(eq(profiles.userId, user.id), eq(profiles.archived, false)))
   const isFirst = (existing?.value ?? 0) === 0
 
-  await db.insert(profiles)
-    .values({
-      id,
-      userId: user.id,
-      name: suggestProfileName(profile),
-      isDefault: isFirst,
-      data: profile,
-      resumeFilename: file.name || 'resume.pdf',
-      // Jobo matches this against the field's `accepted_file_types`, so record
-      // what we will actually serve rather than what the browser claimed.
-      resumeContentType: 'application/pdf',
-      resumeBytes: bytes.byteLength,
-      resumeSha256: sha256,
-      resumeText: text,
-    })
+  await db.insert(profiles).values({
+    id,
+    userId: user.id,
+    name: suggestProfileName(profile),
+    isDefault: isFirst,
+    data: profile,
+    resumeFilename: file.name || 'resume.pdf',
+    // Jobo matches this against the field's `accepted_file_types`, so record
+    // what we will actually serve rather than what the browser claimed.
+    resumeContentType: 'application/pdf',
+    resumeBytes: bytes.byteLength,
+    resumeSha256: sha256,
+    resumeText: text,
+  })
 
   log.info({ profileId: id, bytes: bytes.byteLength }, 'imported resume')
 

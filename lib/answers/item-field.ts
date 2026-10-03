@@ -26,6 +26,6 @@ export function asItemField(parent: Field, item: GroupItemField): Field {
     ...(options.length ? { options } : {}),
     ...(item.constraints && Object.keys(item.constraints).length
       ? { constraints: item.constraints }
-      : {})
+      : {}),
   } as unknown as Field
 }

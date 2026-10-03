@@ -27,10 +27,7 @@ import type { AnswerContext, AnswerTrace, BuildResult } from './types'
 /** Values below this are treated as a skip. */
 const MIN_CONFIDENCE = 0.25
 
-export async function buildAnswers(
-  fields: Field[],
-  ctx: AnswerContext
-): Promise<BuildResult> {
+export async function buildAnswers(fields: Field[], ctx: AnswerContext): Promise<BuildResult> {
   const trace: AnswerTrace[] = []
   const fieldMap = new Map(fields.map((f) => [f.field_id, f]))
   const values = new Map<string, unknown>()
@@ -47,7 +44,7 @@ export async function buildAnswers(
       type: field?.type ?? 'unknown',
       source: resolved.rule.startsWith('sensitive:') ? 'declined' : 'deterministic',
       rule: resolved.rule,
-      value: resolved.value
+      value: resolved.value,
     })
   }
 
@@ -58,7 +55,7 @@ export async function buildAnswers(
       label: field?.label ?? fieldId,
       type: field?.type ?? 'unknown',
       source: 'declined',
-      reason
+      reason,
     })
   }
 
@@ -68,7 +65,7 @@ export async function buildAnswers(
   // not reject keeps corrections cheap: only the genuinely broken fields reach
   // the model again.
   const rejectedIds = new Set(
-    ctx.commandErrors.map((e) => e.field_id).filter((id): id is string => Boolean(id))
+    ctx.commandErrors.map((e) => e.field_id).filter((id): id is string => Boolean(id)),
   )
   if (ctx.correctionRound > 0) {
     for (const previous of ctx.previousAnswers) {
@@ -84,7 +81,7 @@ export async function buildAnswers(
         label: field.label,
         type: field.type,
         source: 'previous_round',
-        value: previous.value
+        value: previous.value,
       })
     }
   }
@@ -110,7 +107,7 @@ export async function buildAnswers(
       key: gap.key,
       itemField: gap.itemField,
       groupLabel: gap.field.label,
-      item: items[gap.index] ?? {}
+      item: items[gap.index] ?? {},
     })
   }
 
@@ -137,7 +134,8 @@ export async function buildAnswers(
             source: 'dropped',
             reasoning: answer.reasoning,
             confidence: answer.confidence,
-            reason: answer.kind === 'skip' ? 'model declined to answer' : 'confidence below threshold'
+            reason:
+              answer.kind === 'skip' ? 'model declined to answer' : 'confidence below threshold',
           })
           continue
         }
@@ -152,7 +150,7 @@ export async function buildAnswers(
             source: 'dropped',
             reasoning: answer.reasoning,
             confidence: answer.confidence,
-            reason: `could not coerce ${JSON.stringify(raw)?.slice(0, 80)} to a ${field.type} value`
+            reason: `could not coerce ${JSON.stringify(raw)?.slice(0, 80)} to a ${field.type} value`,
           })
           continue
         }
@@ -165,7 +163,7 @@ export async function buildAnswers(
           source: 'llm',
           reasoning: answer.reasoning,
           confidence: answer.confidence,
-          value
+          value,
         })
       }
 
@@ -190,11 +188,17 @@ export async function buildAnswers(
       // check below turns this into a clean cancel.
       llmError = error instanceof Error ? error.message : String(error)
       llmFatal = error instanceof OpenRouterError && error.isAuthError
-      log.warn({ err: error, budgetMs: ctx.budgetMs }, 'answer generation failed; using deterministic answers only')
+      log.warn(
+        { error, budgetMs: ctx.budgetMs },
+        'answer generation failed; using deterministic answers only',
+      )
     }
   } else if (pending.length > 0 && ctx.budgetMs <= 1_000) {
     llmError = `no budget left for generation (${ctx.budgetMs}ms)`
-    log.warn({ budgetMs: ctx.budgetMs, pending: pending.length }, 'skipping LLM: deadline too close')
+    log.warn(
+      { budgetMs: ctx.budgetMs, pending: pending.length },
+      'skipping LLM: deadline too close',
+    )
   }
 
   // ── 4. Decide ─────────────────────────────────────────────────────────────
@@ -207,7 +211,7 @@ export async function buildAnswers(
     // closer to submitted, and the step deadline keeps running meanwhile.
     log.warn(
       { unanswerable: unanswerable.map((f) => ({ id: f.field_id, label: f.label })) },
-      'required fields could not be answered'
+      'required fields could not be answered',
     )
   }
 
@@ -235,7 +239,7 @@ export function repairAnswers(
   answers: Answer[],
   errors: CommandError[],
   fields: Field[],
-  trace: AnswerTrace[]
+  trace: AnswerTrace[],
 ): Answer[] | null {
   const REPAIRABLE = new Set([
     'invalid_type',
@@ -248,7 +252,7 @@ export function repairAnswers(
     'maximum',
     'max_items',
     'invalid_typeahead',
-    'pattern'
+    'pattern',
   ])
 
   const fieldMap = new Map(fields.map((f) => [f.field_id, f]))
@@ -260,9 +264,8 @@ export function repairAnswers(
     const field = fieldMap.get(error.field_id)
     const current = values.get(error.field_id)
 
-    // Group errors need per-item surgery; coercion works on whole values. Drop
-    // the item's broken key when we can, otherwise leave the group for a
-    // correction round.
+    // Group errors need per-item surgery, and coercion works on whole values,
+    // so a repeating-group error is left for the ATS's correction round.
     if (error.item_index !== null) continue
 
     if (field && current !== undefined && REPAIRABLE.has(error.code)) {
@@ -277,7 +280,7 @@ export function repairAnswers(
           source: 'repaired',
           repaired_from: current,
           value: repaired,
-          reason: `server ${error.code}`
+          reason: `server ${error.code}`,
         })
         continue
       }
@@ -295,7 +298,7 @@ export function repairAnswers(
         type: field.type,
         source: 'dropped',
         repaired_from: current,
-        reason: `withdrawn after server ${error.code}: ${error.message}`
+        reason: `withdrawn after server ${error.code}: ${error.message}`,
       })
     }
   }

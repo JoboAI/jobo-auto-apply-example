@@ -70,9 +70,7 @@ describe('identity and contact mapping', () => {
   })
 
   it('normalizes punctuation in provider field ids', () => {
-    const fields = [
-      field({ field_id: 'candidate.email', type: 'text', label: 'Contact' }),
-    ]
+    const fields = [field({ field_id: 'candidate.email', type: 'text', label: 'Contact' })]
     const { resolved } = runDeterministic(fields, context())
     expect(resolved.get('candidate.email')?.value).toBe('ada@example.com')
   })
@@ -105,10 +103,7 @@ describe('identity and contact mapping', () => {
       field({ field_id: 'ow', type: 'text', label: 'Other website' }),
       field({ field_id: 'pf', type: 'text', label: 'Portfolio' }),
     ]
-    const { resolved } = runDeterministic(
-      fields,
-      context({ profile: withLinks }),
-    )
+    const { resolved } = runDeterministic(fields, context({ profile: withLinks }))
     expect(resolved.get('li')?.value).toBe('https://linkedin.com/in/ada')
     expect(resolved.get('gh')?.value).toBe('https://github.com/ada')
     expect(resolved.get('ow')?.value).toBe('https://ada.example.com')
@@ -128,16 +123,38 @@ describe('identity and contact mapping', () => {
     expect(resolved.get('first_name')?.value).toBe('Ada')
     expect(resolved.get('full_name')?.value).toBe('Ada Lovelace')
     // No preferred name: the first name is the name they go by.
-    expect(
-      runDeterministic(fields, context()).resolved.get('preferred_first_name')?.value,
-    ).toBe('Ada')
+    expect(runDeterministic(fields, context()).resolved.get('preferred_first_name')?.value).toBe(
+      'Ada',
+    )
   })
 
   it('derives current title and company from the current role', () => {
     const employed = profile({
       experience: [
-        { company: 'Globex', title: 'Junior', location: null, type: null, start_month: 1, start_year: 2018, end_month: 12, end_year: 2019, currently_working: false, description: '' },
-        { company: 'Acme', title: 'Engineer', location: null, type: null, start_month: 1, start_year: 2020, end_month: null, end_year: null, currently_working: true, description: '' },
+        {
+          company: 'Globex',
+          title: 'Junior',
+          location: null,
+          type: null,
+          start_month: 1,
+          start_year: 2018,
+          end_month: 12,
+          end_year: 2019,
+          currently_working: false,
+          description: '',
+        },
+        {
+          company: 'Acme',
+          title: 'Engineer',
+          location: null,
+          type: null,
+          start_month: 1,
+          start_year: 2020,
+          end_month: null,
+          end_year: null,
+          currently_working: true,
+          description: '',
+        },
       ],
     })
     const fields = [
@@ -175,7 +192,9 @@ describe('age', () => {
 
   it('fills a date-of-birth field', () => {
     const dob = field({ field_id: 'dob', type: 'date', label: 'Date of birth' })
-    const ctx = context({ profile: profile({ personal: { ...profile().personal, birthday: '1990-12-10' } }) })
+    const ctx = context({
+      profile: profile({ personal: { ...profile().personal, birthday: '1990-12-10' } }),
+    })
     expect(runDeterministic([dob], ctx).resolved.get('dob')?.value).toBe('1990-12-10')
   })
 })
@@ -225,9 +244,7 @@ describe('sensitive fields', () => {
   })
 
   it('uses the advertised decline option', () => {
-    expect(runDeterministic([gender], context()).resolved.get('g')?.value).toBe(
-      'decline',
-    )
+    expect(runDeterministic([gender], context()).resolved.get('g')?.value).toBe('decline')
   })
 
   it('answers from the candidate’s own self-identification', () => {
@@ -249,10 +266,9 @@ describe('sensitive fields', () => {
       ],
     })
 
-    expect(
-      runDeterministic([demographics], context()).resolved.get('demographics')
-        ?.value,
-    ).toEqual(['decline'])
+    expect(runDeterministic([demographics], context()).resolved.get('demographics')?.value).toEqual(
+      ['decline'],
+    )
   })
 
   it('otherwise selects the form’s own decline option', () => {
@@ -282,9 +298,7 @@ describe('sensitive fields', () => {
       options: options('male', 'female'),
     })
     // `declined` is terminal — index.ts excludes these from the LLM batch.
-    expect(runDeterministic([noDecline], context()).declined.get('g')).toMatch(
-      /sensitive/,
-    )
+    expect(runDeterministic([noDecline], context()).declined.get('g')).toMatch(/sensitive/)
   })
 })
 
@@ -323,10 +337,7 @@ describe('repeating groups', () => {
   ])
 
   it('builds items most-recent-first', () => {
-    const { resolved } = runDeterministic(
-      [workGroup],
-      context({ profile: withHistory }),
-    )
+    const { resolved } = runDeterministic([workGroup], context({ profile: withHistory }))
     const items = resolved.get('w')?.value as Record<string, unknown>[]
     expect(items).toHaveLength(2)
     expect(items[0].company).toBe('Acme')
@@ -334,10 +345,7 @@ describe('repeating groups', () => {
   })
 
   it('nulls end_date on a current role', () => {
-    const { resolved } = runDeterministic(
-      [workGroup],
-      context({ profile: withHistory }),
-    )
+    const { resolved } = runDeterministic([workGroup], context({ profile: withHistory }))
     const items = resolved.get('w')?.value as Record<string, unknown>[]
     expect(items[0].is_current).toBe(true)
     expect(items[0].end_date).toBeNull()
@@ -345,14 +353,8 @@ describe('repeating groups', () => {
   })
 
   it('emits only the keys the field advertises', () => {
-    const narrow = group('w', 'work_experience', [
-      itemField('company'),
-      itemField('title'),
-    ])
-    const { resolved } = runDeterministic(
-      [narrow],
-      context({ profile: withHistory }),
-    )
+    const narrow = group('w', 'work_experience', [itemField('company'), itemField('title')])
+    const { resolved } = runDeterministic([narrow], context({ profile: withHistory }))
     const items = resolved.get('w')?.value as Record<string, unknown>[]
     expect(Object.keys(items[0]).sort()).toEqual(['company', 'title'])
   })
@@ -363,32 +365,21 @@ describe('repeating groups', () => {
         role(`Company ${i}`, 2010 + i, [6, 2010 + i]),
       ),
     })
-    const limited = group(
-      'w',
-      'work_experience',
-      [itemField('company'), itemField('title')],
-      { max_items: 12 },
-    )
+    const limited = group('w', 'work_experience', [itemField('company'), itemField('title')], {
+      max_items: 12,
+    })
     const { resolved } = runDeterministic([limited], context({ profile: many }))
     expect((resolved.get('w')?.value as unknown[]).length).toBe(12)
   })
 
   it('caps groups at the platform limit of 100', () => {
     const many = profile({
-      experience: Array.from({ length: 120 }, (_, i) =>
-        role(`Company ${i}`, 2020, [6, 2020]),
-      ),
+      experience: Array.from({ length: 120 }, (_, i) => role(`Company ${i}`, 2020, [6, 2020])),
     })
-    const generous = group(
-      'w',
-      'work_experience',
-      [itemField('company'), itemField('title')],
-      { max_items: 150 },
-    )
-    const { resolved } = runDeterministic(
-      [generous],
-      context({ profile: many }),
-    )
+    const generous = group('w', 'work_experience', [itemField('company'), itemField('title')], {
+      max_items: 150,
+    })
+    const { resolved } = runDeterministic([generous], context({ profile: many }))
     expect((resolved.get('w')?.value as unknown[]).length).toBe(100)
   })
 
@@ -411,7 +402,16 @@ describe('repeating groups', () => {
   it('matches a degree to the form’s own option wording', () => {
     const educated = profile({
       education: [
-        { school: 'MIT', degree: 'bs', major: 'CS', gpa: 3.8, start_month: 9, start_year: 2015, grad_month: 6, grad_year: 2019 },
+        {
+          school: 'MIT',
+          degree: 'bs',
+          major: 'CS',
+          gpa: 3.8,
+          start_month: 9,
+          start_year: 2015,
+          grad_month: 6,
+          grad_year: 2019,
+        },
       ],
     })
     const educationGroup = group('e', 'education', [
@@ -434,15 +434,25 @@ describe('repeating groups', () => {
     ])
     // Free text gets the full name of the degree.
     const textGroup = group('e', 'education', [itemField('degree')])
-    expect(runDeterministic([textGroup], context({ profile: educated })).resolved.get('e')?.value)
-      .toEqual([{ degree: 'Bachelor of Science' }])
+    expect(
+      runDeterministic([textGroup], context({ profile: educated })).resolved.get('e')?.value,
+    ).toEqual([{ degree: 'Bachelor of Science' }])
   })
 
   it('treats education with a future graduation as current', () => {
     const year = new Date().getUTCFullYear() + 1
     const studying = profile({
       education: [
-        { school: 'MIT', degree: 'ms', major: 'CS', gpa: null, start_month: 9, start_year: year - 2, grad_month: 6, grad_year: year },
+        {
+          school: 'MIT',
+          degree: 'ms',
+          major: 'CS',
+          gpa: null,
+          start_month: 9,
+          start_year: year - 2,
+          grad_month: 6,
+          grad_year: year,
+        },
       ],
     })
     const educationGroup = group('e', 'education', [
@@ -450,13 +460,19 @@ describe('repeating groups', () => {
       itemField('end_date', { type: 'partial_date' }),
       itemField('is_current', { type: 'checkbox' }),
     ])
-    expect(runDeterministic([educationGroup], context({ profile: studying })).resolved.get('e')?.value)
-      .toEqual([{ school: 'MIT', end_date: null, is_current: true }])
+    expect(
+      runDeterministic([educationGroup], context({ profile: studying })).resolved.get('e')?.value,
+    ).toEqual([{ school: 'MIT', end_date: null, is_current: true }])
   })
 
   it('builds website and language groups from the link slots and names', () => {
     const linked = profile({
-      links: { linkedin: 'https://linkedin.com/in/ada', github: null, portfolio: 'https://ada.dev', other: null },
+      links: {
+        linkedin: 'https://linkedin.com/in/ada',
+        github: null,
+        portfolio: 'https://ada.dev',
+        other: null,
+      },
       languages: ['English', 'Dutch'],
     })
     const websites = group('ws', 'website', [itemField('url'), itemField('type')])
@@ -491,10 +507,7 @@ describe('repeating groups', () => {
       itemField('field_of_study'),
       itemField('start_date', { type: 'partial_date' }),
     ])
-    const { resolved } = runDeterministic(
-      [educationGroup],
-      context({ profile: dupes }),
-    )
+    const { resolved } = runDeterministic([educationGroup], context({ profile: dupes }))
     expect((resolved.get('e')?.value as unknown[]).length).toBe(1)
   })
 
@@ -504,10 +517,7 @@ describe('repeating groups', () => {
       itemField('title', { required: true }),
       itemField('hours_per_week', { type: 'number', required: true }),
     ])
-    const { groupGaps } = runDeterministic(
-      [withExtra],
-      context({ profile: withHistory }),
-    )
+    const { groupGaps } = runDeterministic([withExtra], context({ profile: withHistory }))
     expect([...groupGaps.keys()]).toContain('w#0.hours_per_week')
     expect([...groupGaps.keys()]).toContain('w#1.hours_per_week')
   })
@@ -516,21 +526,16 @@ describe('repeating groups', () => {
     // There is no local validator any more (the server validates for free on
     // submit), so pin the server's rules structurally: only advertised keys,
     // every required key present, end_date null exactly when is_current.
-    const { resolved } = runDeterministic(
-      [workGroup],
-      context({ profile: withHistory }),
-    )
+    const { resolved } = runDeterministic([workGroup], context({ profile: withHistory }))
     const items = resolved.get('w')?.value as Record<string, unknown>[]
     const advertised = new Set(workGroup.item_fields.map((f) => f.key))
 
     for (const item of items) {
-      for (const key of Object.keys(item))
-        expect(advertised.has(key), key).toBe(true)
+      for (const key of Object.keys(item)) expect(advertised.has(key), key).toBe(true)
       expect(typeof item.company).toBe('string')
       expect(typeof item.title).toBe('string')
       if (item.is_current === true) expect(item.end_date).toBeNull()
-      else if (item.end_date != null)
-        expect(String(item.end_date)).toMatch(/^\d{4}(-\d{2}){0,2}$/)
+      else if (item.end_date != null) expect(String(item.end_date)).toMatch(/^\d{4}(-\d{2}){0,2}$/)
     }
   })
 })
@@ -556,10 +561,9 @@ describe('high-stakes fields', () => {
       label: 'Do you require sponsorship?',
       options: options('Yes', 'No'),
     })
-    expect(
-      runDeterministic([target], context({ profile: stated })).resolved.get('s')
-        ?.value,
-    ).toBe('No')
+    expect(runDeterministic([target], context({ profile: stated })).resolved.get('s')?.value).toBe(
+      'No',
+    )
   })
 })
 
@@ -570,9 +574,7 @@ describe('unanswerable types', () => {
       type: 'unknown',
       label: 'Email',
     })
-    expect(
-      runDeterministic([target], context()).resolved.has('personal.email'),
-    ).toBe(false)
+    expect(runDeterministic([target], context()).resolved.has('personal.email')).toBe(false)
   })
 })
 
@@ -593,14 +595,21 @@ describe('work authorization', () => {
   const generic = 'Are you legally authorized to work in the country where this job is located?'
 
   it('reads the US, Canada and UK flags from the question itself', () => {
-    expect(ask('Are you legally authorized to work in the United States?', 'NL').resolved.get('q')?.value).toBe('No')
+    expect(
+      ask('Are you legally authorized to work in the United States?', 'NL').resolved.get('q')
+        ?.value,
+    ).toBe('No')
     expect(ask('Are you authorized to work in the U.S.?').resolved.get('q')?.value).toBe('No')
-    expect(ask('Are you legally authorized to work in Canada?').resolved.get('q')?.value).toBe('Yes')
+    expect(ask('Are you legally authorized to work in Canada?').resolved.get('q')?.value).toBe(
+      'Yes',
+    )
     expect(ask('Do you have the right to work in the UK?').resolved.get('q')?.value).toBe('Yes')
   })
 
   it('does not read "us" in "work for us" as the United States', () => {
-    expect(ask('Are you legally authorized to work for us?', 'NL').resolved.get('q')?.value).toBe('Yes')
+    expect(ask('Are you legally authorized to work for us?', 'NL').resolved.get('q')?.value).toBe(
+      'Yes',
+    )
   })
 
   it('falls back to the posting country, never the candidate’s home country', () => {
@@ -631,7 +640,13 @@ describe('EU work authorization', () => {
       [eu],
       context({
         profile: profile({
-          work_authorization: { us: true, canada: false, uk: true, other_country_codes: codes, requires_sponsorship: false },
+          work_authorization: {
+            us: true,
+            canada: false,
+            uk: true,
+            other_country_codes: codes,
+            requires_sponsorship: false,
+          },
         }),
         jobCountryCode,
       }),
@@ -650,11 +665,26 @@ describe('EU work authorization', () => {
 describe('preferences', () => {
   it('answers work setup, job type and salary from the preferences', () => {
     const picky = profile({
-      preferences: { job_types: ['contract'], work_setups: ['hybrid', 'remote'], locations: ['Amsterdam'], min_salary: 90000 },
+      preferences: {
+        job_types: ['contract'],
+        work_setups: ['hybrid', 'remote'],
+        locations: ['Amsterdam'],
+        min_salary: 90000,
+      },
     })
     const fields = [
-      field({ field_id: 'ws', type: 'select', label: 'Work arrangement preference', options: options('Remote', 'Hybrid', 'Onsite') }),
-      field({ field_id: 'jt', type: 'multi_select', label: 'Desired job type', options: options('Full-time', 'Contract', 'Internship') }),
+      field({
+        field_id: 'ws',
+        type: 'select',
+        label: 'Work arrangement preference',
+        options: options('Remote', 'Hybrid', 'Onsite'),
+      }),
+      field({
+        field_id: 'jt',
+        type: 'multi_select',
+        label: 'Desired job type',
+        options: options('Full-time', 'Contract', 'Internship'),
+      }),
       field({ field_id: 'sal', type: 'number', label: 'Desired salary' }),
       field({ field_id: 'loc', type: 'text', label: 'Preferred locations' }),
     ]
@@ -666,7 +696,12 @@ describe('preferences', () => {
   })
 
   it('leaves a yes/no onsite commitment to the model', () => {
-    const f = field({ field_id: 'q', type: 'radio', label: 'Are you able to work onsite five days a week?', options: options('Yes', 'No') })
+    const f = field({
+      field_id: 'q',
+      type: 'radio',
+      label: 'Are you able to work onsite five days a week?',
+      options: options('Yes', 'No'),
+    })
     expect(runDeterministic([f], context()).resolved.has('q')).toBe(false)
   })
 })
@@ -674,7 +709,11 @@ describe('preferences', () => {
 describe('rule matching stays on whole words', () => {
   it('does not mistake look-alike labels for location or start-date fields', () => {
     const fields = [
-      field({ field_id: 'q1', type: 'text', label: 'Are you authorized to work in the United States?' }),
+      field({
+        field_id: 'q1',
+        type: 'text',
+        label: 'Are you authorized to work in the United States?',
+      }),
       field({ field_id: 'q2', type: 'text', label: 'Personal statement' }),
       field({ field_id: 'q3', type: 'text', label: 'Ethnicity' }),
       field({ field_id: 'q4', type: 'text', label: 'Team capacity you have managed' }),

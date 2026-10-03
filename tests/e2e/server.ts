@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { createServer } from 'node:http'
 import next from 'next'
 import jobs from './jobs.json'
-import { profile } from '../../db/seed/ada-lovelace'
+import { profile } from '../fixtures/ada-lovelace'
 import { runMigrations } from '../../db/migrate'
 import { createDatabase, databaseUrl, dropDatabase } from '../support/postgres'
 Object.assign(process.env, { NODE_ENV: 'test' })
@@ -19,16 +19,14 @@ await createDatabase(database)
 process.env.DATABASE_URL = databaseUrl(database)
 await runMigrations(process.env.DATABASE_URL)
 process.env.BETTER_AUTH_URL = 'http://127.0.0.1:3311'
-process.env.BETTER_AUTH_SECRET =
-  'browser-fixture-independent-auth-secret-32-characters'
+process.env.BETTER_AUTH_SECRET = 'browser-fixture-independent-auth-secret-32-characters'
 process.env.BREVO_API_KEY = 'fixture-brevo'
+process.env.AUTH_EMAIL_FROM = 'noreply@example.com'
 process.env.JOBO_API_KEY = 'jbe_test_fixture'
 process.env.OPENROUTER_API_KEY = 'fixture-openrouter'
 process.env.PUBLIC_BASE_URL = 'https://demo.jobo.world'
-process.env.RESUME_URL_SIGNING_SECRET =
-  'fixture-resume-signing-secret-32-characters'
-process.env.API_KEY_ENCRYPTION_SECRET =
-  'fixture-api-key-encryption-secret-32-characters'
+process.env.RESUME_URL_SIGNING_SECRET = 'fixture-resume-signing-secret-32-characters'
+process.env.API_KEY_ENCRYPTION_SECRET = 'fixture-api-key-encryption-secret-32-characters'
 // Production mode: the only visitor key the stubbed Jobo API accepts.
 const VISITOR_KEY = 'jbe_live_e2eVisitorFixture0000_000000000000000000000000000000000000000'
 const productionJobs = [
@@ -57,8 +55,16 @@ const productionJobs = [
     date_posted: '2026-09-28T09:00:00Z',
     valid_through: '2026-10-30T00:00:00Z',
     qualifications: {
-      must_have: { skills: [{ name: 'Kubernetes', type: 'hard' }], education: [], certifications: [] },
-      preferred: { skills: [{ name: 'Terraform', type: 'hard' }], education: [], certifications: ['CKA'] },
+      must_have: {
+        skills: [{ name: 'Kubernetes', type: 'hard' }],
+        education: [],
+        certifications: [],
+      },
+      preferred: {
+        skills: [{ name: 'Terraform', type: 'hard' }],
+        education: [],
+        certifications: ['CKA'],
+      },
     },
     benefits: ['Four-day on-call rotation', 'Home office budget'],
     is_work_auth_required: true,
@@ -109,8 +115,21 @@ const companyProfiles: Record<string, Record<string, unknown>> = {
     ats_provider: 'lever',
     linkedin_url: 'https://www.linkedin.com/company/globex-example',
     github_url: 'https://github.com/globex-example',
-    leadership: [{ name: 'Hank Scorpio', title: 'Chief Executive Officer', linkedin_url: 'https://www.linkedin.com/in/hank-example' }],
-    funding_rounds: [{ investment_type: 'series_b', announced_on: '2025-03-04', raised_amount: '$40M', lead_investor: 'Northwind Capital' }],
+    leadership: [
+      {
+        name: 'Hank Scorpio',
+        title: 'Chief Executive Officer',
+        linkedin_url: 'https://www.linkedin.com/in/hank-example',
+      },
+    ],
+    funding_rounds: [
+      {
+        investment_type: 'series_b',
+        announced_on: '2025-03-04',
+        raised_amount: '$40M',
+        lead_investor: 'Northwind Capital',
+      },
+    ],
     ratings: [{ source: 'glassdoor', rating: '4.4', review_count: 87 }],
     tech_stack: [{ name: 'Kubernetes' }, { name: 'Postgres' }],
     industries: ['Software'],
@@ -118,8 +137,13 @@ const companyProfiles: Record<string, Record<string, unknown>> = {
   },
 }
 /** A canonical facet key from a display value ("Mid Level" → "mid"). */
-const facetKey = (value: string) => value.toLowerCase().replace(/ level$/, '').replace(/-/g, '')
+const facetKey = (value: string) =>
+  value
+    .toLowerCase()
+    .replace(/ level$/, '')
+    .replace(/-/g, '')
 /** What the stub search can filter on, and the facet counts it returns. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- a loose test double for the search body
 function stubSearch(body: Record<string, any>) {
   const lower = (values?: string[]) => (values ?? []).map((v) => v.toLowerCase())
   const q = (body.queries?.[0] ?? '').toLowerCase()
@@ -129,17 +153,21 @@ function stubSearch(body: Record<string, any>) {
     return (
       (body.sources ?? []).includes(j.source) &&
       `${j.title} ${j.company.name}`.toLowerCase().includes(q) &&
-      (!body.industries?.include || lower(body.industries.include).some((i) => industries.includes(i))) &&
+      (!body.industries?.include ||
+        lower(body.industries.include).some((i) => industries.includes(i))) &&
       !lower(body.industries?.exclude).some((i) => industries.includes(i)) &&
-      (!body.company_categories?.include || lower(body.company_categories.include).some((c) => j.company.categories.includes(c))) &&
-      (!body.companies?.include || lower(body.companies.include).some((c) => companyRefs.includes(c))) &&
+      (!body.company_categories?.include ||
+        lower(body.company_categories.include).some((c) => j.company.categories.includes(c))) &&
+      (!body.companies?.include ||
+        lower(body.companies.include).some((c) => companyRefs.includes(c))) &&
       (!body.work_models || body.work_models.includes(facetKey(j.workplace_type))) &&
       (!body.experience_levels || body.experience_levels.includes(facetKey(j.experience_level)))
     )
   })
   const count = (keys: string[]) =>
-    Object.entries(keys.reduce<Record<string, number>>((all, k) => ({ ...all, [k]: (all[k] ?? 0) + 1 }), {}))
-      .map(([key, n]) => ({ key, count: n }))
+    Object.entries(
+      keys.reduce<Record<string, number>>((all, k) => ({ ...all, [k]: (all[k] ?? 0) + 1 }), {}),
+    ).map(([key, n]) => ({ key, count: n }))
   return {
     jobs: matches,
     total: matches.length,
@@ -160,8 +188,12 @@ function stubSearch(body: Record<string, any>) {
           filters: {
             companies: {
               matched: body.companies.include.flatMap((query: string) => {
-                const hit = productionJobs.find((j) => [j.company.id, j.company.website].includes(query.toLowerCase()))
-                return hit ? [{ query, companies: [{ id: hit.company.id, name: hit.company.name }] }] : []
+                const hit = productionJobs.find((j) =>
+                  [j.company.id, j.company.website].includes(query.toLowerCase()),
+                )
+                return hit
+                  ? [{ query, companies: [{ id: hit.company.id, name: hit.company.name }] }]
+                  : []
               }),
             },
           },
@@ -175,11 +207,7 @@ const upstream = new Map<string, Record<string, unknown>>()
 let workerEnabled = true
 globalThis.fetch = async (input, options) => {
   const url = new URL(
-    typeof input === 'string'
-      ? input
-      : input instanceof URL
-        ? input.toString()
-        : input.url,
+    typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url,
   )
   const body = options?.body ? JSON.parse(String(options.body)) : {}
   if (url.hostname === 'api.brevo.com') {
@@ -189,7 +217,11 @@ globalThis.fetch = async (input, options) => {
   if (url.hostname === 'sandbox.jobo.world' && url.pathname === '/api/jobs')
     return Response.json({
       available: true,
-      jobs: jobs.map(j => ({ ...j, available: true, apply_url: `https://sandbox.jobo.world/apply/${j.slug}` })),
+      jobs: jobs.map((j) => ({
+        ...j,
+        available: true,
+        apply_url: `https://sandbox.jobo.world/apply/${j.slug}`,
+      })),
     })
   if (url.hostname === 'openrouter.ai')
     return Response.json({
@@ -233,8 +265,7 @@ globalThis.fetch = async (input, options) => {
       })
     const id = url.pathname.split('/')[4]
     if (url.pathname === '/api/auto-apply/applications') {
-      const key =
-        new Headers(options?.headers).get('Idempotency-Key') ?? 'fixture-id'
+      const key = new Headers(options?.headers).get('Idempotency-Key') ?? 'fixture-id'
       if (!upstream.has(key))
         upstream.set(key, {
           api_version: '2026-08-31',
@@ -278,9 +309,7 @@ globalThis.fetch = async (input, options) => {
   }
   if (url.hostname === '127.0.0.1' || url.hostname === 'localhost')
     return originalFetch(input, options)
-  throw new Error(
-    `Test blocked an unexpected network request to ${url.hostname}`,
-  )
+  throw new Error(`Test blocked an unexpected network request to ${url.hostname}`)
 }
 const app = next({ dev: false, hostname: '127.0.0.1', port: 3311 })
 await app.prepare()
@@ -299,28 +328,17 @@ const server = createServer((req, res) => {
   void handler(req, res)
 })
 await new Promise<void>((resolve) => server.listen(3311, '127.0.0.1', resolve))
-const { claimApplication, renewLease, releaseLease } =
-  await import('../../lib/queue')
-const { advanceApplication } = await import('../../lib/application-engine')
+const { claimApplication } = await import('../../lib/queue')
+const { processApplication } = await import('../../lib/worker')
 let running = false
 const timer = setInterval(async () => {
   if (!workerEnabled || running) return
   running = true
-  const row = await claimApplication('browser-fixture-worker').catch((e) => {
-    console.error('Fixture claim failed', e)
-    return null
-  })
-  if (!row) {
-    running = false
-    return
-  }
   try {
-    await renewLease(row.id, 'browser-fixture-worker')
-    await advanceApplication(row.id, 'browser-fixture-worker')
-    await releaseLease(row.id, 'browser-fixture-worker')
+    const row = await claimApplication('browser-fixture-worker')
+    if (row) await processApplication(row.id, 'browser-fixture-worker')
   } catch (e) {
     console.error('Fixture worker failed', e)
-    await releaseLease(row.id, 'browser-fixture-worker', 'Fixture exchange failed')
   } finally {
     running = false
   }

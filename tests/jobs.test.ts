@@ -25,9 +25,7 @@ describe('sandbox catalog', () => {
     'https://sandbox.jobo.world:8443/apply/multi-step',
     'https://jobs.ashbyhq.com/example',
     'https://sandbox.jobo.world/apply/other',
-  ])('rejects %s', (url) =>
-    expect(validSandboxUrl(url, 'multi-step')).toBe(false),
-  )
+  ])('rejects %s', (url) => expect(validSandboxUrl(url, 'multi-step')).toBe(false))
   it('uses catalog URLs, hides interactive tests, and honors the availability gate', async () => {
     let available = true
     vi.stubGlobal(

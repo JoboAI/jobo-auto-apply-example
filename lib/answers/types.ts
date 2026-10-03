@@ -3,12 +3,7 @@ import type { ResumeProfile } from '@/lib/resume/profile-schema'
 
 /** Where an answer came from. Surfaced per-field in the step log UI. */
 export type AnswerSource =
-  | 'deterministic'
-  | 'llm'
-  | 'repaired'
-  | 'previous_round'
-  | 'dropped'
-  | 'declined'
+  'deterministic' | 'llm' | 'repaired' | 'previous_round' | 'dropped' | 'declined'
 
 export interface AnswerTrace {
   field_id: string

@@ -2,8 +2,9 @@ import type { ResumeProfile } from '@/lib/resume/profile-schema'
 
 /**
  * Sample persona #2. Entirely fictional (the name is a nod, the career is
- * invented; example.com contacts, 555-01xx fictional phone range). Ships with
- * the example so the tutorial's profile dropdown is never empty — db/seed.ts.
+ * invented; example.com contacts, 555-01xx fictional phone range). Used by the
+ * tests (tests/support/seed.ts); the matching PDF is a text-based resume you
+ * can upload to try the app.
  */
 
 export const profile = {
@@ -13,7 +14,7 @@ export const profile = {
     preferred_name: null,
     email: 'grace.hopper@example.com',
     phone: '+12025550143',
-    birthday: null
+    birthday: null,
   },
   location: {
     address: null,
@@ -23,13 +24,13 @@ export const profile = {
     region: 'NY',
     postal_code: null,
     country_code: 'US',
-    country_name: 'United States'
+    country_name: 'United States',
   },
   links: {
     linkedin: null,
     github: null,
     portfolio: 'https://grace-hopper.example.com',
-    other: null
+    other: null,
   },
   experience: [
     {
@@ -46,7 +47,7 @@ export const profile = {
         '- Run the platform group (6 engineers) for a 200-engineer organisation: the Kubernetes ' +
         'fleet, CI/CD, and an internal developer portal.\n' +
         '- Cut service-bootstrap time from two weeks to one afternoon.\n' +
-        '- Halved compute spend with bin-packing and spot pools.'
+        '- Halved compute spend with bin-packing and spot pools.',
     },
     {
       company: 'Flowmatic',
@@ -61,7 +62,7 @@ export const profile = {
       description:
         '- Owned reliability for the payments path (99.99% SLO).\n' +
         '- Introduced error budgets, progressive rollouts, and the incident-review culture the ' +
-        'company still uses.'
+        'company still uses.',
     },
     {
       company: 'Mark One Systems',
@@ -75,8 +76,8 @@ export const profile = {
       currently_working: false,
       description:
         '- Automated a bare-metal fleet of 800 hosts with configuration management and PXE ' +
-        'provisioning, taking rebuild time from days to under an hour.'
-    }
+        'provisioning, taking rebuild time from days to under an hour.',
+    },
   ],
   education: [
     {
@@ -87,8 +88,8 @@ export const profile = {
       start_month: 9,
       start_year: 2009,
       grad_month: 5,
-      grad_year: 2013
-    }
+      grad_year: 2013,
+    },
   ],
   projects: [],
   skills: [
@@ -97,7 +98,7 @@ export const profile = {
     { name: 'Terraform', years: null, favorite: false },
     { name: 'Observability (Prometheus, OpenTelemetry)', years: null, favorite: false },
     { name: 'CI/CD', years: null, favorite: false },
-    { name: 'Linux', years: '9+', favorite: false }
+    { name: 'Linux', years: '9+', favorite: false },
   ],
   languages: ['English'],
   work_authorization: {
@@ -105,7 +106,7 @@ export const profile = {
     canada: false,
     uk: false,
     other_country_codes: [],
-    requires_sponsorship: false
+    requires_sponsorship: false,
   },
   // Declines every self-identification question — the other path.
   eeo: {
@@ -113,14 +114,14 @@ export const profile = {
     ethnicity: ['decline'],
     veteran: 'decline',
     disability: 'decline',
-    lgbtq: 'decline'
+    lgbtq: 'decline',
   },
   preferences: {
     job_types: ['full_time', 'contract'],
     work_setups: ['remote'],
     locations: ['Remote (US)'],
-    min_salary: 220000
-  }
+    min_salary: 220000,
+  },
 } satisfies ResumeProfile
 
 /** Plain-text resume, matching the checked-in grace-hopper.pdf. */

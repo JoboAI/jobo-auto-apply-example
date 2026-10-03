@@ -32,16 +32,12 @@ const SANDBOX_PROVIDER = 'jobosandbox'
 const TTL_MS = 10 * 60 * 1000
 
 const statusSchema = z.object({
-  auto_apply_providers: z.array(
-    z.object({ provider_id: z.string(), display_name: z.string() }),
-  ),
+  auto_apply_providers: z.array(z.object({ provider_id: z.string(), display_name: z.string() })),
 })
 
 let cached: { at: number; list: SupportedAts[] } | null = null
 
-export async function supportedAts(
-  fetchImpl: typeof fetch = fetch,
-): Promise<SupportedAts[]> {
+export async function supportedAts(fetchImpl: typeof fetch = fetch): Promise<SupportedAts[]> {
   if (cached && Date.now() - cached.at < TTL_MS) return cached.list
   try {
     const response = await fetchImpl(config().JOBO_STATUS_URL, {

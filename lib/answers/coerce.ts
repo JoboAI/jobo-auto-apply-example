@@ -168,11 +168,7 @@ export function coerceValue(value: CoercionInput, field: Field): unknown | undef
       const options = field.options ?? []
       if (options.length > 0) {
         const candidates =
-          typeof value === 'boolean'
-            ? undefined
-            : Array.isArray(value)
-              ? value
-              : [String(value)]
+          typeof value === 'boolean' ? undefined : Array.isArray(value) ? value : [String(value)]
         const matched = candidates
           ? matchOption(options, candidates)
           : matchBooleanOption(options, value as boolean)

@@ -1,19 +1,14 @@
 import type { Field, GroupItemField } from '@jobo-ai/autoapply'
 import type { AnswerContext } from './types'
 import { fieldOptions, groupItemOptions } from './options'
-import {
-  ageInYears,
-  currentRole,
-  fullName,
-  type ResumeProfile,
-} from '@/lib/resume/profile-schema'
+import { ageInYears, currentRole, fullName, type ResumeProfile } from '@/lib/resume/profile-schema'
 
 /**
  * Prompt construction for the answer model.
  *
  * The single highest-leverage thing here is *compaction*. A raw `fields[]` from
  * a large ATS form is tens of kilobytes of structure the model does not need,
- * and shipping it whole costs latency (against the ~3 minute step deadline) and
+ * and shipping it whole costs latency (against the ~5 minute step deadline) and
  * accuracy (the relevant details get buried). We project each field down to the
  * keys that actually determine a valid answer.
  */
@@ -59,9 +54,7 @@ function compactField(field: Field) {
     ...(field.format ? { format: field.format } : {}),
     ...(options.length
       ? {
-          options: options
-            .slice(0, MAX_OPTIONS)
-            .map((o) => ({ value: o.value, label: o.label })),
+          options: options.slice(0, MAX_OPTIONS).map((o) => ({ value: o.value, label: o.label })),
           ...(truncated
             ? {
                 options_note: `Only the first ${MAX_OPTIONS} of ${options.length} options are shown. Pick the closest fitting value among them.`,
@@ -153,9 +146,7 @@ export function buildUserPrompt({ ctx, fields, gaps }: PromptInput): string {
     },
     fields_to_answer: [
       ...fields.map(compactField),
-      ...gaps.map((gap) =>
-        compactGap(gap.syntheticId, gap.itemField, gap.groupLabel, gap.item),
-      ),
+      ...gaps.map((gap) => compactGap(gap.syntheticId, gap.itemField, gap.groupLabel, gap.item)),
     ],
   }
 
@@ -177,9 +168,7 @@ export function buildUserPrompt({ ctx, fields, gaps }: PromptInput): string {
  */
 function buildCorrectionBlock(ctx: AnswerContext, fields: Field[]) {
   const fieldMap = new Map(fields.map((f) => [f.field_id, f]))
-  const previous = new Map(
-    ctx.previousAnswers.map((a) => [a.field_id, a.value]),
-  )
+  const previous = new Map(ctx.previousAnswers.map((a) => [a.field_id, a.value]))
   const rejected = ctx.commandErrors.flatMap((error) => {
     const fieldId = error.field_id
     if (!fieldId) return []
@@ -200,9 +189,7 @@ function buildCorrectionBlock(ctx: AnswerContext, fields: Field[]) {
         message: error.message,
         you_sent:
           error.item_index !== null && Array.isArray(sent)
-            ? (sent as Record<string, unknown>[])[error.item_index]?.[
-                error.field_key ?? ''
-              ]
+            ? (sent as Record<string, unknown>[])[error.item_index]?.[error.field_key ?? '']
             : sent,
         ...(fieldOptions(field).length
           ? {

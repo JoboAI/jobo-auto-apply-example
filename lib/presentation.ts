@@ -1,4 +1,11 @@
 import type { ApplicationRow } from '@/db/schema'
+
+/**
+ * How application state is shown to the candidate: labels, whether a retry
+ * is allowed, and readable reasons for refusals. Shared by server pages and
+ * client components, so it imports types only.
+ */
+
 export interface CardApplication {
   id: string
   status: string
@@ -9,9 +16,7 @@ export interface CardApplication {
   answeredSteps: number
   message: string | null
 }
-export function applicationLabel(
-  row: Pick<ApplicationRow, 'status' | 'stopReason'>,
-) {
+export function applicationLabel(row: Pick<ApplicationRow, 'status' | 'stopReason'>) {
   if (row.status === 'submitted') return 'Submitted'
   if (
     row.status === 'canceled' &&
@@ -28,6 +33,10 @@ export function applicationLabel(
   if (row.status === 'queued' || row.status === 'creating') return 'Queued'
   return 'Applying'
 }
+/**
+ * A retry starts a brand-new application, so it is offered only when the last
+ * one definitely did not submit. `submission_unconfirmed` means it may have.
+ */
 export function canRetry(row: Pick<ApplicationRow, 'status' | 'failureCode'>) {
   return (
     ['failed', 'create_failed', 'canceled'].includes(row.status) &&

@@ -1,12 +1,15 @@
-import { config } from './config'
+import { JoboAPIError } from '@jobo-ai/autoapply'
+import { sql } from 'drizzle-orm'
+import { db } from '@/db/client'
+import { authConfig, config } from './config'
+import { jobo } from './jobo/client'
+import { SANDBOX_JOBS_URL } from './jobs'
 
 /**
- * Preflight checks for `npm run doctor`. Each corresponds to a real failure
- * that is painful to diagnose mid-application: a key that cannot list
- * applications, or a model that cannot answer, both surface 30 seconds into a
- * run otherwise. There is nothing network-topological to check any more — the
- * loop is plain HTTPS calls from this app to Jobo, so no tunnel, no public
- * reachability, no clock skew.
+ * Preflight checks for `npm run doctor`. Each one catches a mistake that is
+ * otherwise painful to find: a Jobo key without Auto Apply access or a model
+ * that cannot answer both surface 30 seconds into a run, an unverified Brevo
+ * sender only when the first signup never gets its email.
  */
 
 export interface CheckResult {
@@ -15,85 +18,141 @@ export interface CheckResult {
   detail: string
 }
 
+function failure(name: string, error: unknown): CheckResult {
+  return { status: 'fail', name, detail: error instanceof Error ? error.message : String(error) }
+}
+
+async function checkDatabase(): Promise<CheckResult> {
+  try {
+    const result = await db.execute(
+      sql`select count(*)::int as applied from drizzle.__drizzle_migrations`,
+    )
+    const applied = Number(result.rows[0]?.applied ?? 0)
+    return {
+      status: 'pass',
+      name: 'Postgres',
+      detail: `connected, ${applied} migration(s) applied`,
+    }
+  } catch (error) {
+    return failure('Postgres', error)
+  }
+}
+
+async function checkJoboKey(): Promise<CheckResult> {
+  try {
+    await jobo().applications.list({ limit: 1 })
+    return { status: 'pass', name: 'Jobo API key', detail: 'listing applications succeeded' }
+  } catch (error) {
+    if (error instanceof JoboAPIError)
+      return {
+        status: 'fail',
+        name: 'Jobo API key',
+        detail: `${error.status} ${error.code}: ${error.message}`,
+      }
+    return failure('Jobo API key', error)
+  }
+}
+
 async function checkOpenRouter(): Promise<CheckResult> {
   const c = config()
   try {
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
-      headers: { Authorization: `Bearer ${c.OPENROUTER_API_KEY}`, 'Content-Type': 'application/json' },
+      headers: {
+        Authorization: `Bearer ${c.OPENROUTER_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
       body: JSON.stringify({
         model: c.OPENROUTER_ANSWER_MODEL,
         messages: [{ role: 'user', content: 'Reply with the single word: ok' }],
-        max_tokens: 5
+        max_tokens: 5,
       }),
-      signal: AbortSignal.timeout(30_000)
+      signal: AbortSignal.timeout(30_000),
     })
-    if (response.ok) return { status: 'pass', name: 'OpenRouter', detail: `${c.OPENROUTER_ANSWER_MODEL} responded` }
+    if (response.ok)
+      return {
+        status: 'pass',
+        name: 'OpenRouter',
+        detail: `${c.OPENROUTER_ANSWER_MODEL} responded`,
+      }
     const body = (await response.json().catch(() => ({}))) as { error?: { message?: string } }
-    return { status: 'fail', name: 'OpenRouter', detail: `${response.status} ${body.error?.message ?? ''}`.trim() }
+    return {
+      status: 'fail',
+      name: 'OpenRouter',
+      detail: `${response.status} ${body.error?.message ?? ''}`.trim(),
+    }
   } catch (error) {
-    return { status: 'fail', name: 'OpenRouter', detail: error instanceof Error ? error.message : String(error) }
+    return failure('OpenRouter', error)
   }
 }
 
-async function checkJoboKey(): Promise<CheckResult> {
-  const c = config()
+/** The key works and AUTH_EMAIL_FROM is one of the account's active senders. */
+async function checkBrevo(): Promise<CheckResult> {
+  const { BREVO_API_KEY, AUTH_EMAIL_FROM } = authConfig()
   try {
-    const response = await fetch(`${c.JOBO_API_BASE_URL}/api/auto-apply/applications?limit=1`, {
-      headers: { 'X-Api-Key': c.JOBO_API_KEY, Accept: 'application/json' },
+    const response = await fetch('https://api.brevo.com/v3/senders', {
+      headers: { 'api-key': BREVO_API_KEY, Accept: 'application/json' },
       signal: AbortSignal.timeout(15_000),
-      cache: 'no-store'
     })
-    if (response.ok) return { status: 'pass', name: 'Jobo API key', detail: 'list applications succeeded' }
-    const body = (await response.json().catch(() => ({}))) as { code?: string; detail?: string }
-    return { status: 'fail', name: 'Jobo API key', detail: `${response.status} ${body.code ?? ''} ${body.detail ?? ''}`.trim() }
+    if (!response.ok)
+      return { status: 'fail', name: 'Brevo', detail: `${response.status} listing senders` }
+    const { senders = [] } = (await response.json()) as {
+      senders?: { email: string; active: boolean }[]
+    }
+    const sender = senders.find((s) => s.email.toLowerCase() === AUTH_EMAIL_FROM.toLowerCase())
+    if (sender?.active)
+      return { status: 'pass', name: 'Brevo', detail: `${AUTH_EMAIL_FROM} is an active sender` }
+    return {
+      status: 'fail',
+      name: 'Brevo',
+      detail: `${AUTH_EMAIL_FROM} is not an active sender in this Brevo account, so verification emails will not send`,
+    }
   } catch (error) {
-    return { status: 'fail', name: 'Jobo API key', detail: error instanceof Error ? error.message : String(error) }
+    return failure('Brevo', error)
   }
 }
 
 async function checkSandbox(): Promise<CheckResult> {
   try {
-    const response = await fetch('https://sandbox.jobo.world/api/jobs', {
-      signal: AbortSignal.timeout(10_000),
-      cache: 'no-store'
-    })
+    const response = await fetch(SANDBOX_JOBS_URL, { signal: AbortSignal.timeout(10_000) })
     const body = (await response.json()) as { available?: boolean }
-    if (body.available) return { status: 'pass', name: 'Sandbox', detail: 'scenarios are available' }
+    if (body.available)
+      return { status: 'pass', name: 'Sandbox', detail: 'fictional jobs are available' }
     return {
-      status: 'info',
+      status: 'warn',
       name: 'Sandbox',
-      detail:
-        'Sandbox forms are currently unavailable. API account grants and quotas are checked separately on application creation.'
+      detail: 'the sandbox reports its forms as unavailable right now; try again later',
     }
   } catch {
-    return { status: 'warn', name: 'Sandbox', detail: 'could not read the scenario catalogue' }
+    return { status: 'warn', name: 'Sandbox', detail: 'could not read the sandbox job list' }
   }
 }
 
-/** Resume serving is optional; say plainly what its absence means. */
+/** Resume serving is optional locally; say plainly what its absence means. */
 function checkResumeServing(): CheckResult {
-  if (config().PUBLIC_BASE_URL) {
+  const origin = config().PUBLIC_BASE_URL
+  if (origin)
     return {
       status: 'pass',
       name: 'Resume files',
-      detail: `file fields will be answered with signed URLs on ${config().PUBLIC_BASE_URL}`
+      detail: `Jobo will download resumes from ${origin}`,
     }
-  }
   return {
-    status: 'info',
+    status: 'warn',
     name: 'Resume files',
     detail:
-      'PUBLIC_BASE_URL is not set — file fields are skipped (an application that requires a resume will cancel cleanly). Everything else works.'
+      'PUBLIC_BASE_URL is not set, so resume upload fields are skipped and applications that require a resume stop. Fine for UI work; set it (or use an HTTPS tunnel) to complete applications.',
   }
 }
 
-/** Run every check concurrently. Assumes configIssues() is empty. */
+/** Run every check concurrently. Assumes the environment itself is valid. */
 export async function runPreflight(): Promise<CheckResult[]> {
   return Promise.all([
+    checkDatabase(),
     checkJoboKey(),
     checkOpenRouter(),
+    checkBrevo(),
     checkSandbox(),
-    Promise.resolve(checkResumeServing())
+    Promise.resolve(checkResumeServing()),
   ])
 }

@@ -2,16 +2,33 @@
 import { useCallback, useRef, useState } from 'react'
 
 /**
+ * Why this file exists: uncommitted router updates.
+ *
+ * In this app (Next.js 15.5), a router update started right after a page load
+ * or navigation — a server action's revalidatePath, router.refresh(),
+ * router.push() or a <Link> click — intermittently renders on the client but
+ * never commits: nothing is pending, the server already sent the new data,
+ * and the screen just keeps the old state. The bigger the page, the more often
+ * it happens. The app is built to tolerate it:
+ *
+ *  - useBusy (below) instead of useTransition for action buttons, because
+ *    isPending stays true until that commit lands.
+ *  - pushWithFallback (below) for navigations that follow an action.
+ *  - Polling components compare what they rendered with the live state and
+ *    reload when a change never appears (components/ApplicationLive.tsx,
+ *    components/CardApply.tsx, components/ModeToggle.tsx).
+ *  - PageLink (components/PageLink.tsx), a plain <a>, for links on the
+ *    busiest pages (the job feed and explorer): a full server-rendered load
+ *    instead of a client navigation.
+ *
+ * If you adopt a Next.js release where this no longer reproduces, these can
+ * go back to the framework defaults; the e2e suite exercises every path.
+ */
+
+/**
  * "An action is running" as plain state, for buttons that call Server Actions.
- *
- * Not useTransition: its isPending stays true until React commits the router
- * update the action triggers (revalidatePath re-renders the current page), and
- * in this app that commit intermittently never lands when an action fires
- * right after a page load or navigation — the profile editor sat on
- * "Saving…" for good although the save had finished in milliseconds. This
- * flag clears when the action's own promise settles, whatever the router does.
- *
- * Same shape as useTransition, so call sites read `start(async () => …)`.
+ * The flag clears when the action's own promise settles, whatever the router
+ * does. Same shape as useTransition, so call sites read `start(async () => …)`.
  */
 export function useBusy() {
   const [busy, setBusy] = useState(false)
@@ -31,18 +48,22 @@ export function useBusy() {
 }
 
 /**
- * router.push, with a full page load if the client-side navigation has not
- * landed after a few seconds — the same uncommitted-router-update failure as
- * above, applied to the navigations that follow an action.
+ * router.push (plus a refresh, for pages whose data an action just changed),
+ * with a full page load if the result has not landed after a few seconds.
+ * By default "landed" means the URL changed; pass `landed` when the page
+ * might already be at `href` (for example a mode switch while on /jobs).
  */
 export function pushWithFallback(
-  router: { push: (href: string) => void },
+  router: { push: (href: string) => void; refresh: () => void },
   href: string,
-  afterMs = 4000,
+  options: { refresh?: boolean; landed?: () => boolean; afterMs?: number } = {},
 ) {
-  router.push(href)
+  const { refresh = false, afterMs = 4000 } = options
   const target = new URL(href, window.location.href).pathname
+  const landed = options.landed ?? (() => window.location.pathname === target)
+  router.push(href)
+  if (refresh) router.refresh()
   window.setTimeout(() => {
-    if (window.location.pathname !== target) window.location.assign(href)
+    if (!landed()) window.location.assign(href)
   }, afterMs)
 }

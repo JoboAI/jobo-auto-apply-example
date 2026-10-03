@@ -8,7 +8,7 @@ import {
   fullName,
   normalizeProfile,
   resumeExtractSchema,
-  type ResumeProfile
+  type ResumeProfile,
 } from './profile-schema'
 
 /**
@@ -56,7 +56,7 @@ export async function structureResume(text: string): Promise<ResumeProfile> {
     // no gain in the extracted profile.
     reasoning: false,
     maxTokens: 8192,
-    timeoutMs: 120_000
+    timeoutMs: 120_000,
   })
 
   // Normalise months/years and the currently_working/end-date invariant once,
@@ -67,7 +67,7 @@ export async function structureResume(text: string): Promise<ResumeProfile> {
     ...result.data,
     work_authorization: emptyWorkAuthorization(),
     eeo: emptyEeo(),
-    preferences: emptyPreferences()
+    preferences: emptyPreferences(),
   })
 }
 

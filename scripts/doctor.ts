@@ -1,78 +1,38 @@
 /**
- * Preflight CLI.
+ * Preflight: `npm run doctor`.
  *
- * The checks themselves live in lib/doctor-checks.ts — this file only loads
- * the env the way Next.js would and prints the results.
- *
- *   npm run doctor
+ * Validates the environment (.env.local, or real environment variables), then
+ * checks each service the app depends on. The checks live in
+ * lib/doctor-checks.ts; this file loads the env and prints the results.
  */
+import './load-env'
+import { authConfigIssues, configIssues } from '../lib/config'
+import { closeDb } from '../db/client'
 
-import { readFileSync } from 'node:fs'
-import { configIssues } from '../lib/config'
-import { authConfigIssues } from '../lib/auth'
+console.log('\nJobo Auto Apply — preflight\n')
 
-loadEnv('.env.local')
-loadEnv('.env')
-
-function loadEnv(file: string) {
-  let contents: string
-  try {
-    contents = readFileSync(file, 'utf8')
-  } catch {
-    return
-  }
-  for (const line of contents.split('\n')) {
-    const match = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)$/)
-    if (!match) continue
-    const value = match[2].trim().replace(/^["'](.*)["']$/, '$1')
-    if (process.env[match[1]] === undefined) process.env[match[1]] = value
-  }
-}
-
-async function main() {
-  console.log('\nJobo Auto Apply — preflight\n')
-
-  const issues = [
-    ...configIssues(),
-    ...authConfigIssues().map((key) => ({
-      key,
-      message: 'Required account configuration missing or invalid',
-    })),
-  ]
-  if (!process.env.PUBLIC_BASE_URL)
-    issues.push({
-      key: 'PUBLIC_BASE_URL',
-      message: 'Required for resume downloads',
-    })
-  if (issues.length > 0) {
-    for (const issue of issues)
-      console.log(`✗ env ${issue.key} — ${issue.message}`)
-    console.log(
-      '\nFix the environment first — the network checks depend on it.\n',
-    )
-    process.exit(1)
-  }
-  console.log('✓ Environment — all variables present and well-formed')
-
-  const { runPreflight } = await import('../lib/doctor-checks')
-
-  const results = await runPreflight()
-  for (const result of results) {
-    const icon = { pass: '✓', fail: '✗', warn: '!', info: 'i' }[result.status]
-    console.log(`${icon} ${result.name} — ${result.detail}`)
-  }
-
-  const failed = results.filter((r) => r.status === 'fail').length
-  const warned = results.filter((r) => r.status === 'warn').length
-  console.log(
-    `\n${failed === 0 ? 'Ready.' : `${failed} check${failed === 1 ? '' : 's'} failed.`}${
-      warned ? ` ${warned} warning${warned === 1 ? '' : 's'}.` : ''
-    }\n`,
-  )
-  process.exit(failed === 0 ? 0 : 1)
-}
-
-main().catch((error) => {
-  console.error(error)
+const issues = [...configIssues(), ...authConfigIssues()]
+if (!process.env.DATABASE_URL) issues.push({ key: 'DATABASE_URL', message: 'required' })
+if (issues.length > 0) {
+  for (const issue of issues) console.log(`✗ env ${issue.key} — ${issue.message}`)
+  console.log('\nFix the environment first: the service checks depend on it.\n')
   process.exit(1)
-})
+}
+console.log('✓ Environment — all required variables present and well-formed')
+
+const { runPreflight } = await import('../lib/doctor-checks')
+const results = await runPreflight()
+await closeDb()
+for (const result of results) {
+  const icon = { pass: '✓', fail: '✗', warn: '!', info: 'i' }[result.status]
+  console.log(`${icon} ${result.name} — ${result.detail}`)
+}
+
+const failed = results.filter((r) => r.status === 'fail').length
+const warned = results.filter((r) => r.status === 'warn').length
+console.log(
+  `\n${failed === 0 ? 'Ready.' : `${failed} check${failed === 1 ? '' : 's'} failed.`}${
+    warned ? ` ${warned} warning${warned === 1 ? '' : 's'}.` : ''
+  }\n`,
+)
+process.exit(failed === 0 ? 0 : 1)

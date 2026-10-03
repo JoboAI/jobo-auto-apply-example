@@ -1,8 +1,9 @@
 import { createHash } from 'node:crypto'
+import { createClient, JoboAPIError } from '@jobo-ai/autoapply'
 import { z } from 'zod'
 import { config } from '@/lib/config'
 import type { Job } from '@/lib/jobs-types'
-import { isProductionJobId } from '@/lib/jobs'
+import { isoCountryCode, isProductionJobId } from '@/lib/jobs'
 import { atsLogo, supportedAts, type SupportedAts } from './supported-ats'
 import {
   filtersCacheKey,
@@ -29,11 +30,7 @@ import {
 
 export const PAGE_SIZE = 25
 
-export type JobsErrorKind =
-  | 'unauthorized'
-  | 'insufficient_credits'
-  | 'not_found'
-  | 'unavailable'
+export type JobsErrorKind = 'unauthorized' | 'insufficient_credits' | 'not_found' | 'unavailable'
 
 export class JobsApiError extends Error {
   constructor(
@@ -49,9 +46,7 @@ export { isProductionJobId }
 
 const qualificationSchema = z
   .object({
-    skills: z
-      .array(z.object({ name: z.string(), type: z.string().nullish() }))
-      .nullish(),
+    skills: z.array(z.object({ name: z.string(), type: z.string().nullish() })).nullish(),
     education: z.array(z.string()).nullish(),
     certifications: z.array(z.string()).nullish(),
   })
@@ -159,7 +154,10 @@ export interface JobSearchResult {
 }
 
 function initials(name: string): string {
-  const words = name.replace(/[^\p{L}\p{N} ]/gu, ' ').split(/\s+/).filter(Boolean)
+  const words = name
+    .replace(/[^\p{L}\p{N} ]/gu, ' ')
+    .split(/\s+/)
+    .filter(Boolean)
   const mark = words.length > 1 ? words[0][0] + words[1][0] : (words[0] ?? '?').slice(0, 2)
   return mark.toUpperCase()
 }
@@ -184,8 +182,7 @@ function plainText(value: string): string {
 }
 
 export type DescriptionBlock =
-  | { kind: 'heading' | 'paragraph'; text: string }
-  | { kind: 'list'; items: string[] }
+  { kind: 'heading' | 'paragraph'; text: string } | { kind: 'list'; items: string[] }
 
 /**
  * A job description — sanitized HTML from the API, sometimes markdown or
@@ -208,7 +205,10 @@ export function descriptionBlocks(value: string | null | undefined): Description
   const blocks: DescriptionBlock[] = []
   let paragraph: string[] = []
   const clean = (text: string) =>
-    decodeEntities(text).replace(/\*\*|__|`/g, '').replace(/\s+/g, ' ').trim()
+    decodeEntities(text)
+      .replace(/\*\*|__|`/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
   const flush = () => {
     const text = clean(paragraph.join(' '))
     if (text) blocks.push({ kind: 'paragraph', text })
@@ -249,8 +249,20 @@ function humanize(value: string | null | undefined): string {
     : text.replace(/^./, (c) => c.toUpperCase())
 }
 
-const CURRENCY_SYMBOLS: Record<string, string> = { USD: '$', EUR: '€', GBP: '£', CAD: 'CA$', AUD: 'A$' }
-const PERIODS: Record<string, string> = { yearly: '/yr', monthly: '/mo', weekly: '/wk', daily: '/day', hourly: '/hr' }
+const CURRENCY_SYMBOLS: Record<string, string> = {
+  USD: '$',
+  EUR: '€',
+  GBP: '£',
+  CAD: 'CA$',
+  AUD: 'A$',
+}
+const PERIODS: Record<string, string> = {
+  yearly: '/yr',
+  monthly: '/mo',
+  weekly: '/wk',
+  daily: '/day',
+  hourly: '/hr',
+}
 
 function compact(amount: number): string {
   if (amount >= 1_000_000) return `${+(amount / 1_000_000).toFixed(1)}M`
@@ -282,13 +294,6 @@ export function postedAgo(value: string | null | undefined, now = Date.now()): s
   if (days < 14) return `${days}d ago`
   if (days < 70) return `${Math.floor(days / 7)}w ago`
   return `${Math.floor(days / 30)}mo ago`
-}
-
-/** Only a real ISO alpha-2 reaches the answer engine's work-auth rules. */
-function countryCode(value: string | null | undefined): string | undefined {
-  const code = value?.trim().toUpperCase()
-  if (!code || !/^[A-Z]{2}$/.test(code)) return undefined
-  return code === 'UK' ? 'GB' : code
 }
 
 function httpsUrl(value: string | null | undefined): string {
@@ -329,7 +334,7 @@ export function toJob(dto: JobDto, supported: readonly SupportedAts[]): Job {
     sourceLogoUrl: ats?.logoUrl ?? atsLogo(dto.source),
     listingUrl: httpsUrl(dto.listing_url) || undefined,
     logoUrl: httpsUrl(dto.company?.logo_url) || undefined,
-    countryCode: countryCode(first?.country),
+    countryCode: isoCountryCode(first?.country),
     companyId: dto.company?.id ?? undefined,
     companyWebsite: dto.company?.website ?? undefined,
     industries: dto.company?.industries?.filter(Boolean) ?? [],
@@ -338,7 +343,10 @@ export function toJob(dto: JobDto, supported: readonly SupportedAts[]): Job {
     experienceLevel: dto.experience_level ?? undefined,
     salary: salaryRange(dto.compensation),
     postedAgo: postedAgo(dto.date_posted),
-    skills: (dto.qualifications?.must_have?.skills ?? []).map((s) => s.name).filter(Boolean).slice(0, 8),
+    skills: (dto.qualifications?.must_have?.skills ?? [])
+      .map((s) => s.name)
+      .filter(Boolean)
+      .slice(0, 8),
   }
 }
 
@@ -397,8 +405,10 @@ export function fullPay(pay: JobDto['compensation']): string | undefined {
   if (!min && !max) return undefined
   const code = pay?.currency?.toUpperCase() ?? ''
   const symbol = CURRENCY_SYMBOLS[code] ?? ''
-  const amount = (n: number) => `${symbol}${n.toLocaleString('en-US', { maximumFractionDigits: 2 })}`
-  const range = min && max && min !== max ? `${amount(min)} – ${amount(max)}` : amount((min ?? max)!)
+  const amount = (n: number) =>
+    `${symbol}${n.toLocaleString('en-US', { maximumFractionDigits: 2 })}`
+  const range =
+    min && max && min !== max ? `${amount(min)} – ${amount(max)}` : amount((min ?? max)!)
   const period = PERIOD_WORDS[pay?.period?.toLowerCase() ?? '']
   return [range, code, period].filter(Boolean).join(' ')
 }
@@ -420,8 +430,9 @@ function qualificationSet(bucket: z.infer<typeof qualificationSchema>): Qualific
         .filter(Boolean),
     ),
   ]
-  const list = (values: string[] | null | undefined) =>
-    [...new Set((values ?? []).map((v) => v.trim()).filter(Boolean))]
+  const list = (values: string[] | null | undefined) => [
+    ...new Set((values ?? []).map((v) => v.trim()).filter(Boolean)),
+  ]
   return {
     skills: names(false),
     softSkills: names(true),
@@ -439,7 +450,7 @@ export function toJobDetail(dto: JobDto, now = Date.now()): JobDetail {
       l.location?.trim() || [l.city, l.region, l.country].filter((v) => v?.trim()).join(', ')
     if (!label || seen.has(label.toLowerCase())) continue
     seen.add(label.toLowerCase())
-    locations.push({ label, flag: flag(countryCode(l.country)) })
+    locations.push({ label, flag: flag(isoCountryCode(l.country)) })
   }
   const eligibility: JobDetail['eligibility'] = []
   const flagRow = (label: string, value: boolean | null | undefined) =>
@@ -452,7 +463,9 @@ export function toJobDetail(dto: JobDto, now = Date.now()): JobDetail {
   const updated = postedAgo(dto.updated_at, now)
   return {
     normalizedTitle:
-      normalized && normalized.toLowerCase() !== dto.title.trim().toLowerCase() ? normalized : undefined,
+      normalized && normalized.toLowerCase() !== dto.title.trim().toLowerCase()
+        ? normalized
+        : undefined,
     summary: summary || undefined,
     description: descriptionBlocks(dto.description),
     companySummary: text(dto.company?.summary) && plainText(dto.company!.summary!),
@@ -496,7 +509,10 @@ async function call(
     throw new JobsApiError('unavailable', 'The Jobo API could not be reached. Please try again.')
   }
   if (response.status === 401)
-    throw new JobsApiError('unauthorized', 'Jobo rejected this API key. Reconnect with a valid key.')
+    throw new JobsApiError(
+      'unauthorized',
+      'Jobo rejected this API key. Reconnect with a valid key.',
+    )
   if (response.status === 402)
     throw new JobsApiError(
       'insufficient_credits',
@@ -511,7 +527,11 @@ export async function searchProductionJobs(
   fetchImpl: typeof fetch = fetch,
 ): Promise<JobSearchResult> {
   const supported = await supportedAts()
-  const request = toSearchBody(filters, supported.map((a) => a.id), PAGE_SIZE)
+  const request = toSearchBody(
+    filters,
+    supported.map((a) => a.id),
+    PAGE_SIZE,
+  )
   const response = await call(apiKey, '/api/jobs/search', fetchImpl, request)
   if (response.status === 400)
     throw new JobsApiError('unavailable', 'Jobo could not run that search. Try removing a filter.')
@@ -547,7 +567,8 @@ export async function searchProductionJobs(
  * Search is billed per job returned, and the feed re-renders every few
  * seconds while an application is running (router.refresh polling). Without
  * this, watching one application would quietly spend the visitor's credits.
- * One web replica, so a process-local map is enough.
+ * A process-local map is enough for one web process; with several, use a
+ * shared cache (Redis, or a table) instead.
  */
 const SEARCH_TTL_MS = 5 * 60 * 1000
 const searchCache = new Map<string, { at: number; result: JobSearchResult }>()
@@ -682,7 +703,13 @@ export interface CompanyProfile {
   industries: string[]
   categories: string[]
   investors: string[]
-  fundingRounds: { type?: string; date?: string; amount?: string; valuation?: string; lead?: string }[]
+  fundingRounds: {
+    type?: string
+    date?: string
+    amount?: string
+    valuation?: string
+    lead?: string
+  }[]
   founders: string[]
   leadership: { name: string; title?: string; linkedinUrl?: string; avatarUrl?: string }[]
   ratings: { source: string; rating: string; reviewCount?: number; url?: string }[]
@@ -695,7 +722,10 @@ export interface CompanyProfile {
 
 /** "series_b" → "Series B". */
 function titleCase(value: string): string {
-  return value.replace(/[_-]+/g, ' ').trim().replace(/\b\p{L}/gu, (c) => c.toUpperCase())
+  return value
+    .replace(/[_-]+/g, ' ')
+    .trim()
+    .replace(/\b\p{L}/gu, (c) => c.toUpperCase())
 }
 
 function sizeLabel(value: string): string {
@@ -724,13 +754,15 @@ export function toCompanyProfile(dto: z.infer<typeof companySchema>): CompanyPro
   )
   add('Company type', text(dto.company_type) && humanize(dto.company_type))
   add('Industry', text(dto.primary_industry))
-  add('Acquired by', dto.is_acquired || text(dto.acquired_by_company) ? text(dto.acquired_by_company) ?? 'Yes' : undefined)
+  add(
+    'Acquired by',
+    dto.is_acquired || text(dto.acquired_by_company)
+      ? (text(dto.acquired_by_company) ?? 'Yes')
+      : undefined,
+  )
   add('Status', dto.operating_status?.toLowerCase() === 'closed' ? 'Closed' : undefined)
   add('Agency', dto.is_agency ? 'Staffing / recruiting agency' : undefined)
-  const stack = [
-    ...(dto.tech_stack ?? []).map((t) => t.name ?? ''),
-    ...(dto.technologies ?? []),
-  ]
+  const stack = [...(dto.tech_stack ?? []).map((t) => t.name ?? ''), ...(dto.technologies ?? [])]
   const summary = plainText(dto.summary || '')
   const description = plainText(dto.description || '')
   const about = description || summary
@@ -752,12 +784,20 @@ export function toCompanyProfile(dto: z.infer<typeof companySchema>): CompanyPro
   return {
     id: dto.id,
     name: dto.name,
-    legalName: legalName && legalName.toLowerCase() !== dto.name.trim().toLowerCase() ? legalName : undefined,
-    tagline: description && summary && !description.startsWith(summary.slice(0, 60)) ? truncate(summary, 220) : undefined,
+    legalName:
+      legalName && legalName.toLowerCase() !== dto.name.trim().toLowerCase()
+        ? legalName
+        : undefined,
+    tagline:
+      description && summary && !description.startsWith(summary.slice(0, 60))
+        ? truncate(summary, 220)
+        : undefined,
     about: about ? truncate(about, 1500) : undefined,
     website: linkUrls.website,
     logoUrl: httpsUrl(dto.logo_url) || undefined,
-    links: COMPANY_LINK_KINDS.flatMap((kind) => (linkUrls[kind] ? [{ kind, href: linkUrls[kind]! }] : [])),
+    links: COMPANY_LINK_KINDS.flatMap((kind) =>
+      linkUrls[kind] ? [{ kind, href: linkUrls[kind]! }] : [],
+    ),
     atsProvider: text(dto.ats_provider)?.toLowerCase(),
     facts,
     industries: dto.industries ?? [],
@@ -765,7 +805,9 @@ export function toCompanyProfile(dto: z.infer<typeof companySchema>): CompanyPro
     investors: uniqueText(dto.investors ?? [], 8),
     fundingRounds: (dto.funding_rounds ?? [])
       .filter((r) => r.investment_type || r.raised_amount)
-      .sort((a, b) => (Date.parse(b.announced_on ?? '') || 0) - (Date.parse(a.announced_on ?? '') || 0))
+      .sort(
+        (a, b) => (Date.parse(b.announced_on ?? '') || 0) - (Date.parse(a.announced_on ?? '') || 0),
+      )
       .slice(0, 6)
       .map((r) => ({
         type: text(r.investment_type) && titleCase(r.investment_type!),
@@ -787,7 +829,14 @@ export function toCompanyProfile(dto: z.infer<typeof companySchema>): CompanyPro
     ratings: (dto.ratings ?? []).flatMap((r) => {
       const rating = r.rating == null ? '' : String(r.rating).trim()
       return text(r.source) && rating
-        ? [{ source: titleCase(r.source!), rating, reviewCount: r.review_count ?? undefined, url: href(r.url) }]
+        ? [
+            {
+              source: titleCase(r.source!),
+              rating,
+              reviewCount: r.review_count ?? undefined,
+              url: href(r.url),
+            },
+          ]
         : []
     }),
     press: (dto.press_references ?? [])
@@ -802,8 +851,14 @@ export function toCompanyProfile(dto: z.infer<typeof companySchema>): CompanyPro
     products: (dto.products ?? [])
       .filter((p) => text(p.name))
       .slice(0, 6)
-      .map((p) => ({ name: p.name!.trim(), description: text(p.description) && truncate(plainText(p.description!), 200) })),
-    acquisitions: uniqueText((dto.acquisitions ?? []).map((a) => a.acquiree_name ?? a.title), 8),
+      .map((p) => ({
+        name: p.name!.trim(),
+        description: text(p.description) && truncate(plainText(p.description!), 200),
+      })),
+    acquisitions: uniqueText(
+      (dto.acquisitions ?? []).map((a) => a.acquiree_name ?? a.title),
+      8,
+    ),
     subsidiaries: uniqueText(dto.subsidiary_list ?? [], 8),
     techStack: [...new Set(stack.map((t) => t.trim()).filter(Boolean))].slice(0, 20),
   }
@@ -812,7 +867,8 @@ export function toCompanyProfile(dto: z.infer<typeof companySchema>): CompanyPro
 /**
  * The full company profile — headcount, funding, investors, HQ, tech stack —
  * which job search only carries a summary of. Free, so it is fetched per job
- * page and cached an hour per company.
+ * page and cached an hour per key + company (a key that stops working must
+ * stop seeing data).
  */
 const COMPANY_TTL_MS = 60 * 60 * 1000
 const companyCache = new Map<string, { at: number; profile: CompanyProfile | null }>()
@@ -823,13 +879,14 @@ export async function getCompanyProfile(
   fetchImpl: typeof fetch = fetch,
 ): Promise<CompanyProfile | null> {
   if (!isProductionJobId(companyId)) return null
-  const hit = companyCache.get(companyId)
+  const cacheKey = `${keyHash(apiKey)}:${companyId}`
+  const hit = companyCache.get(cacheKey)
   if (hit && Date.now() - hit.at < COMPANY_TTL_MS) return hit.profile
   const response = await call(apiKey, `/api/companies/${companyId}`, fetchImpl)
   if (!response.ok && response.status !== 404)
     throw new JobsApiError('unavailable', `Company lookup failed (HTTP ${response.status}).`)
   const profile = response.ok ? toCompanyProfile(companySchema.parse(await response.json())) : null
-  companyCache.set(companyId, { at: Date.now(), profile })
+  companyCache.set(cacheKey, { at: Date.now(), profile })
   if (companyCache.size > 1000) companyCache.delete(companyCache.keys().next().value!)
   return profile
 }
@@ -868,13 +925,14 @@ export async function getProductionJobDetail(
 }
 
 /** Cheap shape check before any network call. */
-export function looksLikeApiKey(value: string): boolean {
+function looksLikeApiKey(value: string): boolean {
   return /^jbe_(live|test)_[A-Za-z0-9_-]{20,}$/.test(value)
 }
 
 /**
- * Prove a key works before storing it: a free authenticated job lookup
- * (401 = bad key; 404 for the nil id = fine), then the Auto Apply list route,
+ * Prove a key works before storing it. First a free authenticated job lookup
+ * (401 = bad key; 404 for the nil id = fine; 402 = no search credits, but
+ * the key itself is valid), then the Auto Apply list route through the SDK,
  * which is what applications will call. Whether the account has Auto Apply
  * enabled is only checked by Jobo at create time, so that surfaces on the
  * first application instead.
@@ -884,22 +942,45 @@ export async function verifyApiKey(
   fetchImpl: typeof fetch = fetch,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   if (!looksLikeApiKey(apiKey))
-    return { ok: false, error: 'That does not look like a Jobo API key — they start with jbe_live_ or jbe_test_.' }
+    return {
+      ok: false,
+      error: 'That does not look like a Jobo API key — they start with jbe_live_ or jbe_test_.',
+    }
   try {
     const probe = await call(apiKey, '/api/jobs/00000000-0000-0000-0000-000000000000', fetchImpl)
     if (!probe.ok && probe.status !== 404)
-      return { ok: false, error: `Jobo could not check this key (HTTP ${probe.status}). Please try again.` }
-    const autoApply = await call(apiKey, '/api/auto-apply/applications?limit=1', fetchImpl)
-    if (autoApply.status === 403)
-      return { ok: false, error: 'This key cannot use Auto Apply. Check its permissions in the Jobo dashboard.' }
-    if (!autoApply.ok)
-      return { ok: false, error: `Jobo could not check Auto Apply access (HTTP ${autoApply.status}). Please try again.` }
+      return {
+        ok: false,
+        error: `Jobo could not check this key (HTTP ${probe.status}). Please try again.`,
+      }
+  } catch (error) {
+    if (!(error instanceof JobsApiError))
+      return { ok: false, error: 'Jobo could not check this key. Please try again.' }
+    if (error.kind !== 'insufficient_credits') return { ok: false, error: error.message }
+  }
+  try {
+    await createClient({
+      apiKey,
+      baseUrl: apiBase(),
+      fetch: fetchImpl,
+      maxRetries: 0,
+    }).applications.list({
+      limit: 1,
+    })
     return { ok: true }
   } catch (error) {
-    if (error instanceof JobsApiError && error.kind !== 'insufficient_credits')
-      return { ok: false, error: error.message }
-    // Out of search credits still means the key itself is valid.
-    if (error instanceof JobsApiError) return { ok: true }
-    return { ok: false, error: 'Jobo could not check this key. Please try again.' }
+    if (!(error instanceof JoboAPIError))
+      return { ok: false, error: 'Jobo could not check Auto Apply access. Please try again.' }
+    if (error.status === 401)
+      return { ok: false, error: 'Jobo rejected this API key. Reconnect with a valid key.' }
+    if (error.status === 403)
+      return {
+        ok: false,
+        error: 'This key cannot use Auto Apply. Check its permissions in the Jobo dashboard.',
+      }
+    return {
+      ok: false,
+      error: `Jobo could not check Auto Apply access (HTTP ${error.status}). Please try again.`,
+    }
   }
 }

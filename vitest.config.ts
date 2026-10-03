@@ -9,10 +9,12 @@ export default defineConfig({
     globalSetup: ['tests/support/global-setup.ts'],
     setupFiles: ['tests/support/database.ts'],
     hookTimeout: 30_000,
+    // Expected warnings (canceled applications, failed exchanges) are noise here.
+    env: { LOG_LEVEL: 'silent' },
   },
   resolve: {
     alias: {
-      '@': fileURLToPath(new URL('.', import.meta.url))
-    }
-  }
+      '@': fileURLToPath(new URL('.', import.meta.url)),
+    },
+  },
 })

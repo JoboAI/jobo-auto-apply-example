@@ -1,3 +1,4 @@
+import { PageLink } from '@/components/PageLink'
 import { Check, Code2, Gift, GraduationCap, MapPin, Award, Sparkles, X } from 'lucide-react'
 import type { Job } from '@/lib/jobs-types'
 import type { JobDetail, QualificationSet } from '@/lib/jobo/jobs-api'
@@ -11,9 +12,9 @@ function SkillTags({ skills, link = true }: { skills: string[]; link?: boolean }
     <div className="tag-row skill-row">
       {skills.map((skill) =>
         link ? (
-          <a key={skill} className="tag" href={`/jobs?skill=${encodeURIComponent(skill)}`}>
+          <PageLink key={skill} className="tag" href={`/jobs?skill=${encodeURIComponent(skill)}`}>
             {skill}
-          </a>
+          </PageLink>
         ) : (
           <span key={skill} className="tag">
             {skill}
@@ -125,11 +126,15 @@ export function JobDetailPanel({
   fact('Work model', job.workModel)
   fact(
     'Posted',
-    detail.postedOn && `${detail.postedOn}${job.postedAgo ? ` · ${job.postedAgo.toLowerCase()}` : ''}`,
+    detail.postedOn &&
+      `${detail.postedOn}${job.postedAgo ? ` · ${job.postedAgo.toLowerCase()}` : ''}`,
   )
   fact('Closes', detail.closesOn)
   fact('Updated', detail.updatedAgo)
-  fact('Hiring through', job.sourceName && <AtsBadge name={job.sourceName} logoUrl={job.sourceLogoUrl} />)
+  fact(
+    'Hiring through',
+    job.sourceName && <AtsBadge name={job.sourceName} logoUrl={job.sourceLogoUrl} />,
+  )
   fact('Requisition ID', detail.externalId && <code>{detail.externalId}</code>)
   fact('Normalized title', detail.normalizedTitle)
 
@@ -190,8 +195,12 @@ export function JobDetailPanel({
         <>
           <h2>Qualifications</h2>
           <div className="qualifications">
-            {!isEmpty(detail.mustHave) && <Qualifications title="Must have" set={detail.mustHave} />}
-            {!isEmpty(detail.preferred) && <Qualifications title="Nice to have" set={detail.preferred} />}
+            {!isEmpty(detail.mustHave) && (
+              <Qualifications title="Must have" set={detail.mustHave} />
+            )}
+            {!isEmpty(detail.preferred) && (
+              <Qualifications title="Nice to have" set={detail.preferred} />
+            )}
           </div>
         </>
       )}

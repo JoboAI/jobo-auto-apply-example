@@ -7,8 +7,12 @@ import { requireUser } from '@/lib/session'
 import { getJobs, isProductionJobId } from '@/lib/jobs'
 import { getProductionJob } from '@/lib/jobo/jobs-api'
 import { productionApiKey } from '@/lib/user-settings'
+
+/** Save or unsave a job (sandbox slug or production job id) for the user. */
 export async function saveJobAction(jobId: string, saved: boolean) {
   const user = await requireUser()
+  if (typeof jobId !== 'string' || !jobId || jobId.length > 100 || typeof saved !== 'boolean')
+    return { ok: false, error: 'Invalid request.' }
   try {
     if (saved) {
       if (isProductionJobId(jobId)) {
@@ -17,11 +21,10 @@ export async function saveJobAction(jobId: string, saved: boolean) {
         await getProductionJob(apiKey, jobId)
       } else if (!(await getJobs()).some((j) => j.slug === jobId))
         return { ok: false, error: 'Job unavailable.' }
-      await db.insert(savedJobs)
-        .values({ userId: user.id, jobId })
-        .onConflictDoNothing()
+      await db.insert(savedJobs).values({ userId: user.id, jobId }).onConflictDoNothing()
     } else
-      await db.delete(savedJobs)
+      await db
+        .delete(savedJobs)
         .where(and(eq(savedJobs.userId, user.id), eq(savedJobs.jobId, jobId)))
     revalidatePath('/jobs')
     revalidatePath('/saved')

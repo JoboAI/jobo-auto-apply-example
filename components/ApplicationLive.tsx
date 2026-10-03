@@ -11,11 +11,9 @@ const STUCK_POLLS = 3
  * Keeps the page current while the worker runs.
  *
  * It polls a small status endpoint and calls router.refresh() only when the
- * server has something the page does not show yet. Polling alone used to
- * leave the page stuck: after a cancel, Next's refreshes fetched the new
- * state but intermittently never committed it, so "Queued" stayed on screen
- * until a manual reload. Comparing the rendered fingerprint with the live one
- * detects that, and a full reload recovers.
+ * server has something the page does not show yet. If the same change is
+ * still not on screen a few polls later, the refresh did not commit (see
+ * lib/use-busy.ts), and a full reload recovers.
  */
 export function LiveRefresh({
   id,
@@ -80,13 +78,7 @@ export function LiveRefresh({
     </span>
   ) : null
 }
-export function CancelButton({
-  id,
-  requested,
-}: {
-  id: string
-  requested: boolean
-}) {
+export function CancelButton({ id, requested }: { id: string; requested: boolean }) {
   const [pending, start] = useBusy(),
     [error, setError] = useState(''),
     router = useRouter()

@@ -4,10 +4,17 @@ import { validSandboxUrl } from '@/lib/jobs'
 export function SandboxJobLink({ url, slug, title }: { url: string; slug: string; title: string }) {
   if (!validSandboxUrl(url, slug)) return null
   return (
-    <a className="sandbox-job-link" href={url} target="_blank" rel="noopener noreferrer"
-      aria-label={`View ${title} on sandbox.jobo.world (opens in a new tab)`}>
+    <a
+      className="sandbox-job-link"
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      aria-label={`View ${title} on sandbox.jobo.world (opens in a new tab)`}
+    >
       <span>View sandbox form</span>
-      <strong>sandbox.jobo.world <ArrowUpRight size={15} /></strong>
+      <strong>
+        sandbox.jobo.world <ArrowUpRight size={15} />
+      </strong>
     </a>
   )
 }
@@ -33,16 +40,20 @@ export function ProductionJobLink({
     return null
   }
   return (
-    <a className="sandbox-job-link" href={url} target="_blank" rel="noopener noreferrer"
-      aria-label={`View ${title} on ${host} (opens in a new tab)`}>
+    <a
+      className="sandbox-job-link"
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      aria-label={`View ${title} on ${host} (opens in a new tab)`}
+    >
       <span className="ats-badge">
-        {atsLogoUrl && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={atsLogoUrl} alt="" width={16} height={16} />
-        )}
+        {atsLogoUrl && <img src={atsLogoUrl} alt="" width={16} height={16} />}
         {ats ? `View on ${ats}` : 'View original posting'}
       </span>
-      <strong>{host} <ArrowUpRight size={15} /></strong>
+      <strong>
+        {host} <ArrowUpRight size={15} />
+      </strong>
     </a>
   )
 }

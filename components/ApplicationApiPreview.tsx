@@ -27,11 +27,7 @@ function Message({
   const head = `${startLine}\n${headers}`.trim()
   return (
     <>
-      <CodeBlock
-        title="Headers"
-        copy={head}
-        label={`${kind} ${index} headers`}
-      >
+      <CodeBlock title="Headers" copy={head} label={`${kind} ${index} headers`}>
         <span className="tok-start">{startLine}</span>
         {headers && `\n${headers}`}
       </CodeBlock>
@@ -54,10 +50,25 @@ function Message({
 export function ApplicationApiPreview({ exchanges }: { exchanges: ApiExchangeRow[] }) {
   return (
     <details className="surface api-preview">
-      <summary><span><Braces size={21} /> API requests & responses</span><span className="tag">{exchanges.length} exchanges</span></summary>
-      <p>Actual HTTP exchanges with the Auto Apply API. Credentials, cookies, and signed download tokens are removed before recording. Your application answers remain visible only to you.</p>
-      {!exchanges.length && <div className="answers-empty">No API exchanges were recorded for this application. Capture starts with new API calls; older responses cannot be reconstructed.</div>}
-      {exchanges.length >= 100 && <p className="notice">Showing the first 100 exchanges. Further calls are not captured.</p>}
+      <summary>
+        <span>
+          <Braces size={21} /> API requests & responses
+        </span>
+        <span className="tag">{exchanges.length} exchanges</span>
+      </summary>
+      <p>
+        Actual HTTP exchanges with the Auto Apply API. Credentials, cookies, and signed download
+        tokens are removed before recording. Your application answers remain visible only to you.
+      </p>
+      {!exchanges.length && (
+        <div className="answers-empty">
+          No API exchanges were recorded for this application. Capture starts with new API calls;
+          older responses cannot be reconstructed.
+        </div>
+      )}
+      {exchanges.length >= 100 && (
+        <p className="notice">Showing the first 100 exchanges. Further calls are not captured.</p>
+      )}
       {exchanges.map((exchange, index) => {
         const n = index + 1
         const url = new URL(exchange.url)
@@ -66,15 +77,29 @@ export function ApplicationApiPreview({ exchanges }: { exchanges: ApiExchangeRow
         return (
           <details className="api-exchange" key={exchange.id}>
             <summary>
-              <span><b>{exchange.method}</b> {url.pathname}</span>
-              <span className="tag">{exchange.statusCode ? `HTTP ${exchange.statusCode}` : exchange.finishedAt ? 'No response' : 'Awaiting response'}</span>
+              <span>
+                <b>{exchange.method}</b> {url.pathname}
+              </span>
+              <span className="tag">
+                {exchange.statusCode
+                  ? `HTTP ${exchange.statusCode}`
+                  : exchange.finishedAt
+                    ? 'No response'
+                    : 'Awaiting response'}
+              </span>
             </summary>
-            <div className="api-exchange-meta">Exchange {n} · {displayDate(exchange.startedAt)}{exchange.elapsedMs !== null && ` · ${(exchange.elapsedMs / 1000).toFixed(2)}s`}</div>
+            <div className="api-exchange-meta">
+              Exchange {n} · {displayDate(exchange.startedAt)}
+              {exchange.elapsedMs !== null && ` · ${(exchange.elapsedMs / 1000).toFixed(2)}s`}
+            </div>
             <div className="api-payloads">
               <section aria-label={`Request ${n}`}>
                 <div className="api-message-head">
                   <h3>Request</h3>
-                  <CopyCurlButton text={curlCommand(exchange.method, exchange.url, request)} index={n} />
+                  <CopyCurlButton
+                    text={curlCommand(exchange.method, exchange.url, request)}
+                    index={n}
+                  />
                 </div>
                 <Message
                   kind="Request"
@@ -97,7 +122,12 @@ export function ApplicationApiPreview({ exchanges }: { exchanges: ApiExchangeRow
                     message={response}
                   />
                 ) : (
-                  <p className="code-empty">No response body was recorded{exchange.finishedAt ? '.' : ' yet. A request without a recorded response does not confirm submission.'}</p>
+                  <p className="code-empty">
+                    No response body was recorded
+                    {exchange.finishedAt
+                      ? '.'
+                      : ' yet. A request without a recorded response does not confirm submission.'}
+                  </p>
                 )}
               </section>
             </div>

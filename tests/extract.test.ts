@@ -30,7 +30,7 @@ function pdfWithText(lines: string[]): Uint8Array {
     'EDUCATION',
     'University of London - BSc Mathematics - Sep 2015 to Jun 2018',
     'SKILLS',
-    'TypeScript, Go, PostgreSQL, Kubernetes, Terraform'
+    'TypeScript, Go, PostgreSQL, Kubernetes, Terraform',
   ]
   const content =
     'BT /F1 11 Tf 40 760 Td 14 TL\n' +
@@ -41,10 +41,14 @@ function pdfWithText(lines: string[]): Uint8Array {
     Buffer.from('<</Type/Catalog/Pages 2 0 R>>'),
     Buffer.from('<</Type/Pages/Kids[3 0 R]/Count 1>>'),
     Buffer.from(
-      '<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]/Resources<</Font<</F1 5 0 R>>>>/Contents 4 0 R>>'
+      '<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]/Resources<</Font<</F1 5 0 R>>>>/Contents 4 0 R>>',
     ),
-    Buffer.concat([Buffer.from(`<</Length ${stream.length}>>stream\n`), stream, Buffer.from('\nendstream')]),
-    Buffer.from('<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>')
+    Buffer.concat([
+      Buffer.from(`<</Length ${stream.length}>>stream\n`),
+      stream,
+      Buffer.from('\nendstream'),
+    ]),
+    Buffer.from('<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>'),
   ]
 
   let out = Buffer.from('%PDF-1.4\n')
@@ -60,13 +64,13 @@ function pdfWithText(lines: string[]): Uint8Array {
   }
   out = Buffer.concat([
     out,
-    Buffer.from(`trailer<</Size ${objects.length + 1}/Root 1 0 R>>\nstartxref\n${xref}\n%%EOF\n`)
+    Buffer.from(`trailer<</Size ${objects.length + 1}/Root 1 0 R>>\nstartxref\n${xref}\n%%EOF\n`),
   ])
   return new Uint8Array(out)
 }
 
 describe('extractResumeText', () => {
-  it('leaves the caller\'s buffer usable — pdf.js detaches what it is handed', async () => {
+  it("leaves the caller's buffer usable — pdf.js detaches what it is handed", async () => {
     const bytes = pdfWithText(['Ada Lovelace', 'Senior Backend Engineer'])
     const before = bytes.byteLength
 
@@ -91,7 +95,9 @@ describe('extractResumeText', () => {
   })
 
   it('rejects a non-PDF before touching pdf.js', async () => {
-    await expect(extractResumeText(new Uint8Array(Buffer.from('just text')))).rejects.toThrow(/not a PDF/i)
+    await expect(extractResumeText(new Uint8Array(Buffer.from('just text')))).rejects.toThrow(
+      /not a PDF/i,
+    )
   })
 
   it('looksLikePdf checks the magic bytes', () => {

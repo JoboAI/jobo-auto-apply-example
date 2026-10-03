@@ -16,11 +16,7 @@ import { ApplicationAnswers } from '@/components/ApplicationAnswers'
 import { ProductionJobLink, SandboxJobLink } from '@/components/SandboxJobLink'
 import { atsLogo } from '@/lib/jobo/supported-ats'
 import { fullName } from '@/lib/resume/profile-schema'
-export default async function Page({
-  params,
-}: {
-  params: Promise<{ id: string }>
-}) {
+export default async function Page({ params }: { params: Promise<{ id: string }> }) {
   const user = await requireUser(),
     { id } = await params
   const [row] = await db
@@ -34,8 +30,12 @@ export default async function Page({
     .from(steps)
     .where(eq(steps.applicationId, id))
     .orderBy(asc(steps.receivedAt))
-  const exchanges = await db.select().from(apiExchanges)
-    .where(eq(apiExchanges.applicationId, id)).orderBy(asc(apiExchanges.startedAt)).limit(100)
+  const exchanges = await db
+    .select()
+    .from(apiExchanges)
+    .where(eq(apiExchanges.applicationId, id))
+    .orderBy(asc(apiExchanges.startedAt))
+    .limit(100)
   const profile = (
     await db
       .select()
@@ -91,12 +91,14 @@ export default async function Page({
           </p>
           {row.workerError && active && (
             <div className="notice warning">
-              We hit a temporary connection issue. We’re checking the
-              application safely before continuing.
+              We hit a temporary connection issue. We’re checking the application safely before
+              continuing.
             </div>
           )}
-          {history.some(step => step.answersJson?.length) && (
-            <a href="#answers-sent-heading" className="button secondary small answer-jump">View answers sent</a>
+          {history.some((step) => step.answersJson?.length) && (
+            <a href="#answers-sent-heading" className="button secondary small answer-jump">
+              View answers sent
+            </a>
           )}
           <ol className="timeline">
             <li>
@@ -105,44 +107,27 @@ export default async function Page({
               </span>
               <div>
                 <strong>Application queued</strong>
-                <p>
-                  Your reviewed profile and resume were saved for this
-                  application.
-                </p>
+                <p>Your reviewed profile and resume were saved for this application.</p>
               </div>
             </li>
             <li>
-              <span
-                className={`timeline-dot ${history.length || submitted ? 'complete' : ''}`}
-              >
-                {history.length || submitted ? (
-                  <Check size={14} />
-                ) : (
-                  <Circle size={12} />
-                )}
+              <span className={`timeline-dot ${history.length || submitted ? 'complete' : ''}`}>
+                {history.length || submitted ? <Check size={14} /> : <Circle size={12} />}
               </span>
               <div>
                 <strong>Preparing your answers</strong>
                 <p>Mapping confirmed candidate data to the fields discovered by the API.</p>
               </div>
             </li>
-            {history.map((step, i) => (
+            {history.map((step) => (
               <li key={`${step.stepId}-${step.correctionRound}`}>
-                <span
-                  className={`timeline-dot ${step.submittedAt ? 'complete' : ''}`}
-                >
-                  {step.submittedAt ? (
-                    <Check size={14} />
-                  ) : (
-                    <Circle size={12} />
-                  )}
+                <span className={`timeline-dot ${step.submittedAt ? 'complete' : ''}`}>
+                  {step.submittedAt ? <Check size={14} /> : <Circle size={12} />}
                 </span>
                 <div>
                   <strong>
                     Application step {step.sequence}
-                    {step.correctionRound > 0
-                      ? ` · revision ${step.correctionRound}`
-                      : ''}
+                    {step.correctionRound > 0 ? ` · revision ${step.correctionRound}` : ''}
                   </strong>
                   <p>
                     {step.error
@@ -160,11 +145,7 @@ export default async function Page({
                 {submitted ? <Check size={14} /> : <Circle size={12} />}
               </span>
               <div>
-                <strong>
-                  {submitted
-                    ? 'Submission confirmed'
-                    : 'Submission confirmation'}
-                </strong>
+                <strong>{submitted ? 'Submission confirmed' : 'Submission confirmation'}</strong>
                 <p>
                   {submitted
                     ? 'The application service confirmed your submission.'
@@ -190,9 +171,18 @@ export default async function Page({
             </span>
             <h3>Candidate snapshot</h3>
             {row.sandbox ? (
-              <SandboxJobLink url={row.applyUrl} slug={row.jobId ?? ''} title={row.jobSnapshot?.role ?? 'application'} />
+              <SandboxJobLink
+                url={row.applyUrl}
+                slug={row.jobId ?? ''}
+                title={row.jobSnapshot?.role ?? 'application'}
+              />
             ) : (
-              <ProductionJobLink url={row.jobSnapshot?.listingUrl ?? row.applyUrl} ats={row.jobSnapshot?.sourceName} atsLogoUrl={atsLogo(row.jobSnapshot?.source)} title={row.jobSnapshot?.role ?? 'application'} />
+              <ProductionJobLink
+                url={row.jobSnapshot?.listingUrl ?? row.applyUrl}
+                ats={row.jobSnapshot?.sourceName}
+                atsLogoUrl={atsLogo(row.jobSnapshot?.source)}
+                title={row.jobSnapshot?.role ?? 'application'}
+              />
             )}
             <p>{row.profileSnapshot?.resumeFilename}</p>
             <dl className="snapshot-details">
@@ -201,22 +191,11 @@ export default async function Page({
               <dt>Email</dt>
               <dd>{row.profileSnapshot?.data.personal.email}</dd>
             </dl>
-            <small>
-              This application uses the profile you confirmed when you clicked
-              Apply.
-            </small>
+            <small>This application uses the profile you confirmed when you clicked Apply.</small>
             {canRetry(row) && row.jobId && (
               <div className="retry-area">
-                <p>
-                  Updated your profile? You can try again with your current
-                  resume.
-                </p>
-                <ApplyButton
-                  jobId={row.jobId}
-                  profileId={profile?.id}
-                  available={true}
-                  retry
-                />
+                <p>Updated your profile? You can try again with your current resume.</p>
+                <ApplyButton jobId={row.jobId} profileId={profile?.id} available={true} retry />
               </div>
             )}
           </div>

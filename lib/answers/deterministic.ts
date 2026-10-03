@@ -1,9 +1,4 @@
-import type {
-  Field,
-  FileValue,
-  GroupItemField,
-  RepeatingGroupField,
-} from '@jobo-ai/autoapply'
+import type { Field, FileValue, GroupItemField, RepeatingGroupField } from '@jobo-ai/autoapply'
 import type { AnswerContext } from './types'
 import {
   ageInYears,
@@ -66,9 +61,7 @@ function named(...patterns: RegExp[]) {
       normalize(field.field_id),
       normalize(field.label),
     ]
-    return patterns.some((pattern) =>
-      values.some((value) => pattern.test(value)),
-    )
+    return patterns.some((pattern) => values.some((value) => pattern.test(value)))
   }
 }
 
@@ -77,10 +70,7 @@ const EU_COUNTRIES = new Set(
   'AT BE BG HR CY CZ DK EE FI FR DE GR HU IE IT LV LT LU MT NL PL PT RO SK SI ES SE'.split(' '),
 )
 
-function linkOf(
-  profile: ResumeProfile,
-  type: keyof ResumeProfile['links'],
-): string | undefined {
+function linkOf(profile: ResumeProfile, type: keyof ResumeProfile['links']): string | undefined {
   return profile.links[type] ?? undefined
 }
 
@@ -167,9 +157,7 @@ function resumeFile(field: Field, ctx: AnswerContext): FileValue | undefined {
   if (patterns.length > 0) {
     const ok = patterns.some((pattern) =>
       pattern.trim().endsWith('/*')
-        ? ctx.resumeContentType
-            .toLowerCase()
-            .startsWith(pattern.trim().slice(0, -1).toLowerCase())
+        ? ctx.resumeContentType.toLowerCase().startsWith(pattern.trim().slice(0, -1).toLowerCase())
         : ctx.resumeContentType.toLowerCase() === pattern.trim().toLowerCase(),
     )
     if (!ok) return undefined
@@ -205,9 +193,7 @@ export function logicalFingerprint(
               ? ['skill', 'name']
               : []
 
-  let selected = preferred.filter(
-    (name) => item[name] !== undefined && item[name] !== null,
-  )
+  let selected = preferred.filter((name) => item[name] !== undefined && item[name] !== null)
   if (selected.length === 0) selected = Object.keys(item).sort()
 
   return selected
@@ -223,20 +209,12 @@ export function logicalFingerprint(
         !Array.isArray(value) &&
         typeof (value as Record<string, unknown>).selection === 'object' &&
         (value as Record<string, unknown>).selection !== null &&
-        'value' in
-          ((value as Record<string, unknown>).selection as Record<
-            string,
-            unknown
-          >)
+        'value' in ((value as Record<string, unknown>).selection as Record<string, unknown>)
       ) {
-        value = (
-          (value as Record<string, unknown>).selection as { value: unknown }
-        ).value
+        value = ((value as Record<string, unknown>).selection as { value: unknown }).value
       }
       const rendered =
-        typeof value === 'string'
-          ? value.trim().toLowerCase()
-          : JSON.stringify(value)
+        typeof value === 'string' ? value.trim().toLowerCase() : JSON.stringify(value)
       return `${name}:${rendered}`
     })
     .join('|')
@@ -247,10 +225,7 @@ export function logicalFingerprint(
 const PLATFORM_MAX_GROUP_ITEMS = 100
 
 /** Source rows for a group type, most recent first. */
-function groupRows(
-  field: RepeatingGroupField,
-  profile: ResumeProfile,
-): Record<string, unknown>[] {
+function groupRows(field: RepeatingGroupField, profile: ResumeProfile): Record<string, unknown>[] {
   switch (field.group_type) {
     case 'work_experience':
       return experienceByRecency(profile).map((row) => {
@@ -265,9 +240,7 @@ function groupRows(
           type,
           location: row.location,
           start_date: yearMonth(row.start_year, row.start_month),
-          end_date: row.currently_working
-            ? null
-            : yearMonth(row.end_year, row.end_month),
+          end_date: row.currently_working ? null : yearMonth(row.end_year, row.end_month),
           is_current: row.currently_working,
           current: row.currently_working,
           description: row.description,
@@ -320,8 +293,8 @@ function groupRows(
       }))
 
     default:
-      // `certification` has no home in this profile (Simplify keeps none
-      // either), and `other` is provider-specific by definition.
+      // `certification` has no home in this profile, and `other` is
+      // provider-specific by definition.
       return []
   }
 }
@@ -352,10 +325,7 @@ export function buildGroup(
   const advertised = field.item_fields ?? []
   if (advertised.length === 0) return undefined
 
-  const max = Math.min(
-    field.max_items ?? PLATFORM_MAX_GROUP_ITEMS,
-    PLATFORM_MAX_GROUP_ITEMS,
-  )
+  const max = Math.min(field.max_items ?? PLATFORM_MAX_GROUP_ITEMS, PLATFORM_MAX_GROUP_ITEMS)
   const items: Record<string, unknown>[] = []
   const gaps: GroupBuildResult['gaps'] = []
   const fingerprints = new Set<string>()
@@ -371,9 +341,7 @@ export function buildGroup(
       let raw = row[itemField.key]
       if (raw instanceof Candidates) {
         const options = groupItemOptions(itemField)
-        raw = options.length
-          ? matchOption(options, raw.values)?.value
-          : raw.values[0]
+        raw = options.length ? matchOption(options, raw.values)?.value : raw.values[0]
       }
 
       if (itemField.key === 'end_date' && isCurrent) {
@@ -407,8 +375,7 @@ export function buildGroup(
 
     const index = items.length
     items.push(item)
-    for (const itemField of pending)
-      gaps.push({ index, key: itemField.key, itemField })
+    for (const itemField of pending) gaps.push({ index, key: itemField.key, itemField })
   }
 
   if (items.length === 0) return undefined
@@ -432,8 +399,7 @@ const RULES: Rule[] = [
   {
     id: 'repeating_group',
     match: (f) => f.type === 'repeating_group',
-    resolve: (f, ctx) =>
-      f.type === 'repeating_group' ? buildGroup(f, ctx)?.items : undefined,
+    resolve: (f, ctx) => (f.type === 'repeating_group' ? buildGroup(f, ctx)?.items : undefined),
   },
 
   // Identity. "Preferred first name" must precede first_name, which would
@@ -444,8 +410,7 @@ const RULES: Rule[] = [
       /preferred_?(first_?)?name|nick_?name/,
       /preferred (first )?name|nickname|name you go by/,
     ),
-    resolve: (_, c) =>
-      c.profile.personal.preferred_name ?? c.profile.personal.first_name,
+    resolve: (_, c) => c.profile.personal.preferred_name ?? c.profile.personal.first_name,
   },
   {
     id: 'first_name',
@@ -493,7 +458,7 @@ const RULES: Rule[] = [
     resolve: (_, c) => c.profile.personal.birthday,
   },
   {
-    // Simplify derives pronouns from gender. Same matching as the sensitive
+    // Pronouns are derived from gender. Same matching as the sensitive
     // path, so a form that does not flag the field still gets it right.
     id: 'pronouns',
     match: named(/pronoun/),
@@ -509,10 +474,7 @@ const RULES: Rule[] = [
   },
   {
     id: 'current_company',
-    match: named(
-      /current_?(company|employer)/,
-      /^current (company|employer)( name)?$/,
-    ),
+    match: named(/current_?(company|employer)/, /^current (company|employer)( name)?$/),
     resolve: (_, c) => currentRole(c.profile)?.company,
   },
 
@@ -526,9 +488,7 @@ const RULES: Rule[] = [
     resolve: (f, c) => {
       const needs = c.profile.work_authorization.requires_sponsorship
       if (needs === null || needs === undefined) return undefined
-      return fieldOptions(f).length
-        ? matchBooleanOption(fieldOptions(f), needs)?.value
-        : needs
+      return fieldOptions(f).length ? matchBooleanOption(fieldOptions(f), needs)?.value : needs
     },
   },
   {
@@ -562,10 +522,7 @@ const RULES: Rule[] = [
     id: 'region',
     // Whole words only: a bare /state/ also caught "United States" and
     // "statement", and the first matching rule wins.
-    match: named(
-      /\b(state|province|region|county)\b/,
-      /^(state|province|region|county)$/,
-    ),
+    match: named(/\b(state|province|region|county)\b/, /^(state|province|region|county)$/),
     resolve: (f, c) =>
       fieldOptions(f).length
         ? matchOption(fieldOptions(f), [c.profile.location.region])?.value
@@ -584,10 +541,7 @@ const RULES: Rule[] = [
   },
   {
     id: 'address_line1',
-    match: named(
-      /address\.?line_?1|street/,
-      /^(address|street address|address line 1)$/,
-    ),
+    match: named(/address\.?line_?1|street/, /^(address|street address|address line 1)$/),
     resolve: (_, c) => c.profile.location.address,
   },
   {
@@ -624,21 +578,14 @@ const RULES: Rule[] = [
   },
   {
     id: 'portfolio',
-    match: named(
-      /portfolio|website|personal_?site/,
-      /^(portfolio|website|personal website)$/,
-    ),
-    resolve: (_, c) =>
-      linkOf(c.profile, 'portfolio') ?? linkOf(c.profile, 'other'),
+    match: named(/portfolio|website|personal_?site/, /^(portfolio|website|personal website)$/),
+    resolve: (_, c) => linkOf(c.profile, 'portfolio') ?? linkOf(c.profile, 'other'),
   },
 
   // Preferences
   {
     id: 'desired_salary',
-    match: named(
-      /salary|compensation|expected_?pay/,
-      /salary|compensation expectation/,
-    ),
+    match: named(/salary|compensation|expected_?pay/, /salary|compensation expectation/),
     resolve: (_, c) => c.profile.preferences.min_salary ?? undefined,
   },
   {
@@ -666,9 +613,7 @@ const RULES: Rule[] = [
       /(preferred|desired) (work )?locations?$/,
     ),
     resolve: (_, c) =>
-      c.profile.preferences.locations.length
-        ? c.profile.preferences.locations
-        : undefined,
+      c.profile.preferences.locations.length ? c.profile.preferences.locations : undefined,
   },
 ]
 
@@ -694,7 +639,7 @@ function authorizationTarget(field: Field, ctx: AnswerContext): string | undefin
 }
 
 /**
- * Simplify's three yes/no flags for the US, Canada and the UK, plus the
+ * The profile's three yes/no flags for the US, Canada and the UK, plus the
  * candidate's own list for everywhere else. "Authorized to work in the EU?"
  * is about the bloc, not the posting's country: a German citizen may work in
  * the Netherlands.
@@ -723,10 +668,7 @@ export interface DeterministicResult {
   /** Sensitive fields we deliberately declined, with the reason. */
   declined: Map<string, string>
   /** Group gaps to hand to the LLM, keyed by synthetic id. */
-  groupGaps: Map<
-    string,
-    { field: Field; index: number; key: string; itemField: GroupItemField }
-  >
+  groupGaps: Map<string, { field: Field; index: number; key: string; itemField: GroupItemField }>
   /** Items already built per group field, so gaps can be written back in. */
   groupItems: Map<string, Record<string, unknown>[]>
 }
@@ -735,10 +677,7 @@ export interface DeterministicResult {
  * Run the deterministic pass over a field list.
  * Anything absent from `resolved` and `declined` is the LLM's problem.
  */
-export function runDeterministic(
-  fields: Field[],
-  ctx: AnswerContext,
-): DeterministicResult {
+export function runDeterministic(fields: Field[], ctx: AnswerContext): DeterministicResult {
   const resolved = new Map<string, ResolvedAnswer>()
   const declined = new Map<string, string>()
   const groupGaps: DeterministicResult['groupGaps'] = new Map()
@@ -801,12 +740,8 @@ export function runDeterministic(
     const raw = rule.resolve(field, ctx)
     if (raw === undefined || raw === null || raw === '') {
       if (rule.id === 'work_authorized' || rule.id === 'requires_sponsorship')
-        declined.set(
-          field.field_id,
-          'Missing explicit work authorization information',
-        )
-      else if (rule.id === 'over_18')
-        declined.set(field.field_id, 'Missing date of birth')
+        declined.set(field.field_id, 'Missing explicit work authorization information')
+      else if (rule.id === 'over_18') declined.set(field.field_id, 'Missing date of birth')
       continue
     }
 

@@ -25,7 +25,6 @@ const dataDir = resolve(process.env.DATA_DIR ?? './.data')
 export type Database = NodePgDatabase<typeof schema>
 
 declare global {
-  // eslint-disable-next-line no-var
   var __joboDb: { db: Database; pool: Pool } | undefined
 }
 

@@ -1,6 +1,7 @@
 'use client'
 import Link from 'next/link'
-import { useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useSearchParams } from 'next/navigation'
 import {
   Search,
   MapPin,
@@ -25,6 +26,7 @@ import {
 } from '@/lib/jobo/job-filters'
 import { SaveButton } from './JobActions'
 import { CardApply } from './CardApply'
+import { PageLink } from './PageLink'
 import { ProductionJobLink, SandboxJobLink } from './SandboxJobLink'
 import { ApiDocsLink, SourceLink } from './SourceLink'
 import type { CardApplication } from '@/lib/presentation'
@@ -64,20 +66,38 @@ export function JobFeed({
 }) {
   const production = mode === 'production'
   const profileReady = !!profileId
-  const [query, setQuery] = useState(''),
-    [location, setLocation] = useState(''),
-    [department, setDepartment] = useState('')
+  // Sandbox filters live in the URL (?q=&location=&department=), written with
+  // replaceState: a reload, or the live-progress fallback reload, keeps them.
+  const params = useSearchParams()
+  const [query, setQuery] = useState(search ? '' : (params.get('q') ?? '')),
+    [location, setLocation] = useState(search ? '' : (params.get('location') ?? '')),
+    [department, setDepartment] = useState(search ? '' : (params.get('department') ?? ''))
+  useEffect(() => {
+    if (search) return
+    const url = new URL(window.location.href)
+    for (const [key, value] of [
+      ['q', query],
+      ['location', location],
+      ['department', department],
+    ] as const)
+      if (value) url.searchParams.set(key, value)
+      else url.searchParams.delete(key)
+    if (url.href !== window.location.href)
+      window.history.replaceState(window.history.state, '', url)
+  }, [search, query, location, department])
   const filtered = useMemo(
     () =>
-      search ? jobs : jobs.filter(
-        (j) =>
-          (!savedOnly || savedIds.includes(j.slug)) &&
-          `${j.role} ${j.company} ${j.department}`
-            .toLowerCase()
-            .includes(query.toLowerCase()) &&
-          (!location || j.location === location) &&
-          (!department || j.department === department),
-      ),
+      search
+        ? jobs
+        : jobs.filter(
+            (j) =>
+              (!savedOnly || savedIds.includes(j.slug)) &&
+              `${j.role} ${j.company} ${j.department}`
+                .toLowerCase()
+                .includes(query.toLowerCase()) &&
+              (!location || j.location === location) &&
+              (!department || j.department === department),
+          ),
     [jobs, search, savedOnly, savedIds, query, location, department],
   )
   return (
@@ -121,10 +141,9 @@ export function JobFeed({
                 Every filter is one API call.
               </h2>
               <p>
-                Filter by company, industry, business model, seniority, salary
-                and skills, with live facet counts. Each job also carries an
-                enriched company profile. Open “See the API call” to copy the
-                request.
+                Filter by company, industry, business model, seniority, salary and skills, with live
+                facet counts. Each job also carries an enriched company profile. Open “See the API
+                call” to copy the request.
               </p>
               <a
                 href="https://jobo.world/docs/guides/search-recipes"
@@ -132,8 +151,7 @@ export function JobFeed({
                 target="_blank"
                 rel="noopener noreferrer"
               >
-                <BookOpen size={16} /> Search recipes &amp; facets docs{' '}
-                <ArrowUpRight size={16} />
+                <BookOpen size={16} /> Search recipes &amp; facets docs <ArrowUpRight size={16} />
               </a>
               <SourceLink />
             </div>
@@ -146,8 +164,8 @@ export function JobFeed({
                 An API behind every step.
               </h2>
               <p>
-                Explore how this app creates applications, answers discovered
-                fields, and tracks results with the Auto Apply API.
+                Explore how this app creates applications, answers discovered fields, and tracks
+                results with the Auto Apply API.
               </p>
               <Link href="/profiles" className="text-link">
                 {profileReady ? 'Review test profile' : 'Set up a test profile'}{' '}
@@ -195,77 +213,69 @@ export function JobFeed({
           {search ? (
             search.summary
           ) : (
-          <div className="filters">
-            <label className="search-field">
-              <Search size={18} />
-              <input
-                aria-label="Search jobs"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Job title, company, or keyword"
-              />
-            </label>
-            <div className="filter-row">
-              <SlidersHorizontal size={16} />
-              <select
-                aria-label="Filter by location"
-                value={location}
-                onChange={(e) => setLocation(e.target.value)}
-              >
-                <option value="">All locations</option>
-                {[...new Set(jobs.map((j) => j.location))].sort().map((l) => (
-                  <option key={l}>{l}</option>
-                ))}
-              </select>
-              <select
-                aria-label="Filter by department"
-                value={department}
-                onChange={(e) => setDepartment(e.target.value)}
-              >
-                <option value="">All departments</option>
-                {[...new Set(jobs.map((j) => j.department))].sort().map((d) => (
-                  <option key={d}>{d}</option>
-                ))}
-              </select>
-              {(query || location || department) && (
-                <button
-                  className="text-link"
-                  onClick={() => {
-                    setQuery('')
-                    setLocation('')
-                    setDepartment('')
-                  }}
+            <div className="filters">
+              <label className="search-field">
+                <Search size={18} />
+                <input
+                  aria-label="Search jobs"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Job title, company, or keyword"
+                />
+              </label>
+              <div className="filter-row">
+                <SlidersHorizontal size={16} />
+                <select
+                  aria-label="Filter by location"
+                  value={location}
+                  onChange={(e) => setLocation(e.target.value)}
                 >
-                  Clear
-                </button>
-              )}
+                  <option value="">All locations</option>
+                  {[...new Set(jobs.map((j) => j.location))].sort().map((l) => (
+                    <option key={l}>{l}</option>
+                  ))}
+                </select>
+                <select
+                  aria-label="Filter by department"
+                  value={department}
+                  onChange={(e) => setDepartment(e.target.value)}
+                >
+                  <option value="">All departments</option>
+                  {[...new Set(jobs.map((j) => j.department))].sort().map((d) => (
+                    <option key={d}>{d}</option>
+                  ))}
+                </select>
+                {(query || location || department) && (
+                  <button
+                    className="text-link"
+                    onClick={() => {
+                      setQuery('')
+                      setLocation('')
+                      setDepartment('')
+                    }}
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
             </div>
-          </div>
           )}
           <div className="job-grid">
             {filtered.map((job, i) => (
               <article className="job-card" key={job.slug}>
                 <div className="spread">
-                  <Link
+                  <PageLink
                     href={`/jobs/${job.slug}`}
                     className={`company-mark color-${i % 5}${job.logoUrl ? ' company-logo' : ''}`}
                     aria-label={job.company}
                   >
-                    {job.logoUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={job.logoUrl} alt="" loading="lazy" />
-                    ) : (
-                      job.mark
-                    )}
-                  </Link>
-                  <SaveButton
-                    jobId={job.slug}
-                    saved={savedIds.includes(job.slug)}
-                  />
+                    {job.logoUrl ? <img src={job.logoUrl} alt="" loading="lazy" /> : job.mark}
+                  </PageLink>
+                  <SaveButton jobId={job.slug} saved={savedIds.includes(job.slug)} />
                 </div>
                 <p className="company-name">
                   {search && job.companyId ? (
-                    <a
+                    <PageLink
                       href={filtersHref(
                         withFilters(search.filters, {
                           companies: { include: [job.companyId], exclude: [] },
@@ -274,17 +284,20 @@ export function JobFeed({
                       title={`All jobs at ${job.company}`}
                     >
                       {job.company}
-                    </a>
+                    </PageLink>
                   ) : (
                     job.company
                   )}
                   {job.companyCategories?.length ? (
-                    <span className="company-kind"> · {job.companyCategories.slice(0, 2).join(' · ')}</span>
+                    <span className="company-kind">
+                      {' '}
+                      · {job.companyCategories.slice(0, 2).join(' · ')}
+                    </span>
                   ) : null}
                 </p>
-                <Link href={`/jobs/${job.slug}`} className="job-title">
+                <PageLink href={`/jobs/${job.slug}`} className="job-title">
                   {job.role}
-                </Link>
+                </PageLink>
                 <div className="job-location">
                   <MapPin size={14} />
                   {job.location}
@@ -302,14 +315,14 @@ export function JobFeed({
                     {job.workModel && <span className="tag">{job.workModel}</span>}
                     {job.experienceLevel && <span className="tag">{job.experienceLevel}</span>}
                     {job.industries?.slice(0, 2).map((industry) => (
-                      <a
+                      <PageLink
                         key={industry}
                         className="tag purple-tag"
                         href={toggleSignedHref(search.filters, 'industries', industry)}
                         title={`Filter by ${industry}`}
                       >
                         {industry}
-                      </a>
+                      </PageLink>
                     ))}
                   </div>
                 ) : (
@@ -319,13 +332,16 @@ export function JobFeed({
                   </div>
                 )}
                 <div className="job-card-footer">
-                  <span
-                    className={`availability ${!job.available ? 'unavailable' : ''}`}
-                  >
+                  <span className={`availability ${!job.available ? 'unavailable' : ''}`}>
                     <span />
                     {job.available && production && job.sourceLogoUrl && (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img className="ats-mark" src={job.sourceLogoUrl} alt="" width={14} height={14} />
+                      <img
+                        className="ats-mark"
+                        src={job.sourceLogoUrl}
+                        alt=""
+                        width={14}
+                        height={14}
+                      />
                     )}
                     {job.available
                       ? production
@@ -335,9 +351,9 @@ export function JobFeed({
                         ? 'Not supported'
                         : 'Currently unavailable'}
                   </span>
-                  <Link href={`/jobs/${job.slug}`} className="job-view">
+                  <PageLink href={`/jobs/${job.slug}`} className="job-view">
                     View role <ArrowUpRight size={15} />
-                  </Link>
+                  </PageLink>
                 </div>
                 <CardApply
                   jobId={job.slug}
@@ -362,12 +378,12 @@ export function JobFeed({
           {search && search.totalPages > 1 && (
             <nav className="pager" aria-label="Job result pages">
               {search.page > 1 ? (
-                <a
+                <PageLink
                   className="button secondary small"
                   href={pageHref(search.filters, search.page - 1)}
                 >
                   <ArrowLeft size={15} /> Previous
-                </a>
+                </PageLink>
               ) : (
                 <span />
               )}
@@ -375,12 +391,12 @@ export function JobFeed({
                 Page {search.page} of {search.totalPages.toLocaleString('en')}
               </span>
               {search.page < search.totalPages ? (
-                <a
+                <PageLink
                   className="button secondary small"
                   href={pageHref(search.filters, search.page + 1)}
                 >
                   Next <ArrowRight size={15} />
-                </a>
+                </PageLink>
               ) : (
                 <span />
               )}
@@ -390,9 +406,7 @@ export function JobFeed({
             <div className="empty-state">
               <Bookmark size={30} />
               <h2>
-                {savedOnly && !savedIds.length
-                  ? 'Save a job to apply later.'
-                  : 'No matching jobs.'}
+                {savedOnly && !savedIds.length ? 'Save a job to apply later.' : 'No matching jobs.'}
               </h2>
               <p>
                 {savedOnly && !savedIds.length
@@ -400,76 +414,72 @@ export function JobFeed({
                   : 'Try another keyword or clear your filters.'}
               </p>
               {savedOnly && (
-                <Link href="/jobs" className="button secondary">
+                <PageLink href="/jobs" className="button secondary">
                   Discover jobs <ArrowRight size={16} />
-                </Link>
+                </PageLink>
               )}
             </div>
           )}
         </section>
         {!search && (
-        <aside className="feed-aside">
-          <div className="aside-card integration-help">
-            <span className="eyebrow">BUILD YOUR INTEGRATION</span>
-            <h3>Your data. Jobo’s form automation.</h3>
-            <p>
-              The API returns typed fields and fills the form. Your app supplies
-              the answers; this demo uses profile data and OpenRouter.
-            </p>
-            <ApiDocsLink />
-            <SourceLink />
-          </div>
-          <div className="aside-card">
-            <span className="eyebrow">TEST CANDIDATE PROFILE</span>
-            <div className="profile-ring">
-              <span>{name.slice(0, 1).toUpperCase()}</span>
-              {profileReady && (
-                <i>
-                  <Check size={12} />
-                </i>
-              )}
+          <aside className="feed-aside">
+            <div className="aside-card integration-help">
+              <span className="eyebrow">BUILD YOUR INTEGRATION</span>
+              <h3>Your data. Jobo’s form automation.</h3>
+              <p>
+                The API returns typed fields and fills the form. Your app supplies the answers; this
+                demo uses profile data and OpenRouter.
+              </p>
+              <ApiDocsLink />
+              <SourceLink />
             </div>
-            <h3>
-              {profileReady
-                ? 'Ready to test Auto Apply.'
-                : 'Set up your test data.'}
-            </h3>
-            <p>
-              {profileReady
-                ? 'Your confirmed profile supplies the facts used to answer application fields.'
-                : 'Upload and review a resume before running a sandbox application.'}
-            </p>
-            <Link href="/profiles" className="button secondary full-width">
-              {profileReady ? 'View my profile' : 'Complete profile'}
-              <ArrowUpRight size={15} />
-            </Link>
-          </div>
-          <div className="aside-card activity-card">
-            <div className="section-heading">
-              <h3>Demo activity</h3>
-              <BriefcaseBusiness size={18} />
+            <div className="aside-card">
+              <span className="eyebrow">TEST CANDIDATE PROFILE</span>
+              <div className="profile-ring">
+                <span>{name.slice(0, 1).toUpperCase()}</span>
+                {profileReady && (
+                  <i>
+                    <Check size={12} />
+                  </i>
+                )}
+              </div>
+              <h3>{profileReady ? 'Ready to test Auto Apply.' : 'Set up your test data.'}</h3>
+              <p>
+                {profileReady
+                  ? 'Your confirmed profile supplies the facts used to answer application fields.'
+                  : 'Upload and review a resume before running a sandbox application.'}
+              </p>
+              <Link href="/profiles" className="button secondary full-width">
+                {profileReady ? 'View my profile' : 'Complete profile'}
+                <ArrowUpRight size={15} />
+              </Link>
             </div>
-            <div className="metric">
-              <strong>{applicationCount}</strong>
-              <span>Applications started</span>
+            <div className="aside-card activity-card">
+              <div className="section-heading">
+                <h3>Demo activity</h3>
+                <BriefcaseBusiness size={18} />
+              </div>
+              <div className="metric">
+                <strong>{applicationCount}</strong>
+                <span>Applications started</span>
+              </div>
+              <div className="metric">
+                <strong>{submittedCount}</strong>
+                <span>Successfully submitted</span>
+              </div>
+              <Link className="text-link" href="/applications">
+                View applications <ArrowRight size={15} />
+              </Link>
             </div>
-            <div className="metric">
-              <strong>{submittedCount}</strong>
-              <span>Successfully submitted</span>
+            <div className="quiet-note">
+              <Sparkles size={16} />
+              <p>
+                {production
+                  ? 'Production mode calls the Jobs and Auto Apply APIs with your own key — the same calls your integration would make.'
+                  : 'This demo calls the Auto Apply API against fictional jobs. Use the source to see how to integrate it into your own app.'}
+              </p>
             </div>
-            <Link className="text-link" href="/applications">
-              View applications <ArrowRight size={15} />
-            </Link>
-          </div>
-          <div className="quiet-note">
-            <Sparkles size={16} />
-            <p>
-              {production
-                ? 'Production mode calls the Jobs and Auto Apply APIs with your own key — the same calls your integration would make.'
-                : 'This demo calls the Auto Apply API against fictional jobs. Use the source to see how to integrate it into your own app.'}
-            </p>
-          </div>
-        </aside>
+          </aside>
         )}
       </div>
     </>

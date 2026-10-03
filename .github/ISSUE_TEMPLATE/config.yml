@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Auto Apply API documentation
+    url: https://jobo.world/docs/api-reference/auto-apply/auto-apply
+    about: How the API works, its contract and error codes.
+  - name: Report a security vulnerability
+    url: mailto:support@jobo.world
+    about: Please report vulnerabilities privately, not as issues.
