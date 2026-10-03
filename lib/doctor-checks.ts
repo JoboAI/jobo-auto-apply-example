@@ -86,26 +86,47 @@ async function checkOpenRouter(): Promise<CheckResult> {
   }
 }
 
-/** The key works and AUTH_EMAIL_FROM is one of the account's active senders. */
+/**
+ * The key works and Brevo will accept AUTH_EMAIL_FROM: either it is one of the
+ * account's active senders, or its domain is authenticated in Brevo (then any
+ * address on that domain can send).
+ */
 async function checkBrevo(): Promise<CheckResult> {
   const { BREVO_API_KEY, AUTH_EMAIL_FROM } = authConfig()
-  try {
-    const response = await fetch('https://api.brevo.com/v3/senders', {
+  const get = (path: string) =>
+    fetch(`https://api.brevo.com/v3${path}`, {
       headers: { 'api-key': BREVO_API_KEY, Accept: 'application/json' },
       signal: AbortSignal.timeout(15_000),
     })
-    if (!response.ok)
-      return { status: 'fail', name: 'Brevo', detail: `${response.status} listing senders` }
-    const { senders = [] } = (await response.json()) as {
+  try {
+    const [sendersResponse, domainsResponse] = await Promise.all([
+      get('/senders'),
+      get('/senders/domains'),
+    ])
+    if (!sendersResponse.ok)
+      return { status: 'fail', name: 'Brevo', detail: `${sendersResponse.status} listing senders` }
+    const { senders = [] } = (await sendersResponse.json()) as {
       senders?: { email: string; active: boolean }[]
     }
-    const sender = senders.find((s) => s.email.toLowerCase() === AUTH_EMAIL_FROM.toLowerCase())
-    if (sender?.active)
+    const { domains = [] } = domainsResponse.ok
+      ? ((await domainsResponse.json()) as {
+          domains?: { domain_name: string; authenticated: boolean }[]
+        })
+      : {}
+    const from = AUTH_EMAIL_FROM.toLowerCase()
+    if (senders.some((s) => s.active && s.email.toLowerCase() === from))
       return { status: 'pass', name: 'Brevo', detail: `${AUTH_EMAIL_FROM} is an active sender` }
+    const domain = from.split('@')[1]
+    if (domains.some((d) => d.authenticated && d.domain_name.toLowerCase() === domain))
+      return {
+        status: 'pass',
+        name: 'Brevo',
+        detail: `${domain} is an authenticated sending domain`,
+      }
     return {
       status: 'fail',
       name: 'Brevo',
-      detail: `${AUTH_EMAIL_FROM} is not an active sender in this Brevo account, so verification emails will not send`,
+      detail: `${AUTH_EMAIL_FROM} is neither an active sender nor on an authenticated domain in this Brevo account, so account emails will not send`,
     }
   } catch (error) {
     return failure('Brevo', error)
