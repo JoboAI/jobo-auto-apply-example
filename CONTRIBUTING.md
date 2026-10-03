@@ -35,5 +35,7 @@ Conventions the codebase follows:
 - Every server action validates its own arguments and checks ownership.
 - Schema changes go through `npm run db:generate` (Drizzle), never hand-edited
   migrations.
+- TypeScript stays on 5.9 until typescript-eslint supports TypeScript 7
+  (`tsc` and `next build` already work with 7).
 - Comments explain *why*. The Auto Apply contract is non-obvious in places
   (blocking calls, idempotency, free validation); say so where you rely on it.

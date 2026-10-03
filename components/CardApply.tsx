@@ -35,9 +35,8 @@ export function CardApply({
   const [pending, start] = useBusy()
   const [queuedId, setQueuedId] = useState<string>()
   const [error, setError] = useState('')
-  useEffect(() => {
-    if (queuedId && queuedId === application?.id) setQueuedId(undefined)
-  }, [queuedId, application?.id])
+  // The persisted row has arrived: drop the placeholder below.
+  if (queuedId && queuedId === application?.id) setQueuedId(undefined)
   // Keep immediate feedback until the persisted row arrives on refresh.
   const current: CardApplication | undefined =
     queuedId && application?.id !== queuedId

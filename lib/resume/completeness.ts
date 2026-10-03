@@ -23,7 +23,7 @@ export function contactIssues(profile: ResumeProfile) {
       profile.personal.first_name.trim() && profile.personal.last_name.trim()
         ? ''
         : 'Add your first and last name.',
-    email: z.string().email().safeParse(profile.personal.email.trim()).success
+    email: z.email().safeParse(profile.personal.email.trim()).success
       ? ''
       : 'Add a valid email address.',
     phone:

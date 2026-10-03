@@ -24,46 +24,43 @@ import { z } from 'zod'
  * the most common mistake — pointing this at http://localhost:3000 — into a
  * clear message rather than a silent `invalid_file` failure mid-application.
  */
-const publicOrigin = z
-  .string()
-  .url()
-  .superRefine((value, ctx) => {
-    let url: URL
-    try {
-      url = new URL(value)
-    } catch {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'must be a valid URL',
-      })
-      return
-    }
-    if (url.protocol !== 'https:') {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: `must use https (got ${url.protocol.replace(':', '')}). Jobo rejects http file URLs.`,
-      })
-    }
-    if (url.port && url.port !== '443') {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: `must be on port 443 (got :${url.port}). Jobo rejects any other port.`,
-      })
-    }
-    if (url.pathname !== '/' && url.pathname !== '') {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: `must be an origin with no path (got "${url.pathname}")`,
-      })
-    }
-    if (/^(localhost|127\.|0\.0\.0\.0|\[?::1)/i.test(url.hostname)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message:
-          'must be publicly resolvable — Jobo downloads resumes from its own infrastructure, so localhost can never work. Leave it unset to skip file fields instead.',
-      })
-    }
-  })
+const publicOrigin = z.url().superRefine((value, ctx) => {
+  let url: URL
+  try {
+    url = new URL(value)
+  } catch {
+    ctx.addIssue({
+      code: 'custom',
+      message: 'must be a valid URL',
+    })
+    return
+  }
+  if (url.protocol !== 'https:') {
+    ctx.addIssue({
+      code: 'custom',
+      message: `must use https (got ${url.protocol.replace(':', '')}). Jobo rejects http file URLs.`,
+    })
+  }
+  if (url.port && url.port !== '443') {
+    ctx.addIssue({
+      code: 'custom',
+      message: `must be on port 443 (got :${url.port}). Jobo rejects any other port.`,
+    })
+  }
+  if (url.pathname !== '/' && url.pathname !== '') {
+    ctx.addIssue({
+      code: 'custom',
+      message: `must be an origin with no path (got "${url.pathname}")`,
+    })
+  }
+  if (/^(localhost|127\.|0\.0\.0\.0|\[?::1)/i.test(url.hostname)) {
+    ctx.addIssue({
+      code: 'custom',
+      message:
+        'must be publicly resolvable — Jobo downloads resumes from its own infrastructure, so localhost can never work. Leave it unset to skip file fields instead.',
+    })
+  }
+})
 
 const schema = z.object({
   JOBO_API_KEY: z
@@ -73,7 +70,7 @@ const schema = z.object({
       (v) => v.startsWith('jbe_live_') || v.startsWith('jbe_test_'),
       'must start with jbe_live_ or jbe_test_ (master keys are rejected on Auto Apply routes)',
     ),
-  JOBO_API_BASE_URL: z.string().url().default('https://connect.jobo.world'),
+  JOBO_API_BASE_URL: z.url().default('https://connect.jobo.world'),
 
   /**
    * OPTIONAL. Turns on production mode, where a visitor connects their own
@@ -84,10 +81,7 @@ const schema = z.object({
    */
   API_KEY_ENCRYPTION_SECRET: z.string().min(32, 'must be at least 32 characters').optional(),
   /** Public list of the ATSes Auto Apply can route to (no key needed). */
-  JOBO_STATUS_URL: z
-    .string()
-    .url()
-    .default('https://enterprise.jobo.world/api/v1/public/status/uptime'),
+  JOBO_STATUS_URL: z.url().default('https://enterprise.jobo.world/api/v1/public/status/uptime'),
 
   /**
    * OPTIONAL. Everything in the synchronous loop works without a public
@@ -165,20 +159,17 @@ export function config(): Config {
  */
 const authSchema = z.object({
   /** The app's own origin: account links in emails point here. */
-  BETTER_AUTH_URL: z
-    .string()
-    .url()
-    .refine((value) => {
-      const url = new URL(value)
-      return (
-        url.protocol === 'https:' ||
-        (url.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname))
-      )
-    }, 'must be https (http is allowed only for localhost)'),
+  BETTER_AUTH_URL: z.url().refine((value) => {
+    const url = new URL(value)
+    return (
+      url.protocol === 'https:' ||
+      (url.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname))
+    )
+  }, 'must be https (http is allowed only for localhost)'),
   BETTER_AUTH_SECRET: z.string().min(32, 'must be at least 32 characters'),
   BREVO_API_KEY: z.string().min(1, 'required'),
   /** A sender address verified in your Brevo account. */
-  AUTH_EMAIL_FROM: z.string().email('must be an email address'),
+  AUTH_EMAIL_FROM: z.email('must be an email address'),
   /**
    * OPTIONAL. The request header that carries the real client IP, for
    * better-auth's rate limits. Set it ONLY when a proxy you control

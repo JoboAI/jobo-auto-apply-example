@@ -163,6 +163,7 @@ export function ApiKeyDialog({
                         }
                         onClose()
                         // Back to sandbox: a full load, as the header and feed both change.
+                        // eslint-disable-next-line @next/next/no-location-assign-relative-destination
                         window.location.assign('/jobs')
                       })
                     }

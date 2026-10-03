@@ -4,7 +4,7 @@ import { useCallback, useRef, useState } from 'react'
 /**
  * Why this file exists: uncommitted router updates.
  *
- * In this app (Next.js 15.5), a router update started right after a page load
+ * In this app (first seen on Next.js 15.5), a router update started right after a page load
  * or navigation — a server action's revalidatePath, router.refresh(),
  * router.push() or a <Link> click — intermittently renders on the client but
  * never commits: nothing is pending, the server already sent the new data,
@@ -21,8 +21,9 @@ import { useCallback, useRef, useState } from 'react'
  *    busiest pages (the job feed and explorer): a full server-rendered load
  *    instead of a client navigation.
  *
- * If you adopt a Next.js release where this no longer reproduces, these can
- * go back to the framework defaults.
+ * The guards are cheap and harmless where the race does not occur. To check
+ * whether a Next.js release still needs them, swap them for the framework
+ * defaults and exercise the flows by hand.
  */
 
 /**

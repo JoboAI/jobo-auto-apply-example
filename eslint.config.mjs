@@ -1,13 +1,12 @@
-import { dirname } from 'node:path'
-import { fileURLToPath } from 'node:url'
-import { FlatCompat } from '@eslint/eslintrc'
-
-const compat = new FlatCompat({ baseDirectory: dirname(fileURLToPath(import.meta.url)) })
+import { defineConfig, globalIgnores } from 'eslint/config'
+import nextVitals from 'eslint-config-next/core-web-vitals'
+import nextTypescript from 'eslint-config-next/typescript'
 
 /** Next.js's recommended rules (React, hooks, accessibility basics, TypeScript). */
-const config = [
-  { ignores: ['.next/', 'node_modules/', 'next-env.d.ts'] },
-  ...compat.extends('next/core-web-vitals', 'next/typescript'),
+export default defineConfig([
+  ...nextVitals,
+  ...nextTypescript,
+  globalIgnores(['.next/', 'next-env.d.ts']),
   {
     rules: {
       // `const { secret: _secret, ...rest } = value` is how this code omits a key.
@@ -17,10 +16,8 @@ const config = [
       ],
       // <img> is used for brand SVGs in public/ (nothing to optimise) and for
       // company logos from arbitrary hosts, which next/image would require
-      // allow-listing one by one in next.config.ts.
+      // allow-listing one by one in next.config.mjs.
       '@next/next/no-img-element': 'off',
     },
   },
-]
-
-export default config
+])

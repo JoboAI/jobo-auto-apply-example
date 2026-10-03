@@ -20,7 +20,8 @@ import * as schema from './schema'
  * container in production, `npm run dev` locally).
  */
 
-const dataDir = resolve(process.env.DATA_DIR ?? './.data')
+// A runtime directory, not a build input: tell Turbopack not to trace it.
+const dataDir = resolve(/* turbopackIgnore: true */ process.env.DATA_DIR ?? './.data')
 
 export type Database = NodePgDatabase<typeof schema>
 

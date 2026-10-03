@@ -26,21 +26,21 @@ import { z } from 'zod'
 
 export type JsonSchema = Record<string, unknown>
 
-function unwrap(schema: z.ZodTypeAny): { inner: z.ZodTypeAny; nullable: boolean } {
+function unwrap(schema: z.ZodType): { inner: z.ZodType; nullable: boolean } {
   let current = schema
   let nullable = false
 
   // Peel wrappers until we reach a concrete type. Optional and nullable both
   // become "may be null" — strict mode has no concept of an absent key.
   for (;;) {
-    const typeName = (current._def as { typeName?: string }).typeName
-    if (typeName === 'ZodOptional' || typeName === 'ZodNullable') {
+    if (current instanceof z.ZodOptional || current instanceof z.ZodNullable) {
       nullable = true
-      current = (current._def as { innerType: z.ZodTypeAny }).innerType
-    } else if (typeName === 'ZodDefault') {
-      current = (current._def as { innerType: z.ZodTypeAny }).innerType
-    } else if (typeName === 'ZodEffects') {
-      current = (current._def as { schema: z.ZodTypeAny }).schema
+      current = current.unwrap() as z.ZodType
+    } else if (current instanceof z.ZodDefault) {
+      current = current.unwrap() as z.ZodType
+    } else if (current instanceof z.ZodPipe) {
+      // .transform() and .preprocess(): the model produces the input side.
+      current = current.in as z.ZodType
     } else {
       return { inner: current, nullable }
     }
@@ -51,63 +51,46 @@ function withNull(type: string, nullable: boolean): string | string[] {
   return nullable ? [type, 'null'] : type
 }
 
-export function toStrictJsonSchema(schema: z.ZodTypeAny, description?: string): JsonSchema {
+export function toStrictJsonSchema(schema: z.ZodType, description?: string): JsonSchema {
   const { inner, nullable } = unwrap(schema)
-  const def = inner._def as Record<string, unknown>
-  const typeName = def.typeName as string
   const node: JsonSchema = {}
 
-  const describedBy = description ?? inner.description
+  const describedBy = description ?? inner.description ?? schema.description
   if (describedBy) node.description = describedBy
 
-  switch (typeName) {
-    case 'ZodObject': {
-      const shape = (inner as z.ZodObject<z.ZodRawShape>).shape
-      const properties: Record<string, JsonSchema> = {}
-      for (const [key, value] of Object.entries(shape)) {
-        properties[key] = toStrictJsonSchema(value as z.ZodTypeAny)
-      }
-      return {
-        ...node,
-        type: withNull('object', nullable),
-        // Both of these are load-bearing. See the comment at the top.
-        additionalProperties: false,
-        required: Object.keys(shape),
-        properties,
-      }
+  if (inner instanceof z.ZodObject) {
+    const shape = inner.shape as Record<string, z.ZodType>
+    const properties: Record<string, JsonSchema> = {}
+    for (const [key, value] of Object.entries(shape)) properties[key] = toStrictJsonSchema(value)
+    return {
+      ...node,
+      type: withNull('object', nullable),
+      // Both of these are load-bearing. See the comment at the top.
+      additionalProperties: false,
+      required: Object.keys(shape),
+      properties,
     }
-
-    case 'ZodArray':
-      return {
-        ...node,
-        type: withNull('array', nullable),
-        items: toStrictJsonSchema((def.type as z.ZodTypeAny) ?? z.string()),
-      }
-
-    case 'ZodEnum':
-      return { ...node, type: withNull('string', nullable), enum: def.values as string[] }
-
-    case 'ZodLiteral':
-      return { ...node, type: withNull('string', nullable), enum: [def.value as string] }
-
-    case 'ZodString':
-      return { ...node, type: withNull('string', nullable) }
-
-    case 'ZodNumber':
-      return { ...node, type: withNull('number', nullable) }
-
-    case 'ZodBoolean':
-      return { ...node, type: withNull('boolean', nullable) }
-
-    default:
-      throw new Error(
-        `toStrictJsonSchema: unsupported zod type "${typeName}". Add a case, or simplify the schema.`,
-      )
   }
+  if (inner instanceof z.ZodArray)
+    return {
+      ...node,
+      type: withNull('array', nullable),
+      items: toStrictJsonSchema(inner.element as z.ZodType),
+    }
+  if (inner instanceof z.ZodEnum)
+    return { ...node, type: withNull('string', nullable), enum: inner.options as string[] }
+  if (inner instanceof z.ZodLiteral)
+    return { ...node, type: withNull('string', nullable), enum: [...inner.values] as string[] }
+  if (inner instanceof z.ZodString) return { ...node, type: withNull('string', nullable) }
+  if (inner instanceof z.ZodNumber) return { ...node, type: withNull('number', nullable) }
+  if (inner instanceof z.ZodBoolean) return { ...node, type: withNull('boolean', nullable) }
+  throw new Error(
+    `toStrictJsonSchema: unsupported zod type "${inner.def.type}". Add a case, or simplify the schema.`,
+  )
 }
 
 /** Wrap a schema in the `response_format` envelope OpenRouter expects. */
-export function responseFormat(name: string, schema: z.ZodTypeAny) {
+export function responseFormat(name: string, schema: z.ZodType) {
   return {
     type: 'json_schema' as const,
     json_schema: {

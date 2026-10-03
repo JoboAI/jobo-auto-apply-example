@@ -59,6 +59,8 @@ export function AuthForm({
         setError(result.error.message ?? 'Something went wrong. Please try again.')
         return
       }
+      // A full load after sign-in, so every server component sees the new session.
+      // eslint-disable-next-line @next/next/no-location-assign-relative-destination
       if (mode === 'login') window.location.assign('/jobs')
       else setSent(true)
     } catch {

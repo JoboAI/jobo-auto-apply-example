@@ -99,6 +99,8 @@ export function AccountSettings({ name, email }: { name: string; email: string }
               setMessage(r.error.message ?? 'Could not sign out.')
               return
             }
+            // A full load: every server-rendered page has to forget the session.
+            // eslint-disable-next-line @next/next/no-location-assign-relative-destination
             window.location.assign('/')
           } catch {
             setMessage('Could not sign out. Please try again.')
