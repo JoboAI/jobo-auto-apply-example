@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { config } from '@/lib/config'
 import type { Job } from '@/lib/jobs-types'
 import { isProductionJobId } from '@/lib/jobs'
-import { supportedAts, type SupportedAts } from './supported-ats'
+import { atsLogo, supportedAts, type SupportedAts } from './supported-ats'
 import {
   filtersCacheKey,
   toSearchBody,
@@ -47,15 +47,28 @@ export class JobsApiError extends Error {
 
 export { isProductionJobId }
 
+const qualificationSchema = z
+  .object({
+    skills: z
+      .array(z.object({ name: z.string(), type: z.string().nullish() }))
+      .nullish(),
+    education: z.array(z.string()).nullish(),
+    certifications: z.array(z.string()).nullish(),
+  })
+  .nullish()
+
 const jobSchema = z.object({
   id: z.string(),
+  external_id: z.string().nullish(),
   title: z.string(),
+  normalized_title: z.string().nullish(),
   company: z
     .object({
       id: z.string().nullish(),
       name: z.string().nullish(),
       logo_url: z.string().nullish(),
       website: z.string().nullish(),
+      summary: z.string().nullish(),
       industries: z.array(z.string()).nullish(),
       categories: z.array(z.string()).nullish(),
     })
@@ -88,13 +101,15 @@ const jobSchema = z.object({
     })
     .nullish(),
   date_posted: z.string().nullish(),
+  valid_through: z.string().nullish(),
+  updated_at: z.string().nullish(),
   qualifications: z
-    .object({
-      must_have: z
-        .object({ skills: z.array(z.object({ name: z.string() })).nullish() })
-        .nullish(),
-    })
+    .object({ must_have: qualificationSchema, preferred: qualificationSchema })
     .nullish(),
+  benefits: z.array(z.string()).nullish(),
+  is_work_auth_required: z.boolean().nullish(),
+  is_h1b_sponsor: z.boolean().nullish(),
+  is_clearance_required: z.boolean().nullish(),
 })
 export type JobDto = z.infer<typeof jobSchema>
 
@@ -149,18 +164,76 @@ function initials(name: string): string {
   return mark.toUpperCase()
 }
 
-function plainText(value: string): string {
+function decodeEntities(value: string): string {
   return value
-    .replace(/<[^>]+>/g, ' ')
     .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&#39;|&apos;/g, "'")
     .replace(/&quot;/g, '"')
+    .replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n)))
+    .replace(/&#x([\da-f]+);/gi, (_, n) => String.fromCodePoint(parseInt(n, 16)))
+    .replace(/&amp;/g, '&')
+}
+
+function plainText(value: string): string {
+  return decodeEntities(value.replace(/<[^>]+>/g, ' '))
     .replace(/[#*_`]+/g, '')
     .replace(/\s+/g, ' ')
     .trim()
+}
+
+export type DescriptionBlock =
+  | { kind: 'heading' | 'paragraph'; text: string }
+  | { kind: 'list'; items: string[] }
+
+/**
+ * A job description — sanitized HTML from the API, sometimes markdown or
+ * plain text — as headings, paragraphs and bullet lists. Rendered as React
+ * text, so no markup from the posting ever reaches the page as HTML.
+ */
+export function descriptionBlocks(value: string | null | undefined): DescriptionBlock[] {
+  if (!value?.trim()) return []
+  const marked = value
+    .replace(/\r\n?/g, '\n')
+    .replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, ' ')
+    // A paragraph that is only bold text is a section heading in most postings.
+    .replace(/<p\b[^>]*>\s*<(strong|b)\b[^>]*>([^<]{1,100})<\/\1>\s*<\/p>/gi, '\n\n# $2\n\n')
+    .replace(/<h[1-6]\b[^>]*>/gi, '\n\n# ')
+    .replace(/<li\b[^>]*>/gi, '\n- ')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(h[1-6]|p|div|ul|ol|section|article|blockquote|table|tr)\s*>/gi, '\n\n')
+    .replace(/<\/li\s*>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+  const blocks: DescriptionBlock[] = []
+  let paragraph: string[] = []
+  const clean = (text: string) =>
+    decodeEntities(text).replace(/\*\*|__|`/g, '').replace(/\s+/g, ' ').trim()
+  const flush = () => {
+    const text = clean(paragraph.join(' '))
+    if (text) blocks.push({ kind: 'paragraph', text })
+    paragraph = []
+  }
+  for (const raw of marked.split('\n')) {
+    const line = raw.trim()
+    const heading = /^#{1,6}\s+(.+)$/.exec(line) ?? /^\*\*([^*]{1,100})\*\*:?$/.exec(line)
+    const item = /^(?:[-*•]|\d+[.)])\s+(.+)$/.exec(line)
+    if (!line) flush()
+    else if (heading) {
+      flush()
+      const text = clean(heading[1]).replace(/:$/, '')
+      if (text) blocks.push({ kind: 'heading', text })
+    } else if (item) {
+      flush()
+      const text = clean(item[1])
+      const last = blocks[blocks.length - 1]
+      if (!text) continue
+      if (last?.kind === 'list') last.items.push(text)
+      else blocks.push({ kind: 'list', items: [text] })
+    } else paragraph.push(line)
+  }
+  flush()
+  return blocks
 }
 
 function truncate(value: string, max: number): string {
@@ -253,6 +326,7 @@ export function toJob(dto: JobDto, supported: readonly SupportedAts[]): Job {
     production: true,
     source: dto.source ?? undefined,
     sourceName: ats?.name ?? dto.source ?? undefined,
+    sourceLogoUrl: ats?.logoUrl ?? atsLogo(dto.source),
     listingUrl: httpsUrl(dto.listing_url) || undefined,
     logoUrl: httpsUrl(dto.company?.logo_url) || undefined,
     countryCode: countryCode(first?.country),
@@ -265,6 +339,133 @@ export function toJob(dto: JobDto, supported: readonly SupportedAts[]): Job {
     salary: salaryRange(dto.compensation),
     postedAgo: postedAgo(dto.date_posted),
     skills: (dto.qualifications?.must_have?.skills ?? []).map((s) => s.name).filter(Boolean).slice(0, 8),
+  }
+}
+
+export interface QualificationSet {
+  skills: string[]
+  softSkills: string[]
+  education: string[]
+  certifications: string[]
+}
+
+/**
+ * Everything `GET /api/jobs/{id}` carries beyond the feed card, for the job
+ * page only (search results stay on the lean `Job`).
+ */
+export interface JobDetail {
+  normalizedTitle?: string
+  summary?: string
+  description: DescriptionBlock[]
+  companySummary?: string
+  locations: { label: string; flag?: string }[]
+  pay?: string
+  postedOn?: string
+  closesOn?: string
+  updatedAgo?: string
+  externalId?: string
+  mustHave: QualificationSet
+  preferred: QualificationSet
+  benefits: string[]
+  eligibility: { label: string; value: boolean }[]
+}
+
+/** "Oct 2, 2026", in UTC so the server and tests agree. */
+export function formatDate(value: string | null | undefined): string | undefined {
+  const at = value ? Date.parse(value) : NaN
+  if (!Number.isFinite(at)) return undefined
+  return new Date(at).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    timeZone: 'UTC',
+  })
+}
+
+const PERIOD_WORDS: Record<string, string> = {
+  yearly: 'per year',
+  monthly: 'per month',
+  weekly: 'per week',
+  daily: 'per day',
+  hourly: 'per hour',
+}
+
+/** "$120,000 – $165,000 USD per year": the exact figures the employer published. */
+export function fullPay(pay: JobDto['compensation']): string | undefined {
+  const min = pay?.min ?? undefined,
+    max = pay?.max ?? undefined
+  if (!min && !max) return undefined
+  const code = pay?.currency?.toUpperCase() ?? ''
+  const symbol = CURRENCY_SYMBOLS[code] ?? ''
+  const amount = (n: number) => `${symbol}${n.toLocaleString('en-US', { maximumFractionDigits: 2 })}`
+  const range = min && max && min !== max ? `${amount(min)} – ${amount(max)}` : amount((min ?? max)!)
+  const period = PERIOD_WORDS[pay?.period?.toLowerCase() ?? '']
+  return [range, code, period].filter(Boolean).join(' ')
+}
+
+/** "GB" → 🇬🇧 */
+function flag(code: string | undefined): string | undefined {
+  return code
+    ? String.fromCodePoint(...[...code].map((c) => 0x1f1e6 + c.charCodeAt(0) - 65))
+    : undefined
+}
+
+function qualificationSet(bucket: z.infer<typeof qualificationSchema>): QualificationSet {
+  const skills = bucket?.skills ?? []
+  const names = (soft: boolean) => [
+    ...new Set(
+      skills
+        .filter((s) => (s.type?.toLowerCase() === 'soft') === soft)
+        .map((s) => s.name.trim())
+        .filter(Boolean),
+    ),
+  ]
+  const list = (values: string[] | null | undefined) =>
+    [...new Set((values ?? []).map((v) => v.trim()).filter(Boolean))]
+  return {
+    skills: names(false),
+    softSkills: names(true),
+    education: list(bucket?.education),
+    certifications: list(bucket?.certifications),
+  }
+}
+
+export function toJobDetail(dto: JobDto, now = Date.now()): JobDetail {
+  const text = (value: string | null | undefined) => value?.trim() || undefined
+  const seen = new Set<string>()
+  const locations: JobDetail['locations'] = []
+  for (const l of dto.locations ?? []) {
+    const label =
+      l.location?.trim() || [l.city, l.region, l.country].filter((v) => v?.trim()).join(', ')
+    if (!label || seen.has(label.toLowerCase())) continue
+    seen.add(label.toLowerCase())
+    locations.push({ label, flag: flag(countryCode(l.country)) })
+  }
+  const eligibility: JobDetail['eligibility'] = []
+  const flagRow = (label: string, value: boolean | null | undefined) =>
+    typeof value === 'boolean' && eligibility.push({ label, value })
+  flagRow('Work authorization required', dto.is_work_auth_required)
+  flagRow('Sponsors H-1B visas', dto.is_h1b_sponsor)
+  flagRow('Security clearance required', dto.is_clearance_required)
+  const normalized = text(dto.normalized_title)
+  const summary = text(dto.summary) && plainText(dto.summary!)
+  const updated = postedAgo(dto.updated_at, now)
+  return {
+    normalizedTitle:
+      normalized && normalized.toLowerCase() !== dto.title.trim().toLowerCase() ? normalized : undefined,
+    summary: summary || undefined,
+    description: descriptionBlocks(dto.description),
+    companySummary: text(dto.company?.summary) && plainText(dto.company!.summary!),
+    locations,
+    pay: fullPay(dto.compensation),
+    postedOn: formatDate(dto.date_posted),
+    closesOn: formatDate(dto.valid_through),
+    updatedAgo: updated && (updated === 'Today' ? 'today' : updated),
+    externalId: text(dto.external_id),
+    mustHave: qualificationSet(dto.qualifications?.must_have),
+    preferred: qualificationSet(dto.qualifications?.preferred),
+    benefits: [...new Set((dto.benefits ?? []).map((b) => b.trim()).filter(Boolean))],
+    eligibility,
   }
 }
 
@@ -374,45 +575,121 @@ function keyHash(apiKey: string): string {
   return createHash('sha256').update(apiKey).digest('base64url')
 }
 
+const str = z.string().nullish()
 const companySchema = z.object({
   id: z.string(),
   name: z.string(),
-  summary: z.string().nullish(),
-  description: z.string().nullish(),
-  website: z.string().nullish(),
-  logo_url: z.string().nullish(),
-  linkedin_url: z.string().nullish(),
-  crunchbase_url: z.string().nullish(),
-  headquarters_location: z.string().nullish(),
-  headquarters_city: z.string().nullish(),
-  founding_year: z.string().nullish(),
-  company_size: z.string().nullish(),
-  revenue: z.string().nullish(),
+  legal_name: str,
+  summary: str,
+  description: str,
+  website: str,
+  careers_url: str,
+  ats_provider: str,
+  logo_url: str,
+  linkedin_url: str,
+  twitter_url: str,
+  facebook_url: str,
+  instagram_url: str,
+  angellist_url: str,
+  youtube_url: str,
+  github_url: str,
+  crunchbase_url: str,
+  headquarters_location: str,
+  headquarters_city: str,
+  headquarters_region: str,
+  country_code: str,
+  founding_year: str,
+  company_size: str,
+  revenue: str,
+  is_agency: z.boolean().nullish(),
   industries: z.array(z.string()).nullish(),
+  primary_industry: str,
   categories: z.array(z.string()).nullish(),
-  ipo_status: z.string().nullish(),
-  company_type: z.string().nullish(),
-  stock_symbol: z.string().nullish(),
-  funding_stage: z.string().nullish(),
-  total_funding: z.string().nullish(),
-  funds_total_formatted: z.string().nullish(),
+  operating_status: str,
+  ipo_status: str,
+  company_type: str,
+  stock_symbol: str,
+  stock_exchange: str,
+  is_acquired: z.boolean().nullish(),
+  acquired_by_company: str,
+  funding_stage: str,
+  total_funding: str,
+  funds_total_formatted: str,
   investors: z.array(z.string()).nullish(),
+  funding_rounds: z
+    .array(
+      z.object({
+        investment_type: str,
+        announced_on: str,
+        raised_amount: str,
+        post_money_valuation: str,
+        lead_investor: str,
+      }),
+    )
+    .nullish(),
+  founders: z.array(z.string()).nullish(),
+  leadership: z
+    .array(z.object({ name: str, title: str, linkedin_url: str, avatar_url: str }))
+    .nullish(),
+  ratings: z
+    .array(
+      z.object({
+        source: str,
+        rating: z.union([z.string(), z.number()]).nullish(),
+        url: str,
+        review_count: z.number().nullish(),
+      }),
+    )
+    .nullish(),
+  press_references: z
+    .array(z.object({ url: str, posted_on: str, title: str, publisher: str }))
+    .nullish(),
+  products: z.array(z.object({ name: str, description: str })).nullish(),
+  acquisitions: z.array(z.object({ acquiree_name: str, title: str })).nullish(),
+  subsidiary_list: z.array(z.string()).nullish(),
   tech_stack: z.array(z.object({ name: z.string().nullish() })).nullish(),
   technologies: z.array(z.string()).nullish(),
 })
 
+/** The networks a company profile can link to, in display order. */
+export const COMPANY_LINK_KINDS = [
+  'website',
+  'careers',
+  'linkedin',
+  'twitter',
+  'github',
+  'crunchbase',
+  'angellist',
+  'youtube',
+  'instagram',
+  'facebook',
+] as const
+export type CompanyLinkKind = (typeof COMPANY_LINK_KINDS)[number]
+
 export interface CompanyProfile {
   id: string
   name: string
+  legalName?: string
+  /** One-line blurb, shown above `about` when both exist. */
+  tagline?: string
   about?: string
   website?: string
   logoUrl?: string
-  linkedinUrl?: string
-  crunchbaseUrl?: string
+  links: { kind: CompanyLinkKind; href: string }[]
+  /** ATS provider id the company hires through, when detected. */
+  atsProvider?: string
   facts: { label: string; value: string }[]
   industries: string[]
   categories: string[]
   investors: string[]
+  fundingRounds: { type?: string; date?: string; amount?: string; valuation?: string; lead?: string }[]
+  founders: string[]
+  leadership: { name: string; title?: string; linkedinUrl?: string; avatarUrl?: string }[]
+  ratings: { source: string; rating: string; reviewCount?: number; url?: string }[]
+  press: { title: string; publisher?: string; date?: string; url?: string }[]
+  products: { name: string; description?: string }[]
+  acquisitions: string[]
+  subsidiaries: string[]
   techStack: string[]
 }
 
@@ -423,6 +700,10 @@ function titleCase(value: string): string {
 
 function sizeLabel(value: string): string {
   return /employees?/i.test(value) ? value : `${value} employees`
+}
+
+function uniqueText(values: (string | null | undefined)[], max: number): string[] {
+  return [...new Set(values.map((v) => v?.trim() ?? '').filter(Boolean))].slice(0, max)
 }
 
 export function toCompanyProfile(dto: z.infer<typeof companySchema>): CompanyProfile {
@@ -438,29 +719,93 @@ export function toCompanyProfile(dto: z.infer<typeof companySchema>): CompanyPro
   add(
     'Ownership',
     text(dto.stock_symbol)
-      ? `Public · ${dto.stock_symbol}`
+      ? `Public · ${[text(dto.stock_exchange)?.toUpperCase(), dto.stock_symbol!.trim()].filter(Boolean).join(': ')}`
       : text(dto.ipo_status) && humanize(dto.ipo_status),
   )
   add('Company type', text(dto.company_type) && humanize(dto.company_type))
+  add('Industry', text(dto.primary_industry))
+  add('Acquired by', dto.is_acquired || text(dto.acquired_by_company) ? text(dto.acquired_by_company) ?? 'Yes' : undefined)
+  add('Status', dto.operating_status?.toLowerCase() === 'closed' ? 'Closed' : undefined)
+  add('Agency', dto.is_agency ? 'Staffing / recruiting agency' : undefined)
   const stack = [
     ...(dto.tech_stack ?? []).map((t) => t.name ?? ''),
     ...(dto.technologies ?? []),
   ]
-  const about = plainText(dto.summary || dto.description || '')
+  const summary = plainText(dto.summary || '')
+  const description = plainText(dto.description || '')
+  const about = description || summary
   const website = text(dto.website)
+  const href = (value: string | null | undefined) => httpsUrl(value) || undefined
+  const linkUrls: Record<CompanyLinkKind, string | undefined> = {
+    website: website ? href(/^https?:/i.test(website) ? website : `https://${website}`) : undefined,
+    careers: href(dto.careers_url),
+    linkedin: href(dto.linkedin_url),
+    twitter: href(dto.twitter_url),
+    github: href(dto.github_url),
+    crunchbase: href(dto.crunchbase_url),
+    angellist: href(dto.angellist_url),
+    youtube: href(dto.youtube_url),
+    instagram: href(dto.instagram_url),
+    facebook: href(dto.facebook_url),
+  }
+  const legalName = text(dto.legal_name)
   return {
     id: dto.id,
     name: dto.name,
-    about: about ? truncate(about, 600) : undefined,
-    website: website ? httpsUrl(/^https?:/i.test(website) ? website : `https://${website}`) || undefined : undefined,
+    legalName: legalName && legalName.toLowerCase() !== dto.name.trim().toLowerCase() ? legalName : undefined,
+    tagline: description && summary && !description.startsWith(summary.slice(0, 60)) ? truncate(summary, 220) : undefined,
+    about: about ? truncate(about, 1500) : undefined,
+    website: linkUrls.website,
     logoUrl: httpsUrl(dto.logo_url) || undefined,
-    linkedinUrl: httpsUrl(dto.linkedin_url) || undefined,
-    crunchbaseUrl: httpsUrl(dto.crunchbase_url) || undefined,
+    links: COMPANY_LINK_KINDS.flatMap((kind) => (linkUrls[kind] ? [{ kind, href: linkUrls[kind]! }] : [])),
+    atsProvider: text(dto.ats_provider)?.toLowerCase(),
     facts,
     industries: dto.industries ?? [],
     categories: (dto.categories ?? []).map(valueLabel),
-    investors: (dto.investors ?? []).filter(Boolean).slice(0, 6),
-    techStack: [...new Set(stack.map((t) => t.trim()).filter(Boolean))].slice(0, 14),
+    investors: uniqueText(dto.investors ?? [], 8),
+    fundingRounds: (dto.funding_rounds ?? [])
+      .filter((r) => r.investment_type || r.raised_amount)
+      .sort((a, b) => (Date.parse(b.announced_on ?? '') || 0) - (Date.parse(a.announced_on ?? '') || 0))
+      .slice(0, 6)
+      .map((r) => ({
+        type: text(r.investment_type) && titleCase(r.investment_type!),
+        date: formatDate(r.announced_on) ?? text(r.announced_on),
+        amount: text(r.raised_amount),
+        valuation: text(r.post_money_valuation),
+        lead: text(r.lead_investor),
+      })),
+    founders: uniqueText(dto.founders ?? [], 6),
+    leadership: (dto.leadership ?? [])
+      .filter((l) => text(l.name))
+      .slice(0, 6)
+      .map((l) => ({
+        name: l.name!.trim(),
+        title: text(l.title),
+        linkedinUrl: href(l.linkedin_url),
+        avatarUrl: href(l.avatar_url),
+      })),
+    ratings: (dto.ratings ?? []).flatMap((r) => {
+      const rating = r.rating == null ? '' : String(r.rating).trim()
+      return text(r.source) && rating
+        ? [{ source: titleCase(r.source!), rating, reviewCount: r.review_count ?? undefined, url: href(r.url) }]
+        : []
+    }),
+    press: (dto.press_references ?? [])
+      .filter((p) => text(p.title))
+      .slice(0, 5)
+      .map((p) => ({
+        title: p.title!.trim(),
+        publisher: text(p.publisher),
+        date: formatDate(p.posted_on),
+        url: href(p.url),
+      })),
+    products: (dto.products ?? [])
+      .filter((p) => text(p.name))
+      .slice(0, 6)
+      .map((p) => ({ name: p.name!.trim(), description: text(p.description) && truncate(plainText(p.description!), 200) })),
+    acquisitions: uniqueText((dto.acquisitions ?? []).map((a) => a.acquiree_name ?? a.title), 8),
+    subsidiaries: uniqueText(dto.subsidiary_list ?? [], 8),
+    techStack: [...new Set(stack.map((t) => t.trim()).filter(Boolean))].slice(0, 20),
   }
 }
 
@@ -494,12 +839,32 @@ export async function getProductionJob(
   id: string,
   fetchImpl: typeof fetch = fetch,
 ): Promise<Job> {
+  return (await getProductionJobDetail(apiKey, id, fetchImpl)).job
+}
+
+/**
+ * One job with everything the API returned: the feed-shaped `Job`, the full
+ * `JobDetail` for the job page, and the raw JSON response, which the page
+ * shows as-is.
+ */
+export async function getProductionJobDetail(
+  apiKey: string,
+  id: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<{ job: Job; detail: JobDetail; raw: unknown; url: string }> {
   if (!isProductionJobId(id)) throw new JobsApiError('not_found', 'Job not found.')
   const response = await call(apiKey, `/api/jobs/${id}`, fetchImpl)
   if (response.status === 404) throw new JobsApiError('not_found', 'Job not found.')
   if (!response.ok)
     throw new JobsApiError('unavailable', `Job lookup failed (HTTP ${response.status}).`)
-  return toJob(jobSchema.parse(await response.json()), await supportedAts())
+  const raw: unknown = await response.json()
+  const dto = jobSchema.parse(raw)
+  return {
+    job: toJob(dto, await supportedAts()),
+    detail: toJobDetail(dto),
+    raw,
+    url: `${apiBase()}/api/jobs/${id}`,
+  }
 }
 
 /** Cheap shape check before any network call. */

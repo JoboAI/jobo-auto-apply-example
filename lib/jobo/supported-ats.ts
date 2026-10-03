@@ -14,6 +14,8 @@ import { config } from '@/lib/config'
 export interface SupportedAts {
   id: string
   name: string
+  /** The ATS's mark, from `public/ats-logos/`. */
+  logoUrl?: string
 }
 
 /** Used when the status API is unreachable, so search still works. */
@@ -53,12 +55,34 @@ export async function supportedAts(
       .auto_apply_providers.filter((p) => p.provider_id !== SANDBOX_PROVIDER)
       .map((p) => ({ id: p.provider_id, name: p.display_name }))
     if (!list.length) throw new Error('empty provider list')
-    cached = { at: Date.now(), list }
-    return list
+    cached = { at: Date.now(), list: withLogos(list) }
+    return cached.list
   } catch {
     // Not cached: the next request retries the live list.
-    return [...FALLBACK_ATS]
+    return withLogos(FALLBACK_ATS)
   }
+}
+
+/**
+ * ATS marks shipped with this app in `public/ats-logos/`, so the demo needs
+ * nothing beyond the public API to show them. Add a file here when Auto Apply
+ * gains a provider; until then that ATS shows by name only.
+ */
+const ATS_LOGOS: Record<string, string> = {
+  ashby: '/ats-logos/ashby.png',
+  greenhouse: '/ats-logos/greenhouse.png',
+  lever: '/ats-logos/lever.png',
+  smartrecruiters: '/ats-logos/smartrecruiters.png',
+  workable: '/ats-logos/workable.png',
+  workday: '/ats-logos/workday.png',
+}
+
+export function atsLogo(id: string | null | undefined): string | undefined {
+  return id ? ATS_LOGOS[id.toLowerCase()] : undefined
+}
+
+function withLogos(list: readonly SupportedAts[]): SupportedAts[] {
+  return list.map((a) => ({ ...a, ...(atsLogo(a.id) ? { logoUrl: atsLogo(a.id) } : {}) }))
 }
 
 /** For tests. */

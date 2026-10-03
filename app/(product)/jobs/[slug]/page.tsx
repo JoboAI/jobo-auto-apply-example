@@ -10,11 +10,16 @@ import { getJobs, isProductionJobId } from '@/lib/jobs'
 import type { Job } from '@/lib/jobs-types'
 import {
   getCompanyProfile,
-  getProductionJob,
+  getProductionJobDetail,
   JobsApiError,
   type CompanyProfile,
+  type JobDetail,
 } from '@/lib/jobo/jobs-api'
+import { atsLogo, supportedAts } from '@/lib/jobo/supported-ats'
+import { AtsBadge } from '@/components/AtsBadge'
 import { CompanyPanel } from '@/components/CompanyPanel'
+import { DetailTabs } from '@/components/DetailTabs'
+import { JobDetailPanel } from '@/components/JobDetailPanel'
 import { productionApiKey } from '@/lib/user-settings'
 import { ApplyButton, SaveButton } from '@/components/JobActions'
 import { ProductionJobLink, SandboxJobLink } from '@/components/SandboxJobLink'
@@ -26,6 +31,7 @@ export default async function JobPage({
   const user = await requireUser(),
     { slug } = await params
   let job: Job | undefined
+  let detail: { detail: JobDetail; raw: unknown; url: string } | undefined
   let company: CompanyProfile | null = null
   if (isProductionJobId(slug)) {
     const apiKey = await productionApiKey(user.id)
@@ -40,8 +46,10 @@ export default async function JobPage({
         </div>
       )
     try {
-      job = await getProductionJob(apiKey, slug)
-      // A profile that fails to load costs the panel, never the page.
+      const loaded = await getProductionJobDetail(apiKey, slug)
+      job = loaded.job
+      detail = loaded
+      // A profile that fails to load costs the tab, never the page.
       if (job.companyId)
         company = await getCompanyProfile(apiKey, job.companyId).catch(() => null)
     } catch (error) {
@@ -81,6 +89,24 @@ export default async function JobPage({
     .from(savedJobs)
     .where(and(eq(savedJobs.userId, user.id), eq(savedJobs.jobId, slug)))
     .limit(1)
+  const companyAts = company?.atsProvider
+    ? {
+        name:
+          (await supportedAts()).find((a) => a.id === company.atsProvider)?.name ??
+          company.atsProvider.replace(/[_-]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
+        logoUrl: atsLogo(company.atsProvider),
+      }
+    : undefined
+  const jobBody = (
+    <JobDetailPanel
+      job={job}
+      detail={detail?.detail}
+      raw={detail?.raw}
+      url={detail?.url}
+      showCompanySummary={!company}
+    />
+  )
+  const extraLocations = (detail?.detail.locations.length ?? 1) - 1
   return (
     <>
       <Link href="/jobs" className="back-link">
@@ -103,6 +129,7 @@ export default async function JobPage({
             <span>
               <MapPin size={16} />
               {job.location}
+              {extraLocations > 0 && <small className="more-locations">+{extraLocations} more</small>}
             </span>
             <span>
               <BriefcaseBusiness size={16} />
@@ -126,41 +153,30 @@ export default async function JobPage({
                 Posted {job.postedAgo.toLowerCase()}
               </span>
             )}
-            <span className="tag">{job.department}</span>
+            {production && job.sourceName ? (
+              <AtsBadge name={job.sourceName} logoUrl={job.sourceLogoUrl} className="tag" />
+            ) : (
+              <span className="tag">{job.department}</span>
+            )}
           </div>
-          <hr />
-          <h2>Meet {job.company}</h2>
-          <p>{job.about}</p>
-          {!!job.skills?.length && (
+          {company ? (
+            <DetailTabs
+              label="Job and company details"
+              tabs={[
+                { id: 'job', label: 'Job details', content: jobBody },
+                {
+                  id: 'company',
+                  label: `About ${company.name}`,
+                  content: <CompanyPanel company={company} ats={companyAts} />,
+                },
+              ]}
+            />
+          ) : (
             <>
-              <h2>Must-have skills</h2>
-              <div className="tag-row skill-row">
-                {job.skills.map((skill) => (
-                  <Link key={skill} className="tag" href={`/jobs?skill=${encodeURIComponent(skill)}`}>
-                    {skill}
-                  </Link>
-                ))}
-              </div>
+              <hr />
+              {jobBody}
             </>
           )}
-          {job.responsibilities.length > 0 && (
-            <>
-              <h2>What you’ll work on</h2>
-              <ul className="responsibilities">
-                {job.responsibilities.map((r) => (
-                  <li key={r}>{r}</li>
-                ))}
-              </ul>
-            </>
-          )}
-          <div className={`notice ${production ? 'warning' : ''}`}>
-            <Sparkles size={18} />
-            <span>
-              {production
-                ? `This is a real job on ${job.sourceName ?? 'the employer’s ATS'}. Applying submits your profile to the employer on your own Jobo API key.`
-                : 'This is a fictional sandbox role. Try a real application flow without contacting an employer.'}
-            </span>
-          </div>
         </article>
         <aside>
           <div className="aside-card apply-card">
@@ -184,7 +200,12 @@ export default async function JobPage({
               existingId={existing?.id}
             />
             {production ? (
-              <ProductionJobLink url={job.listingUrl ?? job.applyUrl} ats={job.sourceName} title={job.role} />
+              <ProductionJobLink
+                url={job.listingUrl ?? job.applyUrl}
+                ats={job.sourceName}
+                atsLogoUrl={job.sourceLogoUrl}
+                title={job.role}
+              />
             ) : (
               <SandboxJobLink url={job.applyUrl} slug={job.slug} title={job.role} />
             )}
@@ -193,7 +214,6 @@ export default async function JobPage({
               and let you know.
             </small>
           </div>
-          {company && <CompanyPanel company={company} />}
         </aside>
       </div>
     </>

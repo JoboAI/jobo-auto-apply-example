@@ -63,9 +63,12 @@ function Row({
   selected = false,
   excluded = false,
   excludeHref,
+  icon,
 }: {
   href: string
   label: string
+  /** A small mark before the label (the ATS logos). */
+  icon?: string
   count?: number
   selected?: boolean
   excluded?: boolean
@@ -82,6 +85,10 @@ function Row({
         }`}
       >
         <span className="facet-box" aria-hidden="true" />
+        {icon && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img className="facet-icon" src={icon} alt="" width={14} height={14} />
+        )}
         <span className="facet-label">{label}</span>
         {count !== undefined && <span className="facet-count">{count.toLocaleString('en')}</span>}
       </a>
@@ -405,6 +412,7 @@ export function JobExplorer({
               key={a.id}
               href={toggleHref(filters, 'sources', a.id)}
               label={a.name}
+              icon={a.logoUrl}
               count={countOf(facet('sources'), a.id)}
               selected={hasValue(filters.sources, a.id)}
             />

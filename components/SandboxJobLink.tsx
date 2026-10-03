@@ -13,7 +13,17 @@ export function SandboxJobLink({ url, slug, title }: { url: string; slug: string
 }
 
 /** A production job's original posting, on the employer's ATS. */
-export function ProductionJobLink({ url, ats, title }: { url: string; ats?: string; title: string }) {
+export function ProductionJobLink({
+  url,
+  ats,
+  atsLogoUrl,
+  title,
+}: {
+  url: string
+  ats?: string
+  atsLogoUrl?: string
+  title: string
+}) {
   let host: string
   try {
     const parsed = new URL(url)
@@ -25,7 +35,13 @@ export function ProductionJobLink({ url, ats, title }: { url: string; ats?: stri
   return (
     <a className="sandbox-job-link" href={url} target="_blank" rel="noopener noreferrer"
       aria-label={`View ${title} on ${host} (opens in a new tab)`}>
-      <span>{ats ? `View on ${ats}` : 'View original posting'}</span>
+      <span className="ats-badge">
+        {atsLogoUrl && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={atsLogoUrl} alt="" width={16} height={16} />
+        )}
+        {ats ? `View on ${ats}` : 'View original posting'}
+      </span>
       <strong>{host} <ArrowUpRight size={15} /></strong>
     </a>
   )

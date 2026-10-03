@@ -424,8 +424,35 @@ test('account → resume → saved role → hands-free application, desktop and 
   ).toBeVisible({ timeout: 30000 })
   await realCard.getByRole('link', { name: 'Platform Engineer', exact: true }).click()
   await expect(tracker.getByText(/This is a real job on Lever/)).toBeVisible()
-  // The free company profile, which search only summarises.
+  // The job tab shows everything GET /api/jobs/{id} returned.
+  const jobTab = tracker.getByRole('tabpanel', { name: 'Job details' })
+  await expect(jobTab).toContainText('Home office budget')
+  await expect(jobTab).toContainText('Oct 30, 2026')
+  await expect(jobTab).toContainText('GLX-PLAT-118')
+  await expect(jobTab).toContainText('Terraform')
+  await expect(jobTab).toContainText('Montreal, QC, Canada')
+  await expect(jobTab.getByRole('heading', { name: 'How we work' })).toBeVisible()
+  await jobTab.getByText('See the raw API response for this job').click()
+  await expect(jobTab.getByLabel('Job API response', { exact: true })).toContainText('"benefits"')
+  // The apply card is the only thing in the side column: nothing scrolls under it.
+  await expect(tracker.locator('.detail-layout > aside > *')).toHaveCount(1)
+  await tracker.screenshot({ path: 'test-results/production-job-tab-desktop.png', animations: 'disabled', fullPage: true })
+  // The free company profile, which search only summarises, is the other tab.
+  await tracker.getByRole('tab', { name: 'About Globex Systems' }).click()
+  await expect(tracker).toHaveURL(/#company$/)
+  await expect(jobTab).toBeHidden()
   const company = tracker.getByRole('region', { name: 'About Globex Systems' })
+  await expect(company.getByRole('link', { name: 'LinkedIn', exact: true })).toHaveAttribute(
+    'href',
+    'https://www.linkedin.com/company/globex-example',
+  )
+  await expect(company).toContainText('Hank Scorpio')
+  await expect(company).toContainText('Glassdoor')
+  await expect(company).toContainText('Hires through')
+  await tracker.screenshot({ path: 'test-results/production-company-tab-desktop.png', animations: 'disabled', fullPage: true })
+  // The open tab survives a reload.
+  await tracker.reload()
+  await expect(tracker.getByRole('region', { name: 'About Globex Systems' })).toBeVisible()
   await expect(company).toContainText('201-500 employees')
   await expect(company).toContainText('Series B')
   await expect(company).toContainText('Northwind Capital')

@@ -1,16 +1,22 @@
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
+  descriptionBlocks,
+  fullPay,
   getCompanyProfile,
   getProductionJob,
+  getProductionJobDetail,
   JobsApiError,
   postedAgo,
   salaryRange,
   searchProductionJobs,
   toJob,
+  toJobDetail,
   verifyApiKey,
 } from '@/lib/jobo/jobs-api'
 import { parseFilters } from '@/lib/jobo/job-filters'
-import { FALLBACK_ATS, resetSupportedAtsCache, supportedAts } from '@/lib/jobo/supported-ats'
+import { atsLogo, FALLBACK_ATS, resetSupportedAtsCache, supportedAts } from '@/lib/jobo/supported-ats'
 import { isProductionJobId, validProductionTarget } from '@/lib/jobs'
 
 process.env.JOBO_API_KEY = 'jbe_test_deployment_fixture'
@@ -75,7 +81,16 @@ describe('supported ATS list', () => {
   })
   it('falls back to the known list when the status API is down', async () => {
     const list = await supportedAts(fakeFetch({ 'https://status.example.test': json({}, 503) }))
-    expect(list).toEqual([...FALLBACK_ATS])
+    expect(list.map(({ id, name }) => ({ id, name }))).toEqual([...FALLBACK_ATS])
+  })
+  it('ships a logo file for every ATS Auto Apply supports', async () => {
+    const list = await supportedAts(fakeFetch({ 'https://status.example.test': json(status) }))
+    expect(list.find((a) => a.id === 'greenhouse')?.logoUrl).toBe('/ats-logos/greenhouse.png')
+    for (const ats of FALLBACK_ATS) {
+      const logo = atsLogo(ats.id)
+      expect(logo, ats.id).toBeDefined()
+      expect(existsSync(join(process.cwd(), 'public', logo!)), logo).toBe(true)
+    }
   })
 })
 
@@ -189,10 +204,101 @@ describe('catalog jobs', () => {
       skills: ['Rust', 'gRPC'],
     })
   })
+  it('reads every job field onto the job page detail', () => {
+    const detail = toJobDetail(
+      dto({
+        external_id: 'REQ-4471',
+        normalized_title: 'Software Engineer, Backend',
+        summary: 'Own the <b>billing</b> API.',
+        company: { name: 'Acme Robotics', summary: 'Robots for warehouses.' },
+        locations: [
+          { location: 'London, UK', country: 'UK' },
+          { city: 'Berlin', region: 'Berlin', country: 'DE' },
+          { location: 'london, uk', country: 'GB' },
+        ],
+        compensation: { min: 120000, max: 165000, currency: 'USD', period: 'yearly' },
+        date_posted: '2026-09-28T09:00:00Z',
+        valid_through: '2026-10-30T00:00:00Z',
+        updated_at: '2026-10-01T12:00:00Z',
+        qualifications: {
+          must_have: {
+            skills: [{ name: 'Rust', type: 'hard' }, { name: 'Ownership', type: 'soft' }, { name: 'Rust', type: 'hard' }],
+            education: ["Bachelor's in CS"],
+            certifications: [],
+          },
+          preferred: { skills: [{ name: 'gRPC' }], education: null, certifications: ['AWS SA'] },
+        },
+        benefits: ['Private health', ' Private health ', '25 days PTO'],
+        is_work_auth_required: true,
+        is_h1b_sponsor: false,
+        is_clearance_required: null,
+      }),
+      Date.parse('2026-10-03T12:00:00Z'),
+    )
+    expect(detail).toMatchObject({
+      externalId: 'REQ-4471',
+      normalizedTitle: 'Software Engineer, Backend',
+      summary: 'Own the billing API.',
+      companySummary: 'Robots for warehouses.',
+      locations: [
+        { label: 'London, UK', flag: '🇬🇧' },
+        { label: 'Berlin, Berlin, DE', flag: '🇩🇪' },
+      ],
+      pay: '$120,000 – $165,000 USD per year',
+      postedOn: 'Sep 28, 2026',
+      closesOn: 'Oct 30, 2026',
+      updatedAgo: '2d ago',
+      mustHave: { skills: ['Rust'], softSkills: ['Ownership'], education: ["Bachelor's in CS"], certifications: [] },
+      preferred: { skills: ['gRPC'], softSkills: [], education: [], certifications: ['AWS SA'] },
+      benefits: ['Private health', '25 days PTO'],
+      eligibility: [
+        { label: 'Work authorization required', value: true },
+        { label: 'Sponsors H-1B visas', value: false },
+      ],
+    })
+    // Same title in another case is not worth a second line.
+    expect(toJobDetail(dto({ normalized_title: 'backend engineer' })).normalizedTitle).toBeUndefined()
+  })
+  it('splits an HTML, markdown or plain description into blocks', () => {
+    expect(
+      descriptionBlocks(
+        '<p><strong>About us</strong></p><p>We build &amp; ship.<br>Daily.</p>' +
+          '<h3>You will</h3><ul><li>Design <em>APIs</em></li><li>Review code</li></ul>' +
+          '<script>alert(1)</script><p>&lt;b&gt;literal&lt;/b&gt;</p>',
+      ),
+    ).toEqual([
+      { kind: 'heading', text: 'About us' },
+      { kind: 'paragraph', text: 'We build & ship. Daily.' },
+      { kind: 'heading', text: 'You will' },
+      { kind: 'list', items: ['Design APIs', 'Review code'] },
+      // Escaped markup stays text: the page renders it, never parses it.
+      { kind: 'paragraph', text: '<b>literal</b>' },
+    ])
+    expect(descriptionBlocks('## Perks:\n- Remote\n* Equity\n\nJoin us\ntoday')).toEqual([
+      { kind: 'heading', text: 'Perks' },
+      { kind: 'list', items: ['Remote', 'Equity'] },
+      { kind: 'paragraph', text: 'Join us today' },
+    ])
+    expect(descriptionBlocks('  ')).toEqual([])
+  })
+  it('keeps the raw response alongside the mapped job', async () => {
+    const body = dto({ benefits: ['Gym'] })
+    const loaded = await getProductionJobDetail(
+      KEY,
+      ID,
+      fakeFetch({ 'https://connect.example.test/api/jobs/': json(body) }),
+    )
+    expect(loaded.raw).toEqual(body)
+    expect(loaded.url).toBe(`https://connect.example.test/api/jobs/${ID}`)
+    expect(loaded.job.sourceLogoUrl).toBe('/ats-logos/greenhouse.png')
+    expect(loaded.detail.benefits).toEqual(['Gym'])
+  })
   it('formats pay ranges and posting age compactly', () => {
     expect(salaryRange({ min: 45, max: 60, currency: 'GBP', period: 'hourly' })).toBe('£45–£60/hr')
     expect(salaryRange({ min: 95000, max: 95000, currency: 'EUR', period: 'yearly' })).toBe('€95k/yr')
     expect(salaryRange({ min: null, max: null })).toBeUndefined()
+    expect(fullPay({ min: 45.5, max: 60, currency: 'GBP', period: 'hourly' })).toBe('£45.5 – £60 GBP per hour')
+    expect(fullPay({ min: 90000, max: null, currency: 'CHF', period: null })).toBe('90,000 CHF')
     const now = Date.parse('2026-10-02T12:00:00Z')
     expect(postedAgo('2026-10-02T01:00:00Z', now)).toBe('Today')
     expect(postedAgo('2026-09-29T12:00:00Z', now)).toBe('3d ago')
@@ -240,6 +346,73 @@ describe('catalog jobs', () => {
     // Cached: a second job page for the same company costs no request.
     await getCompanyProfile(KEY, ID, fetchImpl)
     expect(calls).toHaveLength(1)
+  })
+  it('reads links, people, funding and press from the company profile', async () => {
+    const OTHER = '9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d'
+    const company = await getCompanyProfile(
+      KEY,
+      OTHER,
+      fakeFetch({
+        'https://connect.example.test/api/companies/': json({
+          id: OTHER,
+          name: 'Globex',
+          legal_name: 'Globex Systems, Inc.',
+          summary: 'Payments for robots.',
+          description: 'Globex builds the payment rails that warehouse robots use.',
+          website: 'https://globex.example',
+          careers_url: 'https://globex.example/careers',
+          ats_provider: 'Greenhouse',
+          linkedin_url: 'https://www.linkedin.com/company/globex',
+          twitter_url: 'http://twitter.com/globex',
+          github_url: 'https://github.com/globex',
+          primary_industry: 'Finance',
+          stock_symbol: 'GLBX',
+          stock_exchange: 'nasdaq',
+          leadership: [
+            { name: 'Ada Park', title: 'CEO', linkedin_url: 'https://www.linkedin.com/in/ada', avatar_url: null },
+            { name: null, title: 'CTO' },
+          ],
+          founders: ['Ada Park', 'Ada Park', 'Lin Wu'],
+          funding_rounds: [
+            { investment_type: 'series_a', announced_on: '2023-02-01', raised_amount: '$12M', lead_investor: 'Seedcamp' },
+            { investment_type: 'series_b', announced_on: '2025-06-10', raised_amount: '$40M', post_money_valuation: '$400M' },
+          ],
+          ratings: [{ source: 'glassdoor', rating: 4.3, review_count: 212, url: 'https://glassdoor.example/globex' }],
+          press_references: [{ title: 'Globex raises $40M', publisher: 'TechCrunch', posted_on: '2025-06-10', url: 'https://tc.example/a' }],
+          products: [{ name: 'Globex Pay', description: '<p>Robot wallets</p>' }],
+          acquisitions: [{ acquiree_name: 'Initech' }],
+          subsidiary_list: ['Globex EU'],
+        }),
+      }),
+    )
+    expect(company).toMatchObject({
+      legalName: 'Globex Systems, Inc.',
+      tagline: 'Payments for robots.',
+      about: 'Globex builds the payment rails that warehouse robots use.',
+      atsProvider: 'greenhouse',
+      // http:// links are dropped, the rest keep display order.
+      links: [
+        { kind: 'website', href: 'https://globex.example/' },
+        { kind: 'careers', href: 'https://globex.example/careers' },
+        { kind: 'linkedin', href: 'https://www.linkedin.com/company/globex' },
+        { kind: 'github', href: 'https://github.com/globex' },
+      ],
+      leadership: [{ name: 'Ada Park', title: 'CEO', linkedinUrl: 'https://www.linkedin.com/in/ada' }],
+      founders: ['Ada Park', 'Lin Wu'],
+      fundingRounds: [
+        { type: 'Series B', date: 'Jun 10, 2025', amount: '$40M', valuation: '$400M' },
+        { type: 'Series A', date: 'Feb 1, 2023', amount: '$12M', lead: 'Seedcamp' },
+      ],
+      ratings: [{ source: 'Glassdoor', rating: '4.3', reviewCount: 212, url: 'https://glassdoor.example/globex' }],
+      press: [{ title: 'Globex raises $40M', publisher: 'TechCrunch', date: 'Jun 10, 2025', url: 'https://tc.example/a' }],
+      products: [{ name: 'Globex Pay', description: 'Robot wallets' }],
+      acquisitions: ['Initech'],
+      subsidiaries: ['Globex EU'],
+    })
+    expect(company!.facts).toEqual([
+      { label: 'Ownership', value: 'Public · NASDAQ: GLBX' },
+      { label: 'Industry', value: 'Finance' },
+    ])
   })
   it('maps 401, 402 and 404 to typed errors', async () => {
     const expectKind = async (status: number, kind: string) => {

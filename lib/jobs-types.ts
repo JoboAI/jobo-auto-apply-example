@@ -15,6 +15,8 @@ export interface Job {
   /** The ATS id (`greenhouse`, `lever`, …) — also the Auto Apply provider id. */
   source?: string
   sourceName?: string
+  /** The ATS's mark, shipped in `public/ats-logos/`. */
+  sourceLogoUrl?: string
   listingUrl?: string
   logoUrl?: string
   /** ISO 3166 alpha-2, when the catalog knows it. */

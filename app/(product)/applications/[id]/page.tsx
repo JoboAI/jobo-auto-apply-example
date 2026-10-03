@@ -14,6 +14,7 @@ import { ApplyButton } from '@/components/JobActions'
 import { ApplicationApiPreview } from '@/components/ApplicationApiPreview'
 import { ApplicationAnswers } from '@/components/ApplicationAnswers'
 import { ProductionJobLink, SandboxJobLink } from '@/components/SandboxJobLink'
+import { atsLogo } from '@/lib/jobo/supported-ats'
 import { fullName } from '@/lib/resume/profile-schema'
 export default async function Page({
   params,
@@ -191,7 +192,7 @@ export default async function Page({
             {row.sandbox ? (
               <SandboxJobLink url={row.applyUrl} slug={row.jobId ?? ''} title={row.jobSnapshot?.role ?? 'application'} />
             ) : (
-              <ProductionJobLink url={row.jobSnapshot?.listingUrl ?? row.applyUrl} ats={row.jobSnapshot?.sourceName} title={row.jobSnapshot?.role ?? 'application'} />
+              <ProductionJobLink url={row.jobSnapshot?.listingUrl ?? row.applyUrl} ats={row.jobSnapshot?.sourceName} atsLogoUrl={atsLogo(row.jobSnapshot?.source)} title={row.jobSnapshot?.role ?? 'application'} />
             )}
             <p>{row.profileSnapshot?.resumeFilename}</p>
             <dl className="snapshot-details">

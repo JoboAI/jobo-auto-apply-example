@@ -323,6 +323,10 @@ export function JobFeed({
                     className={`availability ${!job.available ? 'unavailable' : ''}`}
                   >
                     <span />
+                    {job.available && production && job.sourceLogoUrl && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img className="ats-mark" src={job.sourceLogoUrl} alt="" width={14} height={14} />
+                    )}
                     {job.available
                       ? production
                         ? `Auto Apply · ${job.sourceName ?? 'supported'}`
@@ -346,6 +350,7 @@ export function JobFeed({
                   <ProductionJobLink
                     url={job.listingUrl ?? job.applyUrl}
                     ats={job.sourceName}
+                    atsLogoUrl={job.sourceLogoUrl}
                     title={job.role}
                   />
                 ) : (
