@@ -63,23 +63,18 @@ const publicOrigin = z.url().superRefine((value, ctx) => {
 })
 
 const schema = z.object({
-  JOBO_API_KEY: z
-    .string()
-    .min(1, 'required')
-    .refine(
-      (v) => v.startsWith('jbe_live_') || v.startsWith('jbe_test_'),
-      'must start with jbe_live_ or jbe_test_ (master keys are rejected on Auto Apply routes)',
-    ),
+  /**
+   * The Jobo API. There is no deployment-wide Jobo key: each visitor connects
+   * their own, and its prefix picks sandbox or production
+   * (lib/jobo/environment.ts).
+   */
   JOBO_API_BASE_URL: z.url().default('https://connect.jobo.world'),
 
   /**
-   * OPTIONAL. Turns on production mode, where a visitor connects their own
-   * Jobo API key, browses real jobs and applies on that key. The key is
-   * stored encrypted with this secret because the background worker needs it
-   * after the browser has gone. Unset, the toggle says production mode is not
-   * configured and the demo stays sandbox-only.
+   * Seals each visitor's Jobo API key at rest: the background worker needs
+   * the key after the browser has gone. Rotating it disconnects every key.
    */
-  API_KEY_ENCRYPTION_SECRET: z.string().min(32, 'must be at least 32 characters').optional(),
+  API_KEY_ENCRYPTION_SECRET: z.string().min(32, 'must be at least 32 characters'),
   /** Public list of the ATSes Auto Apply can route to (no key needed). */
   JOBO_STATUS_URL: z.url().default('https://enterprise.jobo.world/api/v1/public/status/uptime'),
 
@@ -127,9 +122,8 @@ let cached: Config | null = null
 
 function raw() {
   return {
-    JOBO_API_KEY: process.env.JOBO_API_KEY,
     JOBO_API_BASE_URL: process.env.JOBO_API_BASE_URL,
-    API_KEY_ENCRYPTION_SECRET: process.env.API_KEY_ENCRYPTION_SECRET || undefined,
+    API_KEY_ENCRYPTION_SECRET: process.env.API_KEY_ENCRYPTION_SECRET,
     JOBO_STATUS_URL: process.env.JOBO_STATUS_URL || undefined,
     PUBLIC_BASE_URL: process.env.PUBLIC_BASE_URL || undefined,
     RESUME_URL_SIGNING_SECRET: process.env.RESUME_URL_SIGNING_SECRET,
@@ -215,7 +209,6 @@ export function authConfigIssues(): ConfigIssue[] {
 /** Every configured secret value, for redacting recorded API exchanges. */
 export function secretValues(): string[] {
   const values = [
-    process.env.JOBO_API_KEY,
     process.env.OPENROUTER_API_KEY,
     process.env.RESUME_URL_SIGNING_SECRET,
     process.env.API_KEY_ENCRYPTION_SECRET,

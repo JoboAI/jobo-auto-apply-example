@@ -4,9 +4,10 @@ import { join } from 'node:path'
 import { eq } from 'drizzle-orm'
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { SAMPLE_PROFILES } from '@/tests/support/seed'
+import { sandboxJob, sealedKey } from '@/tests/support/jobs'
 
 /**
- * The mode actions, the live-status endpoint and the resume upload route:
+ * The API key actions, the live-status endpoint and the resume upload route:
  * the HTTP surfaces a visitor can call directly, so each must validate its
  * input and refuse anything that is not the caller's.
  */
@@ -34,7 +35,6 @@ vi.mock('@/lib/resume/structure', async (original) => ({
 }))
 
 process.env.DATA_DIR = mkdtempSync(join(tmpdir(), 'jobo-routes-'))
-process.env.JOBO_API_KEY = 'jbe_test_fixture'
 process.env.OPENROUTER_API_KEY = 'fixture'
 process.env.RESUME_URL_SIGNING_SECRET = 'fixture-signing-secret-with-32-characters'
 process.env.API_KEY_ENCRYPTION_SECRET = 'fixture-encryption-secret-with-32-characters'
@@ -47,12 +47,12 @@ const VISITOR_KEY = 'jbe_live_abcdefghijklmnopqrstu_0123456789abcdefghijklmnopqr
 
 let db: typeof import('@/db/client').db
 let schema: typeof import('@/db/schema')
-let mode: typeof import('@/app/actions/mode')
+let keys: typeof import('@/app/actions/api-key')
 
 beforeAll(async () => {
   ;({ db } = await import('@/db/client'))
   schema = await import('@/db/schema')
-  mode = await import('@/app/actions/mode')
+  keys = await import('@/app/actions/api-key')
   const { seedSampleProfiles } = await import('@/tests/support/seed')
   const { RESUME_DIR } = await import('@/db/client')
   await seedSampleProfiles(db, RESUME_DIR, 'alice')
@@ -64,58 +64,79 @@ beforeEach(() => {
   vi.clearAllMocks()
 })
 
-describe('mode actions', () => {
+describe('API key actions', () => {
+  const SANDBOX_KEY = 'jbe_test_abcdefghijklmnopqrstu_0123456789'
+  const settingsOf = async (userId: string) =>
+    (await import('@/lib/user-settings')).getKeySettings(userId)
+
   it('rejects malformed input without calling Jobo', async () => {
     expect(
-      await mode.connectProductionAction({ apiKey: 42, acknowledged: true } as never),
+      await keys.connectApiKeyAction({ apiKey: 42, acknowledged: true } as never),
     ).toMatchObject({ ok: false })
-    expect(await mode.connectProductionAction({ apiKey: '   ', acknowledged: true })).toMatchObject(
-      {
-        ok: false,
-      },
-    )
+    expect(await keys.connectApiKeyAction({ apiKey: '   ', acknowledged: true })).toMatchObject({
+      ok: false,
+    })
     expect(mocked.verifyApiKey).not.toHaveBeenCalled()
   })
 
-  it('requires the real-employers acknowledgement the first time', async () => {
+  it('connects a sandbox key with no real-employers warning: the environment is sandbox', async () => {
+    identity.id = 'bob'
+    expect(await settingsOf('bob')).toMatchObject({ mode: null })
+    mocked.verifyApiKey.mockResolvedValue({ ok: true })
+    expect(await keys.connectApiKeyAction({ apiKey: SANDBOX_KEY, acknowledged: false })).toEqual({
+      ok: true,
+    })
+    expect(mocked.verifyApiKey).toHaveBeenCalledWith(SANDBOX_KEY)
+    expect(await settingsOf('bob')).toEqual({
+      mode: 'sandbox',
+      keyHint: SANDBOX_KEY.slice(-4),
+      acknowledged: false,
+    })
+  })
+
+  it('requires the real-employers acknowledgement for a production key the first time', async () => {
     expect(
-      await mode.connectProductionAction({ apiKey: VISITOR_KEY, acknowledged: false }),
+      await keys.connectApiKeyAction({ apiKey: VISITOR_KEY, acknowledged: false }),
     ).toMatchObject({ ok: false, error: expect.stringMatching(/real employers/) })
     expect(mocked.verifyApiKey).not.toHaveBeenCalled()
   })
 
-  it('stores a verified key sealed, switches to production, and forgets it on disconnect', async () => {
-    mocked.verifyApiKey.mockResolvedValue({ ok: true })
-    expect(
-      await mode.connectProductionAction({ apiKey: ` ${VISITOR_KEY} `, acknowledged: true }),
-    ).toEqual({ ok: true })
-    expect(mocked.verifyApiKey).toHaveBeenCalledWith(VISITOR_KEY)
-    const [settings] = await db
-      .select()
-      .from(schema.userSettings)
-      .where(eq(schema.userSettings.userId, 'alice'))
-    expect(settings.mode).toBe('production')
-    expect(settings.apiKeyCiphertext).toBeTruthy()
-    expect(settings.apiKeyCiphertext).not.toContain(VISITOR_KEY)
-    expect(settings.apiKeyHint).toBe(VISITOR_KEY.slice(-4))
-
-    expect(await mode.forgetApiKeyAction()).toEqual({ ok: true })
-    const [after] = await db
-      .select()
-      .from(schema.userSettings)
-      .where(eq(schema.userSettings.userId, 'alice'))
-    expect(after).toMatchObject({ mode: 'sandbox', apiKeyCiphertext: null, apiKeyHint: null })
+  it('does not store a key Jobo refuses', async () => {
+    identity.id = 'carol'
+    mocked.verifyApiKey.mockResolvedValue({ ok: false, error: 'Jobo rejected this API key.' })
+    expect(await keys.connectApiKeyAction({ apiKey: SANDBOX_KEY, acknowledged: false })).toEqual({
+      ok: false,
+      error: 'Jobo rejected this API key.',
+    })
+    expect(await settingsOf('carol')).toMatchObject({ mode: null })
   })
 
-  it('refuses production mode without a connected key, and treats unknown modes as sandbox', async () => {
-    identity.id = 'bob'
-    expect(await mode.setModeAction('production')).toMatchObject({ ok: false })
-    expect(await mode.setModeAction('nonsense' as never)).toEqual({ ok: true })
-    const [settings] = await db
+  it('stores a verified production key sealed, derives production from it, and forgets it', async () => {
+    mocked.verifyApiKey.mockResolvedValue({ ok: true })
+    expect(
+      await keys.connectApiKeyAction({ apiKey: ` ${VISITOR_KEY} `, acknowledged: true }),
+    ).toEqual({ ok: true })
+    expect(mocked.verifyApiKey).toHaveBeenCalledWith(VISITOR_KEY)
+    const [stored] = await db
       .select()
       .from(schema.userSettings)
-      .where(eq(schema.userSettings.userId, 'bob'))
-    expect(settings.mode).toBe('sandbox')
+      .where(eq(schema.userSettings.userId, 'alice'))
+    expect(stored.apiKeyCiphertext).toBeTruthy()
+    expect(stored.apiKeyCiphertext).not.toContain(VISITOR_KEY)
+    expect(await settingsOf('alice')).toEqual({
+      mode: 'production',
+      keyHint: VISITOR_KEY.slice(-4),
+      acknowledged: true,
+    })
+
+    // Replacing it with a sandbox key is how a visitor switches back.
+    expect(await keys.connectApiKeyAction({ apiKey: SANDBOX_KEY, acknowledged: false })).toEqual({
+      ok: true,
+    })
+    expect(await settingsOf('alice')).toMatchObject({ mode: 'sandbox', acknowledged: true })
+
+    expect(await keys.forgetApiKeyAction()).toEqual({ ok: true })
+    expect(await settingsOf('alice')).toMatchObject({ mode: null, keyHint: null })
   })
 })
 
@@ -126,19 +147,7 @@ describe('GET /api/applications/[id]/live', () => {
       .update(schema.profiles)
       .set({ reviewedAt: Date.now(), data: readyProfile() })
       .where(eq(schema.profiles.id, 'sample-ada-lovelace'))
-    const id = await enqueueApplication('alice', 'sample-ada-lovelace', {
-      slug: 'multi-step',
-      company: 'Cascade',
-      mark: 'CA',
-      role: 'Data engineer',
-      location: 'Leeds, UK',
-      department: 'Data',
-      employmentType: 'Full-time',
-      about: 'Data pipelines',
-      responsibilities: [],
-      applyUrl: 'https://sandbox.jobo.world/apply/multi-step',
-      available: true,
-    })
+    const id = await enqueueApplication('alice', 'sample-ada-lovelace', sandboxJob(), sealedKey())
     const { GET } = await import('@/app/api/applications/[id]/live/route')
     const params = { params: Promise.resolve({ id }) }
 

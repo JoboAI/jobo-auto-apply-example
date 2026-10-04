@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { eq } from 'drizzle-orm'
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { LIVE_KEY, SANDBOX_KEY, sandboxJob, sealedKey } from '@/tests/support/jobs'
 const mocked = vi.hoisted(() => ({
   create: vi.fn(),
   get: vi.fn(),
@@ -22,7 +23,6 @@ vi.mock('@/lib/answers', () => ({
   repairAnswers: vi.fn(),
 }))
 process.env.DATA_DIR = mkdtempSync(join(tmpdir(), 'jobo-engine-'))
-process.env.JOBO_API_KEY = 'jbe_test_fixture'
 process.env.OPENROUTER_API_KEY = 'fixture'
 process.env.PUBLIC_BASE_URL = 'https://demo.jobo.world'
 process.env.RESUME_URL_SIGNING_SECRET = 'fixture-signing-secret-with-32-characters'
@@ -93,20 +93,7 @@ beforeEach(async () => {
   await db.delete(schema.steps)
   await db.delete(schema.applications)
   vi.clearAllMocks()
-  const job = {
-    slug: 'multi-step',
-    company: 'Cascade',
-    mark: 'CA',
-    role: 'Data engineer',
-    location: 'NL',
-    department: 'Data',
-    employmentType: 'Full-time',
-    about: 'Data pipelines',
-    responsibilities: ['Build data products'],
-    applyUrl: 'https://sandbox.jobo.world/apply/multi-step',
-    available: true,
-  }
-  id = await queue.enqueueApplication('alice', 'sample-ada-lovelace', job)
+  id = await queue.enqueueApplication('alice', 'sample-ada-lovelace', sandboxJob(), sealedKey())
   await queue.claimApplication('worker')
   mocked.create.mockResolvedValue(snapshot())
   mocked.get.mockResolvedValue(snapshot())
@@ -377,7 +364,7 @@ describe('correction and retry recovery', () => {
     expect(await queue.claimApplication('worker')).toBeNull()
   })
 })
-describe('production mode', () => {
+describe('keys and environments', () => {
   const realJobId = '3f2b8c1e-5a6d-4e7f-8a9b-0c1d2e3f4a5b'
   const realJob = {
     slug: realJobId,
@@ -391,7 +378,6 @@ describe('production mode', () => {
     responsibilities: [],
     applyUrl: 'https://job-boards.greenhouse.io/acme/jobs/123',
     available: true,
-    production: true,
     source: 'greenhouse',
     countryCode: 'DE',
   }
@@ -399,10 +385,12 @@ describe('production mode', () => {
     // The shared beforeEach queued (and leased) a sandbox run for alice; the
     // per-user cap would hold the production one back behind it.
     await db.delete(schema.applications)
-    const { sealApiKey } = await import('@/lib/user-settings')
-    const prodId = await queue.enqueueApplication('alice', 'sample-ada-lovelace', realJob, false, {
-      apiKeyCiphertext: sealApiKey('jbe_live_visitor_key_fixture_0000000000'),
-    })
+    const prodId = await queue.enqueueApplication(
+      'alice',
+      'sample-ada-lovelace',
+      realJob,
+      sealedKey(LIVE_KEY),
+    )
     await queue.claimApplication('worker')
     return prodId
   }
@@ -413,8 +401,8 @@ describe('production mode', () => {
       { job_id: realJobId },
       expect.objectContaining({ idempotencyKey: expect.any(String) }),
     )
-    for (const call of mocked.client.mock.calls)
-      expect(call).toEqual([prodId, 'jbe_live_visitor_key_fixture_0000000000'])
+    const keys = mocked.client.mock.calls.map(([env]) => (env as { apiKey: string }).apiKey)
+    expect(new Set(keys)).toEqual(new Set([LIVE_KEY]))
     expect(mocked.build.mock.calls[0][1].jobCountryCode).toBe('DE')
     const [row] = await db
       .select()
@@ -424,12 +412,25 @@ describe('production mode', () => {
     expect(row.sandbox).toBe(false)
     expect(row.apiKeyCiphertext).toBeNull()
   })
-  it('keeps sandbox runs on the deployment key and the sandbox URL', async () => {
+  it('creates sandbox runs by job id, on the visitor’s sandbox key from the row', async () => {
     await engine.advanceApplication(id, 'worker')
-    expect(mocked.create.mock.calls[0][0]).toEqual({
-      apply_url: 'https://sandbox.jobo.world/apply/multi-step',
-    })
-    expect(mocked.client.mock.calls.every((call) => call.length === 1)).toBe(true)
+    expect(mocked.create.mock.calls[0][0]).toEqual({ job_id: sandboxJob().slug })
+    const envs = mocked.client.mock.calls.map(([env]) => env as { mode: string; apiKey: string })
+    expect(envs.length).toBeGreaterThan(0)
+    for (const env of envs) expect(env).toMatchObject({ mode: 'sandbox', apiKey: SANDBOX_KEY })
+    const [row] = await db.select().from(schema.applications).where(eq(schema.applications.id, id))
+    expect(row.sandbox).toBe(true)
+    expect(row.apiKeyCiphertext).toBeNull()
+  })
+  it('stops a row that has no sealed key, as there is no deployment key to fall back on', async () => {
+    await db
+      .update(schema.applications)
+      .set({ apiKeyCiphertext: null })
+      .where(eq(schema.applications.id, id))
+    await engine.advanceApplication(id, 'worker')
+    expect(mocked.create).not.toHaveBeenCalled()
+    const [row] = await db.select().from(schema.applications).where(eq(schema.applications.id, id))
+    expect(row.status).toBe('create_failed')
   })
   it('stops instead of retrying when the stored key is gone', async () => {
     const prodId = await enqueueProduction()
@@ -446,14 +447,18 @@ describe('production mode', () => {
     expect(row.status).toBe('create_failed')
     expect(row.stopReason).toMatch(/API key/)
   })
-  it('explains an account without Auto Apply access', async () => {
+  it.each([
+    'auto_apply_not_enabled',
+    'auto_apply_agreement_required',
+    'auto_apply_review_required',
+  ])('keeps the code and the API’s detail when a production key gets %s', async (code) => {
     const prodId = await enqueueProduction()
     const { JoboAPIError } = await import('@jobo-ai/autoapply')
     mocked.create.mockRejectedValueOnce(
       new JoboAPIError({
         status: 403,
-        code: 'auto_apply_not_enabled',
-        detail: 'This account does not have access to Auto Apply.',
+        code,
+        detail: 'The Auto Apply agreement has not been accepted.',
       }),
     )
     await engine.advanceApplication(prodId, 'worker')
@@ -461,9 +466,28 @@ describe('production mode', () => {
       .select()
       .from(schema.applications)
       .where(eq(schema.applications.id, prodId))
-    expect(row.status).toBe('create_failed')
-    expect(row.createErrorCode).toBe('auto_apply_not_enabled')
-    expect(row.failureMessage).toMatch(/not enabled/)
-    expect(row.apiKeyCiphertext).toBeNull()
+    expect(row).toMatchObject({
+      status: 'create_failed',
+      createErrorCode: code,
+      createErrorDetail: 'The Auto Apply agreement has not been accepted.',
+      apiKeyCiphertext: null,
+    })
+    expect(row.failureMessage).toBe(
+      'Your production key’s account can’t use Auto Apply yet: The Auto Apply agreement has not been accepted. Switch to a sandbox key to try the full flow.',
+    )
+  })
+  it('gives a sandbox key’s refusal the API detail, without the switch advice', async () => {
+    const { JoboAPIError } = await import('@jobo-ai/autoapply')
+    mocked.create.mockRejectedValueOnce(
+      new JoboAPIError({
+        status: 403,
+        code: 'auto_apply_review_required',
+        detail: 'Under review.',
+      }),
+    )
+    await engine.advanceApplication(id, 'worker')
+    const [row] = await db.select().from(schema.applications).where(eq(schema.applications.id, id))
+    expect(row.failureMessage).toBe('Jobo refused this sandbox application: Under review.')
+    expect(row.createErrorDetail).toBe('Under review.')
   })
 })

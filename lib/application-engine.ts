@@ -9,11 +9,11 @@ import {
   type ApplicationStep,
 } from '@jobo-ai/autoapply'
 import { jobo } from '@/lib/jobo/client'
+import { environmentForKey } from '@/lib/jobo/environment'
 import { buildAnswers, repairAnswers } from '@/lib/answers'
 import type { AnswerContext, BuildResult } from '@/lib/answers/types'
 import { signApplicationResumeUrl } from '@/lib/signed-url'
 import { isTerminal } from '@/lib/status'
-import { jobCountryCode, validProductionTarget, validSandboxUrl } from '@/lib/jobs'
 import { openApiKey } from '@/lib/user-settings'
 import { log } from '@/lib/logger'
 import { createFailureMessage } from '@/lib/presentation'
@@ -25,7 +25,7 @@ import { assertLease, updateLeased } from '@/lib/queue'
  * Auto Apply is synchronous: every call blocks until there is something for
  * this app to do, and the response IS the next state. One application goes:
  *
- *   1. create   `applications.create({ apply_url | job_id }, { idempotencyKey })`
+ *   1. create   `applications.create({ job_id }, { idempotencyKey })`
  *               blocks until Jobo has opened the form and discovered the first
  *               step's fields. The idempotency key was stored at enqueue, so
  *               replaying create after a crash or timeout re-attaches to the
@@ -82,12 +82,12 @@ class MissingApiKeyError extends Error {
 }
 
 /**
- * The client for one application. Sandbox runs use the deployment's key;
- * production runs use the visitor's own key, sealed on the row when it was
- * queued, so the application lives in THEIR Jobo account.
+ * The client for one application, from its row alone: the visitor may have
+ * replaced their key or closed the tab since. Every run uses the visitor's
+ * own key, sealed on the row when it was queued, so the application lives in
+ * THEIR Jobo account, sandbox or production.
  */
-function clientFor(local: Pick<ApplicationRow, 'id' | 'sandbox' | 'apiKeyCiphertext'>) {
-  if (local.sandbox) return jobo(local.id)
+function clientFor(local: Pick<ApplicationRow, 'id' | 'apiKeyCiphertext'>) {
   if (!local.apiKeyCiphertext) throw new MissingApiKeyError()
   let apiKey: string
   try {
@@ -95,7 +95,7 @@ function clientFor(local: Pick<ApplicationRow, 'id' | 'sandbox' | 'apiKeyCiphert
   } catch {
     throw new MissingApiKeyError()
   }
-  return jobo(local.id, apiKey)
+  return jobo(environmentForKey(apiKey), local.id)
 }
 
 async function readApplication(id: string): Promise<ApplicationRow | undefined> {
@@ -115,17 +115,6 @@ export async function advanceApplication(id: string, leaseOwner: string): Promis
   await assertLease(id, leaseOwner)
   const stop = (values: Partial<typeof applications.$inferInsert>) =>
     updateLeased(id, leaseOwner, { apiKeyCiphertext: null, updatedAt: Date.now(), ...values })
-
-  // Defence in depth before anything is created: enqueue already checked it.
-  if (!local.joboApplicationId) {
-    const validDestination = local.sandbox
-      ? validSandboxUrl(local.applyUrl, local.jobId)
-      : validProductionTarget(local.jobId, local.applyUrl)
-    if (!validDestination) {
-      const reason = 'This application’s destination is not a valid job, so it was not started.'
-      return stop({ status: 'create_failed', stopReason: reason, failureMessage: reason })
-    }
-  }
 
   let api: ReturnType<typeof jobo>
   try {
@@ -159,10 +148,10 @@ export async function advanceApplication(id: string, leaseOwner: string): Promis
     if (!local.joboApplicationId) {
       // First attempt, or a replay after a timeout or crash: the same stored
       // Idempotency-Key re-attaches to the application Jobo already started.
-      // Production runs create by Jobo job id; Jobo resolves the ATS and the
-      // apply URL from its own catalog record of that job.
+      // Created by Jobo job id in both modes; Jobo resolves the ATS and the
+      // apply URL from its own record of that job.
       application = await api.applications.create(
-        local.sandbox ? { apply_url: local.applyUrl } : { job_id: local.jobId },
+        { job_id: local.jobId },
         { idempotencyKey: local.idempotencyKey },
       )
     } else {
@@ -204,7 +193,11 @@ export async function advanceApplication(id: string, leaseOwner: string): Promis
       return stop({
         status: 'create_failed',
         createErrorCode: error.code,
-        failureMessage: createFailureMessage(error.code),
+        createErrorDetail: error.detail || null,
+        failureMessage: createFailureMessage(error.code, {
+          sandbox: local.sandbox,
+          detail: error.detail,
+        }),
       })
     throw error
   }
@@ -289,7 +282,7 @@ async function answerStep(
     resumeFilename: profile.resumeFilename,
     resumeContentType: profile.resumeContentType,
     resumeText: profile.resumeText,
-    jobCountryCode: job.countryCode ?? jobCountryCode(job.location),
+    jobCountryCode: job.countryCode,
     jobDescription: `${job.role} at ${job.company}\n${job.about}\n${job.responsibilities.join('\n')}`,
     applyUrl: local.applyUrl,
     providerName: application.provider_name ?? undefined,

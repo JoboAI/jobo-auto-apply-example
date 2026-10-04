@@ -12,7 +12,7 @@ const REQUIRED = {
   BETTER_AUTH_URL: 'https://example.com',
   BREVO_API_KEY: 'test-brevo',
   AUTH_EMAIL_FROM: 'noreply@example.com',
-  JOBO_API_KEY: 'jbe_test_key',
+  API_KEY_ENCRYPTION_SECRET: 'e'.repeat(32),
   PUBLIC_BASE_URL: 'https://example.com',
   RESUME_URL_SIGNING_SECRET: 'a'.repeat(32),
   OPENROUTER_API_KEY: 'sk-or-v1-test',
@@ -36,13 +36,19 @@ describe('GET /api/health', () => {
     expect(await response.json()).toMatchObject({ ok: true })
   })
 
-  it('is 503 when a required variable is missing', async () => {
-    setEnv({ ...REQUIRED, JOBO_API_KEY: undefined })
+  it('is 503, naming it, without the secret that seals visitors’ keys', async () => {
+    setEnv({ ...REQUIRED, API_KEY_ENCRYPTION_SECRET: undefined })
     const response = GET()
     expect(response.status).toBe(503)
     const body = (await response.json()) as { ok: boolean; missing: string[] }
     expect(body.ok).toBe(false)
-    expect(body.missing).toContain('JOBO_API_KEY')
+    expect(body.missing).toEqual(['API_KEY_ENCRYPTION_SECRET'])
+  })
+
+  it('needs no deployment-wide Jobo key, and ignores a leftover JOBO_API_KEY', async () => {
+    setEnv({ ...REQUIRED, JOBO_API_KEY: 'jbe_live_leftover_from_an_old_manifest' })
+    expect(GET().status).toBe(200)
+    setEnv({ JOBO_API_KEY: undefined })
   })
 
   it('is 503 when a variable is present but malformed', async () => {
@@ -58,8 +64,8 @@ describe('GET /api/health', () => {
   })
 
   it('never leaks a value, only the variable name', async () => {
-    setEnv({ ...REQUIRED, JOBO_API_KEY: 'jbe_bad_but_secret_value' })
+    setEnv({ ...REQUIRED, API_KEY_ENCRYPTION_SECRET: 'too-short-but-secret-value' })
     const body = await GET().text()
-    expect(body).not.toContain('jbe_bad_but_secret_value')
+    expect(body).not.toContain('too-short-but-secret-value')
   })
 })

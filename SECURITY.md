@@ -16,7 +16,7 @@ If you deploy your own copy, these are the sensitive parts:
 
 - **API keys and secrets** (`.env.local`): server-side only, never
   `NEXT_PUBLIC_`. Recorded API exchanges redact every configured secret.
-- **Visitors' Jobo API keys** (production mode): stored AES-256-GCM sealed
+- **Visitors' Jobo API keys** (sandbox and production): stored AES-256-GCM sealed
   with `API_KEY_ENCRYPTION_SECRET` (`lib/secret-box.ts`), and erased from an
   application once it finishes.
 - **Resumes**: served to their owner, or to Jobo through a short-lived URL

@@ -19,7 +19,7 @@ const ROOT = resolve(__dirname, '..')
 const SERVER_ONLY = [
   /^db\/(client|migrate)\.ts$/,
   /^lib\/(config|secret-box|user-settings|queue|application-engine|worker|auth|session|openrouter|signed-url|live-version|feed-page|doctor-checks)\.tsx?$/,
-  /^lib\/jobo\/(client|jobs-api|recording-fetch|supported-ats)\.ts$/,
+  /^lib\/jobo\/(client|environment|jobs-api|recording-fetch|supported-ats)\.ts$/,
   /^lib\/resume\/(extract|storage|structure)\.ts$/,
   /^lib\/answers\//,
 ]

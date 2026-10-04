@@ -4,9 +4,8 @@ import { and, eq } from 'drizzle-orm'
 import { db } from '@/db/client'
 import { applications } from '@/db/schema'
 import { requireUser } from '@/lib/session'
-import { getJobs, isProductionJobId, validProductionTarget, validSandboxUrl } from '@/lib/jobs'
-import { getProductionJob, JobsApiError } from '@/lib/jobo/jobs-api'
-import { openApiKey, productionKeyCiphertext } from '@/lib/user-settings'
+import { visitorEnvironment } from '@/lib/jobo/environment'
+import { getJob, JobsApiError } from '@/lib/jobo/jobs-api'
 import { z } from 'zod'
 import { enqueueApplication, EnqueueRefusedError } from '@/lib/queue'
 import { isTerminal } from '@/lib/status'
@@ -26,6 +25,7 @@ const startInput = z.object({
   retry: z.boolean().optional(),
 })
 const applicationIdInput = z.string().min(1).max(100)
+const NO_KEY = 'Connect your Jobo API key before applying.'
 
 export async function startApplicationAction(
   raw: z.input<typeof startInput>,
@@ -35,45 +35,31 @@ export async function startApplicationAction(
   if (!parsed.success) return { ok: false, error: 'Invalid request.' }
   const input = parsed.data
   try {
-    let id: string
-    if (isProductionJobId(input.jobId)) {
-      // A real job: only in production mode, on the visitor's own key, and
-      // re-read from Jobo here rather than trusting anything from the browser.
-      const apiKeyCiphertext = await productionKeyCiphertext(user.id)
-      if (!apiKeyCiphertext)
-        return {
-          ok: false,
-          error: 'Switch to production mode with your Jobo API key to apply to real jobs.',
-        }
-      let job
-      try {
-        job = await getProductionJob(openApiKey(apiKeyCiphertext), input.jobId)
-      } catch (error) {
+    // The job is re-read from Jobo on the visitor's own key rather than
+    // trusted from the browser. A job from the other mode is not found there.
+    const env = await visitorEnvironment(user.id)
+    if (!env) return { ok: false, error: NO_KEY }
+    let job
+    try {
+      job = await getJob(env, input.jobId)
+    } catch (error) {
+      if (error instanceof JobsApiError && error.kind === 'not_found')
         return {
           ok: false,
           error:
-            error instanceof JobsApiError
-              ? error.message
-              : 'We could not load this job from Jobo. Please try again.',
+            env.mode === 'sandbox'
+              ? 'This is not a sandbox job. Connect a production key (jbe_live_…) to apply to real jobs.'
+              : 'Job not found. It may have closed, or be a sandbox job.',
         }
+      return {
+        ok: false,
+        error:
+          error instanceof JobsApiError
+            ? error.message
+            : 'We could not load this job from Jobo. Please try again.',
       }
-      if (!job.available || !validProductionTarget(job.slug, job.applyUrl))
-        return {
-          ok: false,
-          error: 'Auto Apply does not support this job’s application system.',
-        }
-      id = await enqueueApplication(user.id, input.profileId, job, input.retry === true, {
-        apiKeyCiphertext,
-      })
-    } else {
-      const job = (await getJobs()).find((j) => j.slug === input.jobId)
-      if (!job?.available || !validSandboxUrl(job.applyUrl, job.slug))
-        return {
-          ok: false,
-          error: 'This sandbox job is not accepting applications right now.',
-        }
-      id = await enqueueApplication(user.id, input.profileId, job, input.retry === true)
     }
+    const id = await enqueueApplication(user.id, input.profileId, job, env, input.retry === true)
     revalidatePath('/applications')
     revalidatePath('/jobs')
     revalidatePath('/saved')

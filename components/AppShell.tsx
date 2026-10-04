@@ -1,13 +1,14 @@
 import Link from 'next/link'
 import { ApiDocsLink, SourceLink } from '@/components/SourceLink'
-import { ModeToggle, type ModeProps } from '@/components/ModeToggle'
+import { EnvironmentBadge } from '@/components/EnvironmentBadge'
 import { PageLink } from '@/components/PageLink'
 import { MainNav } from '@/components/MainNav'
 import { UserRound, ArrowUpRight, Sparkles, Settings } from 'lucide-react'
+import type { KeySettings } from '@/lib/user-settings'
 /**
- * The signed-in layout: sidebar navigation, top bar with the mode switch,
- * and footer. A server component; only the navigation (which highlights the
- * current page) and the mode switch run in the browser.
+ * The signed-in layout: sidebar navigation, top bar with the environment
+ * badge (from the visitor's key), and footer. A server component; only the
+ * navigation, which highlights the current page, runs in the browser.
  */
 export function AppShell({
   name,
@@ -17,7 +18,7 @@ export function AppShell({
 }: {
   name: string
   email: string
-  settings: ModeProps
+  settings: KeySettings
   children: React.ReactNode
 }) {
   const production = settings.mode === 'production'
@@ -32,7 +33,7 @@ export function AppShell({
           <span>auto apply</span>
         </PageLink>
         <div className={`workspace-label ${production ? 'production' : ''}`}>
-          {production ? 'PRODUCTION MODE' : 'DEVELOPER SANDBOX'}
+          {production ? 'PRODUCTION · REAL EMPLOYERS' : 'DEVELOPER SANDBOX'}
         </div>
         <MainNav />
         <div className="sidebar-bottom">
@@ -43,7 +44,7 @@ export function AppShell({
             <strong>This is the Auto Apply Demo.</strong>
             <p>
               {production
-                ? 'You are applying to real jobs on your own Jobo API key. Switch back to sandbox any time.'
+                ? 'You are applying to real jobs on your production key. Connect a sandbox key to switch back any time.'
                 : 'See the API in action with fictional jobs, then explore the source to build your own integration.'}
             </p>
             <a href="https://sandbox.jobo.world" target="_blank" rel="noreferrer">
@@ -67,7 +68,7 @@ export function AppShell({
             <img src="/logos/jobo-logo.svg" alt="Jobo" />
           </PageLink>
           <div className="topbar-actions">
-            <ModeToggle {...settings} />
+            <EnvironmentBadge mode={settings.mode} keyHint={settings.keyHint} />
             <ApiDocsLink compact />
             <SourceLink compact />
             <Link
@@ -85,7 +86,7 @@ export function AppShell({
         <footer className="app-footer">
           <span>
             {production
-              ? 'Jobo Auto Apply Demo · Production mode: applications go to real employers.'
+              ? 'Jobo Auto Apply Demo · Production key: applications go to real employers.'
               : 'Jobo Auto Apply Demo · No real employers contacted.'}
           </span>
           <div className="developer-links">

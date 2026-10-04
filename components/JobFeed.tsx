@@ -10,9 +10,9 @@ import { JobCard } from './JobCard'
 import { PageLink } from './PageLink'
 
 /**
- * The list of jobs. In sandbox mode it filters the (small) fictional catalog
- * in the browser; in production mode the search, facets and summary are
- * server-rendered (components/JobExplorer.tsx) and passed in through `search`.
+ * The list of jobs. A search's facets and summary are server-rendered
+ * (components/JobExplorer.tsx) and passed in through `search`, in both modes;
+ * the saved list, which has no search, is filtered in the browser.
  */
 export function JobFeed({
   jobs,
@@ -31,8 +31,8 @@ export function JobFeed({
   applicationStates: Record<string, CardApplication>
   mode?: 'sandbox' | 'production'
   /**
-   * Production discovery: a server-side search with facets. The filter column
-   * and the results summary are server-rendered and passed in whole.
+   * Discovery: a server-side search with facets. The filter column and the
+   * results summary are server-rendered and passed in whole.
    */
   search?: {
     filters: JobFilters
@@ -46,8 +46,8 @@ export function JobFeed({
   aside?: ReactNode
 }) {
   const production = mode === 'production'
-  // Sandbox filters live in the URL (?q=&location=&department=), written with
-  // replaceState: a reload, or the live-progress fallback reload, keeps them.
+  // Saved-list filters live in the URL (?q=&location=&department=), written
+  // with replaceState: a reload, or the live-progress fallback reload, keeps them.
   const params = useSearchParams()
   const [query, setQuery] = useState(search ? '' : (params.get('q') ?? '')),
     [location, setLocation] = useState(search ? '' : (params.get('location') ?? '')),

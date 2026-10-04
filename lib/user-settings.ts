@@ -3,42 +3,28 @@ import { db } from '@/db/client'
 import { userSettings } from '@/db/schema'
 import { config } from '@/lib/config'
 import { open, seal } from '@/lib/secret-box'
+import { keyMode, type JoboMode } from '@/lib/jobo/environment'
 
 /**
- * Sandbox vs production, per visitor.
- *
- * Sandbox is the default and needs nothing: fictional jobs, the deployment's
- * own key. Production uses the visitor's Jobo API key for job search and for
- * applications, so it is only offered when the deployment has
- * API_KEY_ENCRYPTION_SECRET to store that key with.
+ * The visitor's own Jobo API key, which every Jobo call they cause uses.
+ * Stored sealed (lib/secret-box.ts) because the background worker needs it
+ * after the browser has gone. Its prefix picks sandbox or production
+ * (lib/jobo/environment.ts); switching is replacing the key.
  */
-export type DemoMode = 'sandbox' | 'production'
-
-export interface DemoSettings {
-  mode: DemoMode
-  hasKey: boolean
+export interface KeySettings {
+  /** Null until the visitor connects a key. */
+  mode: JoboMode | null
   keyHint: string | null
+  /** The one-time "production applications go to real employers" warning. */
   acknowledged: boolean
-  /** False when this deployment cannot store keys at all. */
-  productionAvailable: boolean
-}
-
-export function productionAvailable(): boolean {
-  return !!config().API_KEY_ENCRYPTION_SECRET
-}
-
-function secret(): string {
-  const value = config().API_KEY_ENCRYPTION_SECRET
-  if (!value) throw new Error('Production mode is not configured on this deployment.')
-  return value
 }
 
 export function sealApiKey(apiKey: string): string {
-  return seal(apiKey, secret())
+  return seal(apiKey, config().API_KEY_ENCRYPTION_SECRET)
 }
 
 export function openApiKey(ciphertext: string): string {
-  return open(ciphertext, secret())
+  return open(ciphertext, config().API_KEY_ENCRYPTION_SECRET)
 }
 
 async function row(userId: string) {
@@ -50,43 +36,32 @@ async function row(userId: string) {
   return found
 }
 
-export async function getDemoSettings(userId: string): Promise<DemoSettings> {
+export async function getKeySettings(userId: string): Promise<KeySettings> {
   const found = await row(userId)
-  const available = productionAvailable()
-  const hasKey = !!found?.apiKeyCiphertext
+  let mode: JoboMode | null = null
+  try {
+    if (found?.apiKeyCiphertext) mode = keyMode(openApiKey(found.apiKeyCiphertext))
+  } catch {
+    // Sealed under a rotated API_KEY_ENCRYPTION_SECRET: treated as no key.
+  }
   return {
-    // A deployment that lost its secret falls back to sandbox rather than
-    // offering a mode whose key it can no longer read.
-    mode: available && hasKey && found?.mode === 'production' ? 'production' : 'sandbox',
-    hasKey: available && hasKey,
-    keyHint: found?.apiKeyHint ?? null,
+    mode,
+    keyHint: mode ? (found?.apiKeyHint ?? null) : null,
     acknowledged: !!found?.productionAcknowledgedAt,
-    productionAvailable: available,
   }
 }
 
-/**
- * The visitor's key, sealed, only while they are in production mode. This is
- * what an application snapshots when it is queued.
- */
-export async function productionKeyCiphertext(userId: string): Promise<string | null> {
-  const found = await row(userId)
-  if (!productionAvailable() || found?.mode !== 'production') return null
-  return found.apiKeyCiphertext ?? null
+/** The visitor's key, sealed: what an application snapshots when it is queued. */
+export async function storedKeyCiphertext(userId: string): Promise<string | null> {
+  return (await row(userId))?.apiKeyCiphertext ?? null
 }
 
-/** The plaintext key for job search, or null outside production mode. */
-export async function productionApiKey(userId: string): Promise<string | null> {
-  const ciphertext = await productionKeyCiphertext(userId)
-  return ciphertext ? openApiKey(ciphertext) : null
-}
-
-export async function connectApiKey(userId: string, apiKey: string) {
+/** Store a verified key. `acknowledged` records the production warning. */
+export async function connectApiKey(userId: string, apiKey: string, acknowledged: boolean) {
   const values = {
-    mode: 'production' as const,
     apiKeyCiphertext: sealApiKey(apiKey),
     apiKeyHint: apiKey.slice(-4),
-    productionAcknowledgedAt: Date.now(),
+    ...(acknowledged ? { productionAcknowledgedAt: Date.now() } : {}),
     updatedAt: Date.now(),
   }
   await db
@@ -95,32 +70,14 @@ export async function connectApiKey(userId: string, apiKey: string) {
     .onConflictDoUpdate({ target: userSettings.userId, set: values })
 }
 
-export async function setDemoMode(userId: string, mode: DemoMode) {
-  await db
-    .insert(userSettings)
-    .values({ userId, mode, updatedAt: Date.now() })
-    .onConflictDoUpdate({
-      target: userSettings.userId,
-      set: { mode, updatedAt: Date.now() },
-    })
-}
-
 /**
- * Forget the key and return to sandbox. Applications already queued keep
- * their own sealed copy so a run in flight can finish; that copy is cleared
- * when each one reaches a terminal state.
+ * Forget the key; the visitor connects one again before the next search.
+ * Applications already queued keep their own sealed copy so a run in flight
+ * can finish; that copy is cleared when each one reaches a terminal state.
  */
 export async function forgetApiKey(userId: string) {
   await db
-    .insert(userSettings)
-    .values({ userId, mode: 'sandbox', updatedAt: Date.now() })
-    .onConflictDoUpdate({
-      target: userSettings.userId,
-      set: {
-        mode: 'sandbox',
-        apiKeyCiphertext: null,
-        apiKeyHint: null,
-        updatedAt: Date.now(),
-      },
-    })
+    .update(userSettings)
+    .set({ apiKeyCiphertext: null, apiKeyHint: null, updatedAt: Date.now() })
+    .where(eq(userSettings.userId, userId))
 }

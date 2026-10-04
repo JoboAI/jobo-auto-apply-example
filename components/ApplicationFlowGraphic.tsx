@@ -176,7 +176,7 @@ export function IntegrationGraphic({ kind }: { kind: 'profile' | 'application' |
           <code>
             <span>await</span> jobo.applications.<b>run</b>({'{'}
             <br />
-            <i> apply_url:</i> <em>job.url</em>
+            <i> job_id:</i> <em>job.id</em>
             <br />
             {'}'}, {'{'} onStep {'}'})
           </code>

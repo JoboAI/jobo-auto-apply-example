@@ -1,15 +1,13 @@
-import { JoboAPIError } from '@jobo-ai/autoapply'
 import { sql } from 'drizzle-orm'
 import { db } from '@/db/client'
 import { authConfig, config } from './config'
-import { jobo } from './jobo/client'
-import { SANDBOX_JOBS_URL } from './jobs'
 
 /**
  * Preflight checks for `npm run doctor`. Each one catches a mistake that is
- * otherwise painful to find: a Jobo key without Auto Apply access or a model
- * that cannot answer both surface 30 seconds into a run, an unverified Brevo
- * sender only when the first signup never gets its email.
+ * otherwise painful to find: a model that cannot answer surfaces 30 seconds
+ * into a run, an unverified Brevo sender only when the first signup never
+ * gets its email. There is no Jobo key to check: each visitor connects their
+ * own, and it is verified then (verifyApiKey in lib/jobo/jobs-api.ts).
  */
 
 export interface CheckResult {
@@ -38,18 +36,17 @@ async function checkDatabase(): Promise<CheckResult> {
   }
 }
 
-async function checkJoboKey(): Promise<CheckResult> {
+/** The public list of supported ATSes: the deployment can reach Jobo. */
+async function checkJobo(): Promise<CheckResult> {
   try {
-    await jobo().applications.list({ limit: 1 })
-    return { status: 'pass', name: 'Jobo API key', detail: 'listing applications succeeded' }
+    const response = await fetch(config().JOBO_STATUS_URL, {
+      headers: { Accept: 'application/json' },
+      signal: AbortSignal.timeout(10_000),
+    })
+    if (!response.ok) return { status: 'fail', name: 'Jobo', detail: `${response.status} status` }
+    return { status: 'pass', name: 'Jobo', detail: 'reached the public Auto Apply status' }
   } catch (error) {
-    if (error instanceof JoboAPIError)
-      return {
-        status: 'fail',
-        name: 'Jobo API key',
-        detail: `${error.status} ${error.code}: ${error.message}`,
-      }
-    return failure('Jobo API key', error)
+    return failure('Jobo', error)
   }
 }
 
@@ -133,22 +130,6 @@ async function checkBrevo(): Promise<CheckResult> {
   }
 }
 
-async function checkSandbox(): Promise<CheckResult> {
-  try {
-    const response = await fetch(SANDBOX_JOBS_URL, { signal: AbortSignal.timeout(10_000) })
-    const body = (await response.json()) as { available?: boolean }
-    if (body.available)
-      return { status: 'pass', name: 'Sandbox', detail: 'fictional jobs are available' }
-    return {
-      status: 'warn',
-      name: 'Sandbox',
-      detail: 'the sandbox reports its forms as unavailable right now; try again later',
-    }
-  } catch {
-    return { status: 'warn', name: 'Sandbox', detail: 'could not read the sandbox job list' }
-  }
-}
-
 /** Resume serving is optional locally; say plainly what its absence means. */
 function checkResumeServing(): CheckResult {
   const origin = config().PUBLIC_BASE_URL
@@ -170,10 +151,9 @@ function checkResumeServing(): CheckResult {
 export async function runPreflight(): Promise<CheckResult[]> {
   return Promise.all([
     checkDatabase(),
-    checkJoboKey(),
+    checkJobo(),
     checkOpenRouter(),
     checkBrevo(),
-    checkSandbox(),
     Promise.resolve(checkResumeServing()),
   ])
 }

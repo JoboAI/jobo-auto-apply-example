@@ -3,8 +3,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { beforeAll, expect, it } from 'vitest'
 import { eq } from 'drizzle-orm'
+import { sandboxJob, sealedKey } from '@/tests/support/jobs'
 process.env.DATA_DIR = mkdtempSync(join(tmpdir(), 'jobo-signed-'))
-process.env.JOBO_API_KEY = 'jbe_test_fixture'
+process.env.API_KEY_ENCRYPTION_SECRET = 'fixture-encryption-secret-with-32-characters'
 process.env.OPENROUTER_API_KEY = 'fixture'
 process.env.PUBLIC_BASE_URL = 'https://demo.jobo.world'
 process.env.RESUME_URL_SIGNING_SECRET = 'independent-test-signing-secret-32-characters'
@@ -38,19 +39,7 @@ beforeAll(async () => {
     .set({ userId: 'owner', reviewedAt: Date.now() })
     .where(eq(profiles.id, 'sample-ada-lovelace'))
   const { enqueueApplication } = await import('@/lib/queue')
-  id = await enqueueApplication('owner', 'sample-ada-lovelace', {
-    slug: 'multi-step',
-    company: 'Cascade',
-    mark: 'CA',
-    role: 'Data engineer',
-    location: 'NL',
-    department: 'Data',
-    employmentType: 'Full-time',
-    about: 'Data',
-    responsibilities: [],
-    applyUrl: 'https://sandbox.jobo.world/apply/multi-step',
-    available: true,
-  })
+  id = await enqueueApplication('owner', 'sample-ada-lovelace', sandboxJob(), sealedKey())
 })
 it('serves only an application snapshot with an unexpired, correctly scoped signature', async () => {
   const { signApplicationResumeUrl } = await import('@/lib/signed-url')

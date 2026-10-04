@@ -586,9 +586,9 @@ export function ExplorerSummary({
           <Code2 size={16} /> See the API call behind these results
         </summary>
         <p>
-          Every job, count and filter on this page comes from this one request, made with your API
-          key. Facets come back in the same response, and the full company profile on a job page is
-          a free <code>GET /api/companies/&#123;id&#125;</code>.
+          Every job, count and filter on this page comes from this one request. Facets come back in
+          the same response, and the full company profile on a job page is a free{' '}
+          <code>GET /api/companies/&#123;id&#125;</code>.
         </p>
         <CodeBlock
           title={`${result.request.method} /api/jobs/search`}

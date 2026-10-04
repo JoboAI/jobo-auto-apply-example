@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { ArrowRight, ArrowUpRight, BriefcaseBusiness, Check, Sparkles } from 'lucide-react'
 import { ApiDocsLink, SourceLink } from './SourceLink'
 
-/** The sandbox feed's side column: integration pointers, profile status, activity. */
+/** The saved list's side column: integration pointers, profile status, activity. */
 export function FeedAside({
   name,
   profileReady,
@@ -70,8 +70,8 @@ export function FeedAside({
         <Sparkles size={16} />
         <p>
           {production
-            ? 'Production mode calls the Jobs and Auto Apply APIs with your own key — the same calls your integration would make.'
-            : 'This demo calls the Auto Apply API against fictional jobs. Use the source to see how to integrate it into your own app.'}
+            ? 'Your production key calls the Jobs and Auto Apply APIs — the same calls your integration would make.'
+            : 'Your sandbox key calls the same Jobs and Auto Apply APIs against fictional jobs, free. Use the source to see how to integrate them into your own app.'}
         </p>
       </div>
     </aside>

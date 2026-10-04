@@ -1,6 +1,7 @@
 import { createClient, type JoboAutoApply } from '@jobo-ai/autoapply'
 import { recordingFetch } from './recording-fetch'
 import { config, secretValues } from '@/lib/config'
+import type { JoboEnvironment } from './environment'
 
 /**
  * The Auto Apply API client: `@jobo-ai/autoapply`, the published SDK. The
@@ -17,20 +18,18 @@ import { config, secretValues } from '@/lib/config'
  */
 
 /**
- * A client for one application, or (without `applicationId`) for one-off
- * calls such as the preflight check.
+ * A client on one environment's key (lib/jobo/environment.ts).
  *
  * With `applicationId`, every HTTP exchange is recorded, redacted, for the
  * candidate's "API requests & responses" panel (lib/jobo/recording-fetch.ts).
- * `apiKey` overrides the deployment's key: production mode passes the
- * visitor's own key, so the application belongs to their Jobo account.
+ * Without it, the client is for one-off calls such as the preflight check.
  */
-export function jobo(applicationId?: string, apiKey?: string): JoboAutoApply {
-  const c = config()
-  const key = apiKey ?? c.JOBO_API_KEY
+export function jobo(env: JoboEnvironment, applicationId?: string): JoboAutoApply {
   return createClient({
-    apiKey: key,
-    baseUrl: c.JOBO_API_BASE_URL,
-    ...(applicationId ? { fetch: recordingFetch(applicationId, [key, ...secretValues()]) } : {}),
+    apiKey: env.apiKey,
+    baseUrl: config().JOBO_API_BASE_URL,
+    ...(applicationId
+      ? { fetch: recordingFetch(applicationId, [env.apiKey, ...secretValues()]) }
+      : {}),
   })
 }

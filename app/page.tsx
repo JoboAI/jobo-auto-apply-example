@@ -6,19 +6,24 @@ import { and, eq } from 'drizzle-orm'
 import { db } from '@/db/client'
 import { profiles } from '@/db/schema'
 import { currentUser } from '@/lib/session'
+import { getKeySettings } from '@/lib/user-settings'
 import { ApiDocsLink, SourceLink } from '@/components/SourceLink'
 export default async function Home() {
-  // Signed-in visitors go straight to the app: onboarding until they have a
-  // profile. Decided here, outside the (product) group, because a redirect()
-  // inside it happens after streaming starts and can only be done client-side.
+  // Signed-in visitors go straight to the app: onboarding until they have
+  // connected a Jobo API key and have a profile. Decided here, outside the
+  // (product) group, because a redirect() inside it happens after streaming
+  // starts and can only be done client-side.
   const user = await currentUser()
   if (user) {
-    const [profile] = await db
-      .select({ id: profiles.id })
-      .from(profiles)
-      .where(and(eq(profiles.userId, user.id), eq(profiles.archived, false)))
-      .limit(1)
-    redirect(profile ? '/jobs' : '/onboarding')
+    const [[profile], { mode }] = await Promise.all([
+      db
+        .select({ id: profiles.id })
+        .from(profiles)
+        .where(and(eq(profiles.userId, user.id), eq(profiles.archived, false)))
+        .limit(1),
+      getKeySettings(user.id),
+    ])
+    redirect(mode && profile ? '/jobs' : '/onboarding')
   }
   return (
     <div className="landing">
@@ -57,8 +62,8 @@ export default async function Home() {
             <ApiDocsLink />
           </div>
           <div className="hero-footnote">
-            <Check size={15} /> Sandbox jobs by default. Real API calls. Real employers only in
-            production mode, on your own key.
+            <Check size={15} /> Runs on your own Jobo API key: a sandbox key for fictional jobs, a
+            production key for real employers.
           </div>
         </div>
         <ApplicationFlowGraphic />

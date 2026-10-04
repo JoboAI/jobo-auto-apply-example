@@ -249,7 +249,6 @@ export function toJob(dto: JobDto, supported: readonly SupportedAts[]): Job {
     responsibilities: (dto.responsibilities ?? []).slice(0, 12),
     applyUrl,
     available: !!ats && !!applyUrl,
-    production: true,
     source: dto.source ?? undefined,
     sourceName: ats?.name ?? dto.source ?? undefined,
     sourceLogoUrl: ats?.logoUrl ?? atsLogo(dto.source),

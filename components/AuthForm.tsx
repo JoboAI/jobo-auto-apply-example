@@ -34,8 +34,8 @@ export function AuthForm({
               name: String(data.get('name')),
               email,
               password,
-              // Straight to onboarding: a new account has no profile, and
-              // /jobs would redirect it there from inside a streamed page,
+              // Straight to onboarding: a new account has no key or profile,
+              // and /jobs would redirect it there from inside a streamed page,
               // which Next backs with a 1-second <meta refresh>. That
               // reload landed on top of a quick first upload and threw it away.
               callbackURL: '/onboarding',
@@ -44,7 +44,7 @@ export function AuthForm({
             ? await authClient.signIn.email({
                 email,
                 password,
-                callbackURL: '/jobs',
+                callbackURL: '/',
               })
             : mode === 'forgot'
               ? await authClient.requestPasswordReset({
@@ -59,9 +59,10 @@ export function AuthForm({
         setError(result.error.message ?? 'Something went wrong. Please try again.')
         return
       }
-      // A full load after sign-in, so every server component sees the new session.
+      // A full load after sign-in, so every server component sees the new
+      // session; `/` sends a visitor without a key or profile to onboarding.
       // eslint-disable-next-line @next/next/no-location-assign-relative-destination
-      if (mode === 'login') window.location.assign('/jobs')
+      if (mode === 'login') window.location.assign('/')
       else setSent(true)
     } catch {
       setError('Unable to connect. Please try again.')
@@ -212,7 +213,8 @@ export function AuthForm({
       </section>
       <div className="auth-caption">
         <p>
-          Jobo Auto Apply Demo · Sandbox jobs by default. Real employers only in production mode.
+          Jobo Auto Apply Demo · Runs on your own Jobo API key. Real employers only with a
+          production key.
         </p>
         <SourceLink />
       </div>

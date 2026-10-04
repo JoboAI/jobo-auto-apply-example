@@ -5,13 +5,13 @@ import type { CardApplication } from '@/lib/presentation'
 import { CardApply } from './CardApply'
 import { SaveButton } from './JobActions'
 import { PageLink } from './PageLink'
-import { ProductionJobLink, SandboxJobLink } from './SandboxJobLink'
+import { JobPostingLink } from './JobPostingLink'
 
 /**
  * One job in the feed: company, role, tags, availability, the Apply button
  * with its live progress (CardApply), and a link to the original posting.
- * With `filters` (production search), company and industry link to filtered
- * searches.
+ * With `filters` (a search, rather than the saved list), company and
+ * industry link to filtered searches.
  */
 export function JobCard({
   job,
@@ -28,6 +28,7 @@ export function JobCard({
   saved: boolean
   profileId?: string
   application?: CardApplication
+  /** Real employers and the visitor's key, rather than the sandbox. */
   production: boolean
   filters?: JobFilters
 }) {
@@ -102,16 +103,10 @@ export function JobCard({
       <div className="job-card-footer">
         <span className={`availability ${!job.available ? 'unavailable' : ''}`}>
           <span />
-          {job.available && production && job.sourceLogoUrl && (
+          {job.available && job.sourceLogoUrl && (
             <img className="ats-mark" src={job.sourceLogoUrl} alt="" width={14} height={14} />
           )}
-          {job.available
-            ? production
-              ? `Auto Apply · ${job.sourceName ?? 'supported'}`
-              : 'Sandbox available'
-            : production
-              ? 'Not supported'
-              : 'Currently unavailable'}
+          {job.available ? `Auto Apply · ${job.sourceName ?? 'supported'}` : 'Not supported'}
         </span>
         <PageLink href={`/jobs/${job.slug}`} className="job-view">
           View role <ArrowUpRight size={15} />
@@ -124,16 +119,12 @@ export function JobCard({
         application={application}
         production={production}
       />
-      {job.production ? (
-        <ProductionJobLink
-          url={job.listingUrl ?? job.applyUrl}
-          ats={job.sourceName}
-          atsLogoUrl={job.sourceLogoUrl}
-          title={job.role}
-        />
-      ) : (
-        <SandboxJobLink url={job.applyUrl} slug={job.slug} title={job.role} />
-      )}
+      <JobPostingLink
+        url={job.listingUrl ?? job.applyUrl}
+        ats={job.sourceName}
+        atsLogoUrl={job.sourceLogoUrl}
+        title={job.role}
+      />
     </article>
   )
 }

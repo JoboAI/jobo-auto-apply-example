@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { eq } from 'drizzle-orm'
 import { beforeAll, describe, expect, it, vi } from 'vitest'
 import type { Job } from '@/lib/jobs-types'
+import { LIVE_KEY, SANDBOX_KEY, sandboxJob, sealedKey } from '@/tests/support/jobs'
 const identity = vi.hoisted(() => ({ id: 'alice' }))
 vi.mock('@/lib/session', () => ({
   requireUser: async () => ({ id: identity.id }),
@@ -11,7 +12,6 @@ vi.mock('@/lib/session', () => ({
 }))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
 process.env.DATA_DIR = mkdtempSync(join(tmpdir(), 'jobo-product-'))
-process.env.JOBO_API_KEY = 'jbe_test_fixture'
 process.env.OPENROUTER_API_KEY = 'test-fixture'
 process.env.PUBLIC_BASE_URL = 'https://demo.jobo.world'
 process.env.RESUME_URL_SIGNING_SECRET = 'test-signing-secret-that-is-long-enough'
@@ -21,19 +21,7 @@ process.env.JOBO_STATUS_URL = 'https://status.example.test/uptime'
 let db: typeof import('@/db/client').db
 let schema: typeof import('@/db/schema')
 let queue: typeof import('@/lib/queue')
-const job: Job = {
-  slug: 'multi-step',
-  company: 'Cascade',
-  mark: 'CA',
-  role: 'Data Engineer',
-  location: 'Amsterdam',
-  department: 'Data',
-  employmentType: 'Full-time',
-  about: 'Data pipelines',
-  responsibilities: ['Build pipelines'],
-  applyUrl: 'https://sandbox.jobo.world/apply/multi-step',
-  available: true,
-}
+const job: Job = sandboxJob()
 beforeAll(async () => {
   ;({ db } = await import('@/db/client'))
   schema = await import('@/db/schema')
@@ -72,25 +60,27 @@ beforeAll(async () => {
     .where(eq(schema.profiles.id, 'sample-grace-hopper'))
 })
 describe('private profiles and durable applications', () => {
-  it('rejects another user’s resume and non-sandbox URLs', async () => {
-    await expect(queue.enqueueApplication('bob', 'sample-ada-lovelace', job)).rejects.toThrow(
-      /Review/,
-    )
+  it('rejects another user’s resume and real jobs in sandbox mode', async () => {
     await expect(
-      queue.enqueueApplication('alice', 'sample-ada-lovelace', {
-        ...job,
-        applyUrl: 'https://example.com/apply/multi-step',
-      }),
-    ).rejects.toThrow(/Invalid/)
+      queue.enqueueApplication('bob', 'sample-ada-lovelace', job, sealedKey()),
+    ).rejects.toThrow(/Review/)
+    await expect(
+      queue.enqueueApplication(
+        'alice',
+        'sample-ada-lovelace',
+        { ...job, source: 'lever' },
+        sealedKey(),
+      ),
+    ).rejects.toThrow(/does not support/)
   })
   it('requires confirmation before application creation', async () => {
     await db
       .update(schema.profiles)
       .set({ reviewedAt: null })
       .where(eq(schema.profiles.id, 'sample-ada-lovelace'))
-    await expect(queue.enqueueApplication('alice', 'sample-ada-lovelace', job)).rejects.toThrow(
-      /Review/,
-    )
+    await expect(
+      queue.enqueueApplication('alice', 'sample-ada-lovelace', job, sealedKey()),
+    ).rejects.toThrow(/Review/)
     await db
       .update(schema.profiles)
       .set({ reviewedAt: Date.now() })
@@ -107,7 +97,9 @@ describe('private profiles and durable applications', () => {
     expect((await updateProfileAction(original.id, { confirm: true })).error).toContain('LinkedIn')
     // A stale reviewed timestamp must not bypass current requirements.
     await db.update(schema.profiles).set({ reviewedAt: 1 }).where(where)
-    await expect(queue.enqueueApplication('alice', original.id, job)).rejects.toThrow(/LinkedIn/)
+    await expect(queue.enqueueApplication('alice', original.id, job, sealedKey())).rejects.toThrow(
+      /LinkedIn/,
+    )
     const noPhone = { ...original.data, personal: { ...original.data.personal, phone: null } }
     expect(
       (await updateProfileAction(original.id, { data: noPhone, confirm: true })).error,
@@ -133,8 +125,10 @@ describe('private profiles and durable applications', () => {
     })
   })
   it('deduplicates clicks and preserves the original profile and PDF', async () => {
-    const id = await queue.enqueueApplication('alice', 'sample-ada-lovelace', job)
-    expect(await queue.enqueueApplication('alice', 'sample-ada-lovelace', job)).toBe(id)
+    const id = await queue.enqueueApplication('alice', 'sample-ada-lovelace', job, sealedKey())
+    expect(await queue.enqueueApplication('alice', 'sample-ada-lovelace', job, sealedKey())).toBe(
+      id,
+    )
     const [original] = await db
       .select()
       .from(schema.profiles)
@@ -163,13 +157,9 @@ describe('private profiles and durable applications', () => {
     )
   })
   it('enforces global and per-user concurrency and recovers expired leases', async () => {
-    const otherJob = {
-      ...job,
-      slug: 'all-field-types',
-      applyUrl: 'https://sandbox.jobo.world/apply/all-field-types',
-    }
-    await queue.enqueueApplication('alice', 'sample-ada-lovelace', otherJob)
-    await queue.enqueueApplication('bob', 'sample-grace-hopper', job)
+    const otherJob = sandboxJob(2)
+    await queue.enqueueApplication('alice', 'sample-ada-lovelace', otherJob, sealedKey())
+    await queue.enqueueApplication('bob', 'sample-grace-hopper', job, sealedKey())
     const now = Date.now(),
       a = (await queue.claimApplication('worker-a', 2, 1, now))!,
       b = (await queue.claimApplication('worker-b', 2, 1, now))!
@@ -195,14 +185,10 @@ describe('private profiles and durable applications', () => {
     for (const [i, c] of claims.entries()) if (c) await queue.releaseLease(c.id, `racer-${i}`)
   })
   it('creates one application when the same job is applied to twice at once', async () => {
-    const racingJob = {
-      ...job,
-      slug: 'education-and-work-history',
-      applyUrl: 'https://sandbox.jobo.world/apply/education-and-work-history',
-    }
+    const racingJob = sandboxJob(3)
     const ids = await Promise.all(
       Array.from({ length: 5 }, () =>
-        queue.enqueueApplication('alice', 'sample-ada-lovelace', racingJob),
+        queue.enqueueApplication('alice', 'sample-ada-lovelace', racingJob, sealedKey()),
       ),
     )
     expect(new Set(ids).size).toBe(1)
@@ -213,22 +199,28 @@ describe('private profiles and durable applications', () => {
     expect(rows).toHaveLength(1)
   })
   it('does not retry ambiguous or confirmed submitted applications', async () => {
-    const id = await queue.enqueueApplication('alice', 'sample-ada-lovelace', job)
+    const id = await queue.enqueueApplication('alice', 'sample-ada-lovelace', job, sealedKey())
     await db
       .update(schema.applications)
       .set({ status: 'submitted' })
       .where(eq(schema.applications.id, id))
-    expect(await queue.enqueueApplication('alice', 'sample-ada-lovelace', job, true)).toBe(id)
+    expect(
+      await queue.enqueueApplication('alice', 'sample-ada-lovelace', job, sealedKey(), true),
+    ).toBe(id)
     await db
       .update(schema.applications)
       .set({ status: 'failed', failureCode: 'submission_unconfirmed' })
       .where(eq(schema.applications.id, id))
-    expect(await queue.enqueueApplication('alice', 'sample-ada-lovelace', job, true)).toBe(id)
+    expect(
+      await queue.enqueueApplication('alice', 'sample-ada-lovelace', job, sealedKey(), true),
+    ).toBe(id)
     await db
       .update(schema.applications)
       .set({ status: 'failed', failureCode: 'answers_timeout' })
       .where(eq(schema.applications.id, id))
-    expect(await queue.enqueueApplication('alice', 'sample-ada-lovelace', job, true)).not.toBe(id)
+    expect(
+      await queue.enqueueApplication('alice', 'sample-ada-lovelace', job, sealedKey(), true),
+    ).not.toBe(id)
   })
   it('rejects cross-user edits, deletion, default selection, downloads, and cancellation', async () => {
     const actions = await import('@/app/actions/profiles')
@@ -266,18 +258,19 @@ describe('private profiles and durable applications', () => {
         ?.cancelRequested,
     ).toBe(false)
   })
-  it('applies to real jobs only in production mode, on the visitor’s sealed key', async () => {
+  it('applies only once a key is connected, and to real jobs only on a production key', async () => {
     const realId = '9d1c2b3a-4e5f-4a6b-8c7d-0e1f2a3b4c5d'
-    const visitorKey = 'jbe_live_abcdefghijklmnopqrstu_0123456789abcdefghijklmnopqrstuvwxyzABCDEFG'
     const seen: { url: string; key: string | null }[] = []
     vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input)
-      seen.push({ url, key: new Headers(init?.headers).get('x-api-key') })
+      const key = new Headers(init?.headers).get('x-api-key')
+      seen.push({ url, key })
       if (url.startsWith('https://status.example.test'))
         return Response.json({
           auto_apply_providers: [{ provider_id: 'lever', display_name: 'Lever' }],
         })
-      if (url === `https://connect.example.test/api/jobs/${realId}`)
+      // Only a live key sees live jobs; a sandbox key gets a 404.
+      if (url === `https://connect.example.test/api/jobs/${realId}` && key === LIVE_KEY)
         return Response.json({
           id: realId,
           title: 'Platform Engineer',
@@ -290,22 +283,31 @@ describe('private profiles and durable applications', () => {
     })
     try {
       identity.id = 'alice'
+      const { connectApiKey, forgetApiKey } = await import('@/lib/user-settings')
       const { startApplicationAction } = await import('@/app/actions/applications')
-      const refused = await startApplicationAction({
-        jobId: realId,
-        profileId: 'sample-ada-lovelace',
-      })
-      expect(refused).toMatchObject({ ok: false, error: expect.stringMatching(/production mode/) })
+      const apply = (retry = false) =>
+        startApplicationAction({ jobId: realId, profileId: 'sample-ada-lovelace', retry })
+
+      // No key, no deployment key to fall back on: nothing is called.
+      await forgetApiKey('alice')
+      expect(await apply()).toMatchObject({ ok: false, error: expect.stringMatching(/API key/) })
       expect(seen).toHaveLength(0)
 
-      const { connectApiKey } = await import('@/lib/user-settings')
-      await connectApiKey('alice', visitorKey)
-      const started = await startApplicationAction({
-        jobId: realId,
-        profileId: 'sample-ada-lovelace',
+      // A sandbox key does not see real jobs.
+      await connectApiKey('alice', SANDBOX_KEY, false)
+      expect(await apply()).toMatchObject({
+        ok: false,
+        error: expect.stringMatching(/production key/),
       })
+      expect(seen.map((c) => c.key)).toEqual([SANDBOX_KEY])
+
+      await connectApiKey('alice', LIVE_KEY, true)
+      const started = await apply()
       expect(started.ok).toBe(true)
-      expect(seen.find((c) => c.url.includes(realId))?.key).toBe(visitorKey)
+      expect(seen).toContainEqual({
+        url: `https://connect.example.test/api/jobs/${realId}`,
+        key: LIVE_KEY,
+      })
       const [row] = await db
         .select()
         .from(schema.applications)
@@ -313,44 +315,88 @@ describe('private profiles and durable applications', () => {
       expect(row).toMatchObject({
         jobId: realId,
         sandbox: false,
-        scenarioSlug: null,
         applyUrl: 'https://jobs.lever.co/globex/1/apply',
       })
       expect(row.apiKeyCiphertext).toBeTruthy()
-      expect(row.apiKeyCiphertext).not.toContain(visitorKey)
+      expect(row.apiKeyCiphertext).not.toContain(LIVE_KEY)
       expect(row.jobSnapshot?.countryCode).toBe('CA')
 
-      // Back in sandbox, the same real job is refused again.
-      const { setDemoMode } = await import('@/lib/user-settings')
-      await setDemoMode('alice', 'sandbox')
-      expect(
-        (
-          await startApplicationAction({
-            jobId: realId,
-            profileId: 'sample-ada-lovelace',
-            retry: true,
-          })
-        ).ok,
-      ).toBe(false)
+      // Back on a sandbox key, the same real job is refused again.
+      await connectApiKey('alice', SANDBOX_KEY, false)
+      expect((await apply(true)).ok).toBe(false)
     } finally {
       vi.unstubAllGlobals()
     }
   })
-  it('never queues a production job without a key, or a sandbox job with one', async () => {
-    const realJob: Job = {
-      ...job,
-      slug: '1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d',
-      applyUrl: 'https://jobs.lever.co/globex/2',
-      production: true,
+  it('applies to sandbox jobs on the visitor’s sandbox key, sealed on the row', async () => {
+    const sandboxId = sandboxJob(5).slug
+    const realId = sandboxJob(6).slug
+    const keys: (string | null)[] = []
+    vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      keys.push(new Headers(init?.headers).get('x-api-key'))
+      if (url === `https://connect.example.test/api/jobs/${sandboxId}`)
+        return Response.json({
+          id: sandboxId,
+          title: 'Data Engineer',
+          company: { name: 'Cascade' },
+          apply_url: 'https://sandbox.jobo.world/apply/cascade-data-engineer',
+          locations: [{ location: 'Leeds, UK', country: 'GB' }],
+          source: 'jobosandbox',
+        })
+      // A real job the sandbox should never return: refused all the same.
+      if (url === `https://connect.example.test/api/jobs/${realId}`)
+        return Response.json({
+          id: realId,
+          title: 'Platform Engineer',
+          company: { name: 'Globex' },
+          apply_url: 'https://jobs.lever.co/globex/1/apply',
+          source: 'lever',
+        })
+      return new Response('not found', { status: 404 })
+    })
+    try {
+      identity.id = 'alice'
+      const { connectApiKey } = await import('@/lib/user-settings')
+      await connectApiKey('alice', SANDBOX_KEY, false)
+      const { startApplicationAction } = await import('@/app/actions/applications')
+      const started = await startApplicationAction({
+        jobId: sandboxId,
+        profileId: 'sample-ada-lovelace',
+      })
+      expect(started.ok).toBe(true)
+      expect(keys).toEqual([SANDBOX_KEY])
+      const [row] = await db
+        .select()
+        .from(schema.applications)
+        .where(eq(schema.applications.id, (started as { id: string }).id))
+      expect(row).toMatchObject({
+        jobId: sandboxId,
+        sandbox: true,
+        applyUrl: 'https://sandbox.jobo.world/apply/cascade-data-engineer',
+      })
+      expect(row.apiKeyCiphertext).toBeTruthy()
+      expect(row.apiKeyCiphertext).not.toContain(SANDBOX_KEY)
+      expect(row.jobSnapshot).toMatchObject({ source: 'jobosandbox', countryCode: 'GB' })
+
+      expect(
+        await startApplicationAction({ jobId: realId, profileId: 'sample-ada-lovelace' }),
+      ).toMatchObject({ ok: false, error: expect.stringMatching(/does not support/) })
+      expect(
+        await db.select().from(schema.applications).where(eq(schema.applications.jobId, realId)),
+      ).toHaveLength(0)
+    } finally {
+      vi.unstubAllGlobals()
     }
-    await expect(queue.enqueueApplication('alice', 'sample-ada-lovelace', realJob)).rejects.toThrow(
-      /API key/,
-    )
+  })
+  it('never queues a real job on a sandbox key, or a sandbox job on a production key', async () => {
+    const realJob = sandboxJob(4, { applyUrl: 'https://jobs.lever.co/globex/2', source: 'lever' })
     await expect(
-      queue.enqueueApplication('alice', 'sample-ada-lovelace', job, false, {
-        apiKeyCiphertext: 'x',
-      }),
-    ).rejects.toThrow(/Invalid sandbox job/)
+      queue.enqueueApplication('alice', 'sample-ada-lovelace', realJob, sealedKey()),
+    ).rejects.toThrow(/does not support/)
+    await expect(
+      queue.enqueueApplication('alice', 'sample-ada-lovelace', job, sealedKey(LIVE_KEY)),
+    ).rejects.toThrow(/does not support/)
   })
   it('archives profiles without deleting application history', async () => {
     const { deleteProfileAction } = await import('@/app/actions/profiles')

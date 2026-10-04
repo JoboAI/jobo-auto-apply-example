@@ -7,7 +7,8 @@ import { db, RESUME_DIR } from '@/db/client'
 import { applications, profiles, type ApplicationRow } from '@/db/schema'
 import type { Job } from './jobs-types'
 import { canRetry } from './presentation'
-import { validProductionTarget, validSandboxUrl } from './jobs'
+import { validApplyTarget } from './jobs'
+import type { JoboMode } from './jobo/environment'
 import { isApplicationReady } from './resume/completeness'
 
 /**
@@ -29,6 +30,8 @@ import { isApplicationReady } from './resume/completeness'
 /** Arbitrary, app-wide advisory lock namespaces (pg_advisory_xact_lock(int, int)). */
 const CLAIM_LOCK_NAMESPACE = 727_002
 const ENQUEUE_LOCK_NAMESPACE = 727_003
+
+const UNSUPPORTED = 'Auto Apply does not support this job’s application system.'
 
 /** How long a claim is valid. Workers renew it every few seconds while running. */
 export const LEASE_MS = 120_000
@@ -58,21 +61,15 @@ export async function enqueueApplication(
   userId: string,
   profileId: string,
   job: Job,
-  retry = false,
   /**
-   * Production mode: the visitor's sealed API key. The application runs on
-   * that key and goes to a real employer, so it is required for, and only
-   * accepted with, a production job.
+   * The visitor's key, sealed, and its mode (from its prefix): the
+   * application runs on that key, and a sandbox key only applies to sandbox
+   * jobs, a production key only to real ones.
    */
-  production?: { apiKeyCiphertext: string },
+  key: { mode: JoboMode; apiKeyCiphertext: string },
+  retry = false,
 ): Promise<string> {
-  if (job.production) {
-    if (!production?.apiKeyCiphertext)
-      throw new EnqueueRefusedError('Connect your Jobo API key to apply to real jobs.')
-    if (!validProductionTarget(job.slug, job.applyUrl))
-      throw new EnqueueRefusedError('Invalid production job.')
-  } else if (production || !validSandboxUrl(job.applyUrl, job.slug))
-    throw new EnqueueRefusedError('Invalid sandbox job.')
+  if (!validApplyTarget(key.mode, job)) throw new EnqueueRefusedError(UNSUPPORTED)
 
   // Each application gets its own copy of the resume PDF, so editing or
   // replacing the profile later cannot change a run in flight.
@@ -109,8 +106,7 @@ export async function enqueueApplication(
           throw new EnqueueRefusedError(
             'Review and confirm your contact details, including phone and LinkedIn, before applying.',
           )
-        if (!job.available)
-          throw new EnqueueRefusedError('This job is not accepting applications right now.')
+        if (!job.available) throw new EnqueueRefusedError(UNSUPPORTED)
         await copyFile(join(RESUME_DIR, `${profile.id}.pdf`), resumeCopy)
         copied = true
         await tx.insert(applications).values({
@@ -128,9 +124,8 @@ export async function enqueueApplication(
           // Stored before any network call: see applications.idempotencyKey.
           idempotencyKey: randomUUID(),
           applyUrl: job.applyUrl,
-          sandbox: !job.production,
-          scenarioSlug: job.production ? null : job.slug,
-          apiKeyCiphertext: production?.apiKeyCiphertext ?? null,
+          sandbox: key.mode === 'sandbox',
+          apiKeyCiphertext: key.apiKeyCiphertext,
           status: 'queued',
         })
         return id

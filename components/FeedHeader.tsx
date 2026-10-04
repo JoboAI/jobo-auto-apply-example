@@ -1,20 +1,8 @@
-import Link from 'next/link'
-import { ArrowRight, ArrowUpRight, BookOpen, Check, Sparkles } from 'lucide-react'
+import { ArrowUpRight, BookOpen, Check, Sparkles } from 'lucide-react'
 import { SourceLink } from './SourceLink'
 
 /** The job feed's heading and banner: sandbox, production or saved jobs. */
-export function FeedHeader({
-  savedOnly,
-  production,
-  explorer,
-  profileReady,
-}: {
-  savedOnly: boolean
-  production: boolean
-  /** Production search with the faceted explorer. */
-  explorer: boolean
-  profileReady: boolean
-}) {
+export function FeedHeader({ savedOnly, production }: { savedOnly: boolean; production: boolean }) {
   return (
     <>
       <div className="page-heading">
@@ -47,48 +35,32 @@ export function FeedHeader({
       </div>
       {!savedOnly && (
         <section className="discovery-banner">
-          {explorer ? (
-            <div>
-              <span className="eyebrow">JOBS API · LIVE CATALOG</span>
-              <h2>
-                Slice real jobs any way you like.
-                <br />
-                Every filter is one API call.
-              </h2>
-              <p>
-                Filter by company, industry, business model, seniority, salary and skills, with live
-                facet counts. Each job also carries an enriched company profile. Open “See the API
-                call” to copy the request.
-              </p>
-              <a
-                href="https://jobo.world/docs/guides/search-recipes"
-                className="text-link"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                <BookOpen size={16} /> Search recipes &amp; facets docs <ArrowUpRight size={16} />
-              </a>
-              <SourceLink />
-            </div>
-          ) : (
-            <div>
-              <span className="eyebrow">FROM DEMO TO YOUR APP</span>
-              <h2>
-                An Apply button.
-                <br />
-                An API behind every step.
-              </h2>
-              <p>
-                Explore how this app creates applications, answers discovered fields, and tracks
-                results with the Auto Apply API.
-              </p>
-              <Link href="/profiles" className="text-link">
-                {profileReady ? 'Review test profile' : 'Set up a test profile'}{' '}
-                <ArrowRight size={16} />
-              </Link>
-              <SourceLink />
-            </div>
-          )}
+          <div>
+            <span className="eyebrow">
+              {production ? 'JOBS API · LIVE CATALOG' : 'JOBS API · SANDBOX'}
+            </span>
+            <h2>
+              {production
+                ? 'Slice real jobs any way you like.'
+                : 'The real search API, on test jobs.'}
+              <br />
+              Every filter is one API call.
+            </h2>
+            <p>
+              {production
+                ? 'Filter by company, industry, business model, seniority, salary and skills, with live facet counts. Each job also carries an enriched company profile. Open “See the API call” to copy the request.'
+                : 'A sandbox key gets the same endpoints and responses as a live one, free, from fictional jobs whose applications go to sandbox forms. Open “See the API call” to copy the request: only the key changes in production.'}
+            </p>
+            <a
+              href="https://jobo.world/docs/guides/search-recipes"
+              className="text-link"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <BookOpen size={16} /> Search recipes &amp; facets docs <ArrowUpRight size={16} />
+            </a>
+            <SourceLink />
+          </div>
           <div className="banner-illustration" aria-hidden="true">
             <div className="paper paper-back" />
             <div className="paper paper-front">

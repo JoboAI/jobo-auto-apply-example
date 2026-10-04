@@ -4,29 +4,24 @@ import Link from 'next/link'
 import { db } from '@/db/client'
 import { profiles, savedJobs, applications, steps } from '@/db/schema'
 import { requireUser } from './session'
-import { getJobs, isProductionJobId } from './jobs'
+import { isJobId } from './jobs'
 import type { Job } from './jobs-types'
-import {
-  getProductionJob,
-  JobsApiError,
-  searchProductionJobsCached,
-  type JobSearchResult,
-} from './jobo/jobs-api'
+import { environmentAts, visitorEnvironment } from './jobo/environment'
+import { getJob, JobsApiError, searchJobsCached, type JobSearchResult } from './jobo/jobs-api'
 import { parseFilters, type JobFilters, type SearchParams } from './jobo/job-filters'
-import { supportedAts } from './jobo/supported-ats'
-import { getDemoSettings, productionApiKey } from './user-settings'
 import { FeedAside } from '@/components/FeedAside'
 import { FeedHeader } from '@/components/FeedHeader'
 import { JobFeed } from '@/components/JobFeed'
 import { ExplorerSummary, JobExplorer } from '@/components/JobExplorer'
-import { applicationLabel, canRetry, type CardApplication } from './presentation'
+import { ConnectKeyPrompt } from '@/components/ConnectKeyPrompt'
+import { accessProblem, applicationLabel, canRetry, type CardApplication } from './presentation'
 import { isTerminal } from './status'
 export type FeedSearch = SearchParams
 
 /**
- * The job feed, shared by /jobs and /saved: sandbox jobs, or in production
- * mode a search of the live Jobo catalog on the visitor's key, merged with the
- * candidate's saved jobs and latest application per job.
+ * The job feed, shared by /jobs and /saved: a search of the Jobs API on the
+ * visitor's key (lib/jobo/environment.ts), merged with the candidate's saved
+ * jobs and latest application per job.
  */
 export async function FeedPage({
   savedOnly = false,
@@ -36,8 +31,8 @@ export async function FeedPage({
   search?: FeedSearch
 }) {
   const user = await requireUser()
-  const [settings, saved, profile, apps, completed] = await Promise.all([
-    getDemoSettings(user.id),
+  const [env, saved, profile, apps, completed] = await Promise.all([
+    visitorEnvironment(user.id),
     db.select().from(savedJobs).where(eq(savedJobs.userId, user.id)),
     db
       .select()
@@ -65,7 +60,8 @@ export async function FeedPage({
   ])
   // No redirect() here: inside the streamed (product) group it could only
   // happen client-side, after the page loaded. Signed-in visitors without a
-  // profile are sent to /onboarding from / instead (app/page.tsx).
+  // key or a profile are sent to /onboarding from / instead (app/page.tsx).
+  if (!env) return <ConnectKeyPrompt />
   if (!savedOnly && !profile.length)
     return (
       <div className="empty-state">
@@ -76,7 +72,7 @@ export async function FeedPage({
         </Link>
       </div>
     )
-  const production = settings.mode === 'production'
+  const production = env.mode === 'production'
   const applicationStates: Record<string, CardApplication> = {}
   for (const app of apps) {
     // Newest first, so each job card shows its latest application.
@@ -90,73 +86,72 @@ export async function FeedPage({
       cancelRequested: app.cancelRequested,
       answeredSteps: completed.find((step) => step.id === app.id)?.count ?? 0,
       message: app.stopReason || app.failureMessage,
+      access: accessProblem(app),
     }
   }
   let jobs: Job[]
   let explored: { filters: JobFilters; result: JobSearchResult } | undefined
   try {
-    if (production) {
-      const apiKey = await productionApiKey(user.id)
-      if (!apiKey) throw new JobsApiError('unauthorized', 'Reconnect your Jobo API key.')
-      if (savedOnly) {
-        // Saved real jobs are re-read one by one — GET /api/jobs/{id} is free.
-        const ids = saved.map((s) => s.jobId).filter(isProductionJobId)
-        const found = await Promise.all(
-          ids.map((id) =>
-            getProductionJob(apiKey, id).catch((error) => {
+    if (savedOnly) {
+      // Saved jobs are re-read one by one — GET /api/jobs/{id} is free. A job
+      // saved in the other mode is not found here, so it is not shown.
+      const found = await Promise.all(
+        saved
+          .map((s) => s.jobId)
+          .filter(isJobId)
+          .map((id) =>
+            getJob(env, id).catch((error) => {
               if (error instanceof JobsApiError && error.kind === 'not_found') return null
               throw error
             }),
           ),
-        )
-        jobs = found.filter((j): j is Job => !!j)
-      } else {
-        const filters = parseFilters(search)
-        const result = await searchProductionJobsCached(apiKey, filters)
-        jobs = result.jobs
-        explored = { filters, result }
-      }
-    } else jobs = await getJobs()
+      )
+      jobs = found.filter((j): j is Job => !!j)
+    } else {
+      const filters = parseFilters(search)
+      const result = await searchJobsCached(env, filters)
+      jobs = result.jobs
+      explored = { filters, result }
+    }
   } catch (error) {
     const problem = error instanceof JobsApiError ? error : null
     return (
       <div className="empty-state">
         <h1>
-          {!production
-            ? 'Sandbox catalog unavailable'
-            : problem?.kind === 'unauthorized'
-              ? 'Your API key was rejected'
-              : problem?.kind === 'insufficient_credits'
-                ? 'Out of job-search credits'
-                : 'Jobs unavailable'}
+          {problem?.kind === 'unauthorized'
+            ? 'Your API key was rejected'
+            : problem?.kind === 'insufficient_credits'
+              ? 'Out of job-search credits'
+              : production
+                ? 'Jobs unavailable'
+                : 'Sandbox jobs unavailable'}
         </h1>
         <p>
-          {production
-            ? (problem?.message ??
-              'We couldn’t load jobs from Jobo right now. Please try again in a moment.')
-            : 'We couldn’t load sandbox jobs right now. Please try again in a moment.'}
+          {problem?.message ??
+            'We couldn’t load jobs from Jobo right now. Please try again in a moment.'}
         </p>
-        <Link href={savedOnly ? '/saved' : '/jobs'} className="button primary">
-          Try again
-        </Link>
+        {problem?.kind === 'unauthorized' ? (
+          <Link href="/settings#api-key" className="button primary">
+            Replace your key
+          </Link>
+        ) : (
+          <Link href={savedOnly ? '/saved' : '/jobs'} className="button primary">
+            Try again
+          </Link>
+        )}
       </div>
     )
   }
-  const ats = explored ? await supportedAts() : []
+  const ats = explored ? await environmentAts(env) : []
   const profileId = profile.find(isApplicationReady)?.id
   return (
     <>
-      <FeedHeader
-        savedOnly={savedOnly}
-        production={production}
-        explorer={!!explored}
-        profileReady={!!profileId}
-      />
+      <FeedHeader savedOnly={savedOnly} production={production} />
       <JobFeed
         jobs={jobs}
         savedIds={saved.map((s) => s.jobId)}
         savedOnly={savedOnly}
-        mode={settings.mode}
+        mode={env.mode}
         search={
           explored && {
             filters: explored.filters,

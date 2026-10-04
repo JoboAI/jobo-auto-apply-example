@@ -140,19 +140,18 @@ export const profiles = pgTable('profiles', {
 })
 
 /**
- * Per-visitor demo mode. Production mode applies to real jobs on the
- * visitor's own Jobo API key, stored sealed (lib/secret-box.ts) because the
- * background worker needs it with no browser present.
+ * The visitor's own Jobo API key, stored sealed (lib/secret-box.ts) because
+ * the background worker needs it with no browser present. Its prefix picks
+ * sandbox or production (lib/jobo/environment.ts).
  */
 export const userSettings = pgTable('user_settings', {
   userId: text('user_id')
     .primaryKey()
     .references(() => user.id, { onDelete: 'cascade' }),
-  mode: text('mode').$type<'sandbox' | 'production'>().notNull().default('sandbox'),
   apiKeyCiphertext: text('api_key_ciphertext'),
   /** Last four characters, so the UI can say which key is connected. */
   apiKeyHint: text('api_key_hint'),
-  /** When the visitor accepted the one-time "real employers" warning. */
+  /** When the visitor accepted the one-time "real employers" warning for a production key. */
   productionAcknowledgedAt: epochMs('production_acknowledged_at'),
   updatedAt: epochMs('updated_at').notNull().default(nowMs),
 })
@@ -167,7 +166,7 @@ export const applications = pgTable(
     userId: text('user_id')
       .notNull()
       .references(() => user.id, { onDelete: 'cascade' }),
-    /** Sandbox slug (`multi-step`) or, in production mode, the Jobo job UUID. */
+    /** The Jobo job UUID. */
     jobId: text('job_id').notNull(),
     /** Frozen copies taken at Apply time: a run never sees later edits. */
     jobSnapshot: jsonb('job_snapshot').$type<Job>().notNull(),
@@ -200,16 +199,15 @@ export const applications = pgTable(
       .references(() => profiles.id, { onDelete: 'cascade' }),
 
     applyUrl: text('apply_url').notNull(),
+    /** Queued on a sandbox key (`jbe_test_…`), from the key's prefix. */
     sandbox: boolean('sandbox').notNull().default(false),
     /**
-     * Production mode only: the visitor's own Jobo API key, sealed with
-     * API_KEY_ENCRYPTION_SECRET when the application was queued. Kept on the
-     * row so a run finishes on the key it started with even if the visitor
-     * disconnects; cleared once the application is terminal. Null for sandbox
-     * runs, which use the deployment's JOBO_API_KEY.
+     * The visitor's Jobo API key, sealed with API_KEY_ENCRYPTION_SECRET when
+     * the application was queued. Kept on the row so a run finishes on the key
+     * it started with even if the visitor replaces it; cleared once the
+     * application is terminal.
      */
     apiKeyCiphertext: text('api_key_ciphertext'),
-    scenarioSlug: text('scenario_slug'),
 
     /**
      * Jobo's application statuses, plus three local-only ones: `creating` (the
@@ -227,6 +225,8 @@ export const applications = pgTable(
 
     /** e.g. `unsupported_ats` — distinct from a post-creation failure. */
     createErrorCode: text('create_error_code'),
+    /** The API's own explanation of that refusal (its problem `detail`). */
+    createErrorDetail: text('create_error_detail'),
 
     lastSyncedAt: epochMs('last_synced_at'),
     createdAt: epochMs('created_at').notNull().default(nowMs),

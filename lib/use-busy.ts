@@ -16,7 +16,7 @@ import { useCallback, useRef, useState } from 'react'
  *  - pushWithFallback (below) for navigations that follow an action.
  *  - Polling components compare what they rendered with the live state and
  *    reload when a change never appears (components/ApplicationLive.tsx,
- *    components/CardApply.tsx, components/ModeToggle.tsx).
+ *    components/CardApply.tsx).
  *  - PageLink (components/PageLink.tsx), a plain <a>, for links on the
  *    busiest pages (the job feed and explorer): a full server-rendered load
  *    instead of a client navigation.

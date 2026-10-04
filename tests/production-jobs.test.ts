@@ -3,12 +3,13 @@ import { join } from 'node:path'
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
   getCompanyProfile,
-  getProductionJob,
-  getProductionJobDetail,
+  getJob,
+  getJobDetail,
   JobsApiError,
-  searchProductionJobs,
+  searchJobs,
   verifyApiKey,
 } from '@/lib/jobo/jobs-api'
+import { environmentForKey, keyMode } from '@/lib/jobo/environment'
 import {
   descriptionBlocks,
   fullPay,
@@ -24,9 +25,8 @@ import {
   resetSupportedAtsCache,
   supportedAts,
 } from '@/lib/jobo/supported-ats'
-import { isProductionJobId, validProductionTarget } from '@/lib/jobs'
 
-process.env.JOBO_API_KEY = 'jbe_test_deployment_fixture'
+process.env.API_KEY_ENCRYPTION_SECRET = 'fixture-encryption-secret-with-32-characters'
 process.env.OPENROUTER_API_KEY = 'fixture'
 process.env.RESUME_URL_SIGNING_SECRET = 'fixture-signing-secret-with-32-characters'
 process.env.JOBO_API_BASE_URL = 'https://connect.example.test'
@@ -34,6 +34,7 @@ process.env.JOBO_STATUS_URL = 'https://status.example.test/uptime'
 
 const KEY = 'jbe_live_abcdefghijklmnopqrstu_0123456789abcdefghijklmnopqrstuvwxyzABCDEFG'
 const ID = '3f2b8c1e-5a6d-4e7f-8a9b-0c1d2e3f4a5b'
+const LIVE = environmentForKey(KEY)
 
 const status = {
   auto_apply_providers: [
@@ -116,7 +117,6 @@ describe('catalog jobs', () => {
       employmentType: 'Full-time',
       about: 'Build APIs & services.',
       available: true,
-      production: true,
       source: 'greenhouse',
       countryCode: 'GB',
     })
@@ -168,7 +168,7 @@ describe('catalog jobs', () => {
       wm: 'remote',
       page: '2',
     })
-    const result = await searchProductionJobs(KEY, filters, fetchImpl)
+    const result = await searchJobs(LIVE, filters, fetchImpl)
     const search = calls.find((c) => c.url.endsWith('/api/jobs/search'))!
     expect(search.method).toBe('POST')
     expect(search.key).toBe(KEY)
@@ -310,8 +310,8 @@ describe('catalog jobs', () => {
   })
   it('keeps the raw response alongside the mapped job', async () => {
     const body = dto({ benefits: ['Gym'] })
-    const loaded = await getProductionJobDetail(
-      KEY,
+    const loaded = await getJobDetail(
+      LIVE,
       ID,
       fakeFetch({ 'https://connect.example.test/api/jobs/': json(body) }),
     )
@@ -358,7 +358,7 @@ describe('catalog jobs', () => {
       },
       calls,
     )
-    const company = await getCompanyProfile(KEY, ID, fetchImpl)
+    const company = await getCompanyProfile(LIVE, ID, fetchImpl)
     expect(calls[0]).toMatchObject({
       url: `https://connect.example.test/api/companies/${ID}`,
       key: KEY,
@@ -378,13 +378,13 @@ describe('catalog jobs', () => {
       { label: 'Total raised', value: '$84M' },
     ])
     // Cached: a second job page for the same company costs no request.
-    await getCompanyProfile(KEY, ID, fetchImpl)
+    await getCompanyProfile(LIVE, ID, fetchImpl)
     expect(calls).toHaveLength(1)
   })
   it('reads links, people, funding and press from the company profile', async () => {
     const OTHER = '9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d'
     const company = await getCompanyProfile(
-      KEY,
+      LIVE,
       OTHER,
       fakeFetch({
         'https://connect.example.test/api/companies/': json({
@@ -495,8 +495,8 @@ describe('catalog jobs', () => {
   })
   it('maps 401, 402 and 404 to typed errors', async () => {
     const expectKind = async (status: number, kind: string) => {
-      const error = await getProductionJob(
-        KEY,
+      const error = await getJob(
+        LIVE,
         ID,
         fakeFetch({ 'https://connect.example.test': json({}, status) }),
       ).catch((e) => e)
@@ -507,12 +507,74 @@ describe('catalog jobs', () => {
     await expectKind(402, 'insufficient_credits')
     await expectKind(404, 'not_found')
   })
-  it('only routes UUIDs and https URLs to production', () => {
-    expect(isProductionJobId(ID)).toBe(true)
-    expect(isProductionJobId('multi-step')).toBe(false)
-    expect(validProductionTarget(ID, 'https://jobs.lever.co/acme/1')).toBe(true)
-    expect(validProductionTarget(ID, 'http://jobs.lever.co/acme/1')).toBe(false)
-    expect(validProductionTarget('multi-step', 'https://jobs.lever.co/acme/1')).toBe(false)
+})
+
+describe('sandbox mode', () => {
+  const SANDBOX_KEY = 'jbe_test_abcdefghijklmnopqrstu_0123456789'
+  const SANDBOX = environmentForKey(SANDBOX_KEY)
+  const sandboxDto = (overrides: Record<string, unknown> = {}) =>
+    dto({
+      source: 'jobosandbox',
+      listing_url: 'https://sandbox.jobo.world/apply/cascade-data-engineer',
+      apply_url: 'https://sandbox.jobo.world/apply/cascade-data-engineer',
+      ...overrides,
+    })
+
+  it('searches the same API on the deployment’s sandbox key, across the sandbox ATS only', async () => {
+    const calls: Call[] = []
+    const fetchImpl = fakeFetch(
+      { 'https://connect.example.test/api/jobs/search': json({ jobs: [sandboxDto()], total: 1 }) },
+      calls,
+    )
+    const result = await searchJobs(SANDBOX, parseFilters({ q: 'data' }), fetchImpl)
+    // No status lookup: the sandbox's ATS list is fixed.
+    expect(calls).toHaveLength(1)
+    expect(calls[0]).toMatchObject({
+      url: 'https://connect.example.test/api/jobs/search',
+      method: 'POST',
+      key: SANDBOX_KEY,
+      body: { queries: ['data'], sources: ['jobosandbox'] },
+    })
+    expect(result.request.url).toBe('https://connect.example.test/api/jobs/search')
+    expect(result.jobs[0]).toMatchObject({
+      available: true,
+      source: 'jobosandbox',
+      sourceName: 'Jobo Sandbox',
+      sourceLogoUrl: '/favicon.svg',
+      department: 'Jobo Sandbox',
+    })
+  })
+  it('reads sandbox job pages and companies on the sandbox key', async () => {
+    const calls: Call[] = []
+    const fetchImpl = fakeFetch(
+      {
+        'https://connect.example.test/api/jobs/': json(sandboxDto()),
+        'https://connect.example.test/api/companies/': json({ id: ID, name: 'Cascade' }),
+      },
+      calls,
+    )
+    const loaded = await getJobDetail(SANDBOX, ID, fetchImpl)
+    expect(loaded.url).toBe(`https://connect.example.test/api/jobs/${ID}`)
+    expect(loaded.job.available).toBe(true)
+    const OTHER = '7e6d5c4b-3a2f-4e1d-8c0b-9a8f7e6d5c4b'
+    expect((await getCompanyProfile(SANDBOX, OTHER, fetchImpl))?.name).toBe('Cascade')
+    expect(calls.map((c) => c.key)).toEqual([SANDBOX_KEY, SANDBOX_KEY])
+  })
+  it('never lists a sandbox job as appliable in production', () => {
+    const job = toJob(sandboxDto(), [{ id: 'greenhouse', name: 'Greenhouse' }])
+    expect(job.available).toBe(false)
+  })
+})
+
+describe('environment from the key prefix', () => {
+  it.each([
+    ['jbe_test_abcdefghijklmnopqrstu', 'sandbox'],
+    ['jbe_live_abcdefghijklmnopqrstu', 'production'],
+    // Keys from before the jbe_live_/jbe_test_ split are live keys.
+    ['jbe_abcdefghijklmnopqrstuvwxyz0', 'production'],
+  ])('%s → %s', (key, mode) => {
+    expect(keyMode(key)).toBe(mode)
+    expect(environmentForKey(key)).toEqual({ mode, apiKey: key })
   })
 })
 
@@ -521,6 +583,42 @@ describe('connecting a key', () => {
     const calls: Call[] = []
     expect(await verifyApiKey('sk_live_nope', fakeFetch({}, calls))).toMatchObject({ ok: false })
     expect(calls).toHaveLength(0)
+  })
+  it('verifies a sandbox key the same way, on the same API', async () => {
+    const calls: Call[] = []
+    const fetchImpl = fakeFetch(
+      {
+        'https://connect.example.test/api/jobs/': json({}, 404),
+        'https://connect.example.test/api/auto-apply/applications': json({ data: [] }),
+      },
+      calls,
+    )
+    const key = 'jbe_test_abcdefghijklmnopqrstu_0123456789'
+    expect(await verifyApiKey(key, fetchImpl)).toEqual({ ok: true })
+    expect(calls[0].key).toBe(key)
+  })
+  it('accepts a legacy jbe_ key', async () => {
+    const fetchImpl = fakeFetch({
+      'https://connect.example.test/api/jobs/': json({}, 404),
+      'https://connect.example.test/api/auto-apply/applications': json({ data: [] }),
+    })
+    expect(await verifyApiKey('jbe_abcdefghijklmnopqrstuvwxyz0123', fetchImpl)).toEqual({
+      ok: true,
+    })
+  })
+  it.each([
+    'auto_apply_not_enabled',
+    'auto_apply_agreement_required',
+    'auto_apply_review_required',
+  ])('connects a key whose account gets %s: the reason is shown at Apply time', async (code) => {
+    const fetchImpl = fakeFetch({
+      'https://connect.example.test/api/jobs/': json({}, 404),
+      'https://connect.example.test/api/auto-apply/applications': json(
+        { code, detail: 'No Auto Apply access.' },
+        403,
+      ),
+    })
+    expect(await verifyApiKey(KEY, fetchImpl)).toEqual({ ok: true })
   })
   it('accepts a key Jobo authenticates', async () => {
     const fetchImpl = fakeFetch({

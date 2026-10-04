@@ -2,7 +2,7 @@ import { ArrowLeft, ArrowRight } from 'lucide-react'
 import { pageHref, type JobFilters } from '@/lib/jobo/job-filters'
 import { PageLink } from './PageLink'
 
-/** Previous / next links for production search results. */
+/** Previous / next links for search results. */
 export function FeedPager({
   search,
 }: {

@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { eq } from 'drizzle-orm'
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { Job } from '@/lib/jobs-types'
+import { sandboxJob, sealedKey } from '@/tests/support/jobs'
 import { SAMPLE_PROFILES } from '@/tests/support/seed'
 
 /**
@@ -16,7 +16,7 @@ const engine = vi.hoisted(() => ({ advance: vi.fn() }))
 vi.mock('@/lib/application-engine', () => ({ advanceApplication: engine.advance }))
 
 process.env.DATA_DIR = mkdtempSync(join(tmpdir(), 'jobo-worker-'))
-process.env.JOBO_API_KEY = 'jbe_test_fixture'
+process.env.API_KEY_ENCRYPTION_SECRET = 'fixture-encryption-secret-with-32-characters'
 process.env.OPENROUTER_API_KEY = 'fixture'
 process.env.RESUME_URL_SIGNING_SECRET = 'fixture-signing-secret-with-32-characters'
 
@@ -24,20 +24,6 @@ let db: typeof import('@/db/client').db
 let schema: typeof import('@/db/schema')
 let queue: typeof import('@/lib/queue')
 let worker: typeof import('@/lib/worker')
-
-const job = (slug: string): Job => ({
-  slug,
-  company: 'Cascade',
-  mark: 'CA',
-  role: 'Data engineer',
-  location: 'Leeds, UK',
-  department: 'Data',
-  employmentType: 'Full-time',
-  about: 'Data pipelines',
-  responsibilities: [],
-  applyUrl: `https://sandbox.jobo.world/apply/${slug}`,
-  available: true,
-})
 
 beforeAll(async () => {
   ;({ db } = await import('@/db/client'))
@@ -66,7 +52,12 @@ async function rows() {
 
 describe('processApplication', () => {
   it('marks a fresh row as creating, advances it, and releases the lease', async () => {
-    const id = await queue.enqueueApplication('alice', 'sample-ada-lovelace', job('multi-step'))
+    const id = await queue.enqueueApplication(
+      'alice',
+      'sample-ada-lovelace',
+      sandboxJob(),
+      sealedKey(),
+    )
     await queue.claimApplication('w')
     engine.advance.mockImplementation(async () => {
       expect((await rows())[0].status).toBe('creating')
@@ -78,7 +69,12 @@ describe('processApplication', () => {
   })
 
   it('counts a failed exchange and backs off, with a generic message for the candidate', async () => {
-    const id = await queue.enqueueApplication('alice', 'sample-ada-lovelace', job('multi-step'))
+    const id = await queue.enqueueApplication(
+      'alice',
+      'sample-ada-lovelace',
+      sandboxJob(),
+      sealedKey(),
+    )
     await queue.claimApplication('w')
     engine.advance.mockRejectedValue(new Error('upstream said: secret detail'))
     await worker.processApplication(id, 'w')
@@ -89,7 +85,12 @@ describe('processApplication', () => {
   })
 
   it('finishes a canceled, never-started row locally without calling Jobo', async () => {
-    const id = await queue.enqueueApplication('alice', 'sample-ada-lovelace', job('multi-step'))
+    const id = await queue.enqueueApplication(
+      'alice',
+      'sample-ada-lovelace',
+      sandboxJob(),
+      sealedKey(),
+    )
     await db.update(schema.applications).set({ cancelRequested: true })
     await queue.claimApplication('w')
     await worker.processApplication(id, 'w')
@@ -115,15 +116,16 @@ describe('runWorker', () => {
         })
         .onConflictDoNothing()
     const owners = ['alice', 'bob', 'carol']
-    for (const [i, slug] of [
-      'multi-step',
-      'all-field-types',
-      'education-and-work-history',
-    ].entries()) {
-      const id = await queue.enqueueApplication('alice', 'sample-ada-lovelace', job(slug))
+    for (const [i, owner] of owners.entries()) {
+      const id = await queue.enqueueApplication(
+        'alice',
+        'sample-ada-lovelace',
+        sandboxJob(i + 1),
+        sealedKey(),
+      )
       await db
         .update(schema.applications)
-        .set({ userId: owners[i] })
+        .set({ userId: owner })
         .where(eq(schema.applications.id, id))
     }
 

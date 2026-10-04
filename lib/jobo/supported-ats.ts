@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { config } from '@/lib/config'
+import { SANDBOX_ATS_ID } from '@/lib/jobs'
 
 /**
  * The ATSes Auto Apply can route an application to.
@@ -9,7 +10,8 @@ import { config } from '@/lib/config'
  * this list doubles as the `sources` filter for job search: production mode
  * only ever shows jobs Auto Apply can actually apply to.
  *
- * `jobosandbox` is Jobo's own test ATS; its jobs live in sandbox mode.
+ * `jobosandbox` is Jobo's own test ATS. It is left out here, and is the only
+ * ATS in sandbox mode (SANDBOX_ATS, see lib/jobo/environment.ts).
  */
 export interface SupportedAts {
   id: string
@@ -28,7 +30,6 @@ export const FALLBACK_ATS: readonly SupportedAts[] = [
   { id: 'workday', name: 'Workday' },
 ]
 
-const SANDBOX_PROVIDER = 'jobosandbox'
 const TTL_MS = 10 * 60 * 1000
 
 const statusSchema = z.object({
@@ -48,7 +49,7 @@ export async function supportedAts(fetchImpl: typeof fetch = fetch): Promise<Sup
     if (!response.ok) throw new Error(`HTTP ${response.status}`)
     const list = statusSchema
       .parse(await response.json())
-      .auto_apply_providers.filter((p) => p.provider_id !== SANDBOX_PROVIDER)
+      .auto_apply_providers.filter((p) => p.provider_id !== SANDBOX_ATS_ID)
       .map((p) => ({ id: p.provider_id, name: p.display_name }))
     if (!list.length) throw new Error('empty provider list')
     cached = { at: Date.now(), list: withLogos(list) }
@@ -71,10 +72,18 @@ const ATS_LOGOS: Record<string, string> = {
   smartrecruiters: '/ats-logos/smartrecruiters.png',
   workable: '/ats-logos/workable.png',
   workday: '/ats-logos/workday.png',
+  [SANDBOX_ATS_ID]: '/favicon.svg',
 }
 
 export function atsLogo(id: string | null | undefined): string | undefined {
   return id ? ATS_LOGOS[id.toLowerCase()] : undefined
+}
+
+/** Sandbox mode's one ATS: the forms on sandbox.jobo.world. */
+export const SANDBOX_ATS: SupportedAts = {
+  id: SANDBOX_ATS_ID,
+  name: 'Jobo Sandbox',
+  logoUrl: atsLogo(SANDBOX_ATS_ID),
 }
 
 function withLogos(list: readonly SupportedAts[]): SupportedAts[] {

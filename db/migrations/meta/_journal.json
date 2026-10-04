@@ -8,6 +8,20 @@
       "when": 1791005368826,
       "tag": "0000_init",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1791097021814,
+      "tag": "0001_drop_scenario_slug",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791102732512,
+      "tag": "0002_visitor_keys",
+      "breakpoints": true
     }
   ]
 }

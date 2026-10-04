@@ -7,6 +7,7 @@ import { startApplicationAction } from '@/app/actions/applications'
 import type { LiveState } from '@/lib/live-version'
 import type { CardApplication } from '@/lib/presentation'
 import { useBusy } from '@/lib/use-busy'
+import { AccessProblemNotice } from './AccessProblemNotice'
 
 const POLL_MS = 3000
 /** Polls in a row showing a status the card has not rendered before a reload. */
@@ -49,6 +50,7 @@ export function CardApply({
           cancelRequested: false,
           answeredSteps: 0,
           message: null,
+          access: null,
         }
       : application
   const active = current?.active ?? false
@@ -147,9 +149,13 @@ export function CardApply({
             <span className={submitted ? 'done' : active && !queued ? 'running' : ''} />
             <span className={submitted ? 'done' : ''} />
           </div>
-          <p role="status" aria-live="polite">
-            {progressMessage(current, active)}
-          </p>
+          {current.access ? (
+            <AccessProblemNotice problem={current.access} />
+          ) : (
+            <p role="status" aria-live="polite">
+              {progressMessage(current, active)}
+            </p>
+          )}
           <Link href={`/applications/${current.id}`} className="text-link">
             View application progress <ArrowUpRight size={13} />
           </Link>
@@ -157,8 +163,8 @@ export function CardApply({
       ) : (
         <p className="card-apply-hint">
           {production
-            ? 'Real employer · Your API key · Runs in the background'
-            : 'Sandbox only · Runs in the background'}
+            ? 'Real employer · Your production key · Runs in the background'
+            : 'Sandbox form · Your sandbox key · Runs in the background'}
         </p>
       )}
       {error && (

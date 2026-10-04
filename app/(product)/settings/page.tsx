@@ -1,13 +1,13 @@
 import type { Metadata } from 'next'
 import { requireUser } from '@/lib/session'
-import { getDemoSettings } from '@/lib/user-settings'
+import { getKeySettings } from '@/lib/user-settings'
 import { AccountSettings } from '@/components/AccountSettings'
-import { ProductionKeySettings } from '@/components/ProductionKeySettings'
+import { ApiKeySettings } from '@/components/ApiKeySettings'
 
 export const metadata: Metadata = { title: 'Settings' }
 export default async function Page() {
   const user = await requireUser()
-  const settings = await getDemoSettings(user.id)
+  const settings = await getKeySettings(user.id)
   return (
     <>
       <div className="page-heading">
@@ -18,7 +18,7 @@ export default async function Page() {
         </div>
       </div>
       <div className="settings-stack">
-        <ProductionKeySettings {...settings} />
+        <ApiKeySettings {...settings} />
       </div>
       <AccountSettings name={user.name} email={user.email} />
     </>

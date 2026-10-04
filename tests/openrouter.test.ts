@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
-process.env.JOBO_API_KEY = 'jbe_test_fixture'
+process.env.API_KEY_ENCRYPTION_SECRET = 'fixture-encryption-secret-with-32-characters'
 process.env.OPENROUTER_API_KEY = 'fixture-key'
 process.env.RESUME_URL_SIGNING_SECRET = 'a'.repeat(32)
 import { complete, OpenRouterError } from '@/lib/openrouter'

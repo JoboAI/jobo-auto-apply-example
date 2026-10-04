@@ -3,16 +3,17 @@ import { createClient, JoboAPIError } from '@jobo-ai/autoapply'
 import { z } from 'zod'
 import { config } from '@/lib/config'
 import type { Job } from '@/lib/jobs-types'
-import { isProductionJobId } from '@/lib/jobs'
-import { supportedAts } from './supported-ats'
+import { isJobId } from '@/lib/jobs'
+import { isAccessCode } from '@/lib/presentation'
+import { environmentAts, environmentForKey, type JoboEnvironment } from './environment'
 import { jobSchema, toJob, toJobDetail, type JobDetail } from './job-format'
 import { companySchema, toCompanyProfile, type CompanyProfile } from './company-profile'
 import { filtersCacheKey, toSearchBody, type Facets, type JobFilters } from './job-filters'
 
 /**
- * Production mode's job source: the real Jobo catalog, read with the
- * VISITOR's API key (never the deployment's). The response shapes and their
- * mapping live in job-format.ts and company-profile.ts.
+ * The job source in both modes: the Jobs API, on the visitor's own key
+ * (lib/jobo/environment.ts). The response shapes and their mapping live in
+ * job-format.ts and company-profile.ts.
  *
  * Plain fetch rather than a client package — it is two GETs, and the
  * Auto Apply SDK deliberately covers applications only.
@@ -21,8 +22,8 @@ import { filtersCacheKey, toSearchBody, type Facets, type JobFilters } from './j
  *   GET  /api/jobs/{id}       one job, free
  *   GET  /api/companies/{id}  the full company profile, free
  *
- * `sources` is the list of ATSes Auto Apply supports, so every job shown can
- * actually be applied to.
+ * (The sandbox bills nothing.) `sources` is the environment's ATS list, so
+ * every job shown can actually be applied to.
  */
 
 export const PAGE_SIZE = 25
@@ -38,8 +39,6 @@ export class JobsApiError extends Error {
     this.name = 'JobsApiError'
   }
 }
-
-export { isProductionJobId }
 
 const facetSchema = z.array(z.object({ key: z.string(), count: z.number() }))
 const searchSchema = z.object({
@@ -91,7 +90,7 @@ function apiBase(): string {
 }
 
 async function call(
-  apiKey: string,
+  env: JoboEnvironment,
   path: string,
   fetchImpl: typeof fetch,
   body?: unknown,
@@ -101,7 +100,7 @@ async function call(
     response = await fetchImpl(`${apiBase()}${path}`, {
       method: body === undefined ? 'GET' : 'POST',
       headers: {
-        'X-Api-Key': apiKey,
+        'X-Api-Key': env.apiKey,
         Accept: 'application/json',
         ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
       },
@@ -115,28 +114,28 @@ async function call(
   if (response.status === 401)
     throw new JobsApiError(
       'unauthorized',
-      'Jobo rejected this API key. Reconnect with a valid key.',
+      'Jobo rejected this API key. Replace it with a valid key.',
     )
   if (response.status === 402)
     throw new JobsApiError(
       'insufficient_credits',
-      'This API key is out of job-search credits. Top up in the Jobo dashboard, or switch back to sandbox.',
+      'This API key is out of job-search credits. Top up in the Jobo dashboard, or switch to a sandbox key.',
     )
   return response
 }
 
-export async function searchProductionJobs(
-  apiKey: string,
+export async function searchJobs(
+  env: JoboEnvironment,
   filters: JobFilters,
   fetchImpl: typeof fetch = fetch,
 ): Promise<JobSearchResult> {
-  const supported = await supportedAts()
+  const supported = await environmentAts(env)
   const request = toSearchBody(
     filters,
     supported.map((a) => a.id),
     PAGE_SIZE,
   )
-  const response = await call(apiKey, '/api/jobs/search', fetchImpl, request)
+  const response = await call(env, '/api/jobs/search', fetchImpl, request)
   if (response.status === 400)
     throw new JobsApiError('unavailable', 'Jobo could not run that search. Try removing a filter.')
   if (!response.ok)
@@ -177,16 +176,16 @@ export async function searchProductionJobs(
 const SEARCH_TTL_MS = 5 * 60 * 1000
 const searchCache = new Map<string, { at: number; result: JobSearchResult }>()
 
-export async function searchProductionJobsCached(
-  apiKey: string,
+export async function searchJobsCached(
+  env: JoboEnvironment,
   filters: JobFilters,
 ): Promise<JobSearchResult> {
   // Every filter is in the key — a facet click must never be served the
-  // previous selection's page.
-  const cacheKey = JSON.stringify([keyHash(apiKey), filtersCacheKey(filters)])
+  // previous selection's page. The API key decides which catalog answers.
+  const cacheKey = JSON.stringify([keyHash(env.apiKey), filtersCacheKey(filters)])
   const hit = searchCache.get(cacheKey)
   if (hit && Date.now() - hit.at < SEARCH_TTL_MS) return hit.result
-  const result = await searchProductionJobs(apiKey, filters)
+  const result = await searchJobs(env, filters)
   searchCache.set(cacheKey, { at: Date.now(), result })
   if (searchCache.size > 500) {
     for (const [key, value] of searchCache)
@@ -210,15 +209,15 @@ const COMPANY_TTL_MS = 60 * 60 * 1000
 const companyCache = new Map<string, { at: number; profile: CompanyProfile | null }>()
 
 export async function getCompanyProfile(
-  apiKey: string,
+  env: JoboEnvironment,
   companyId: string,
   fetchImpl: typeof fetch = fetch,
 ): Promise<CompanyProfile | null> {
-  if (!isProductionJobId(companyId)) return null
-  const cacheKey = `${keyHash(apiKey)}:${companyId}`
+  if (!isJobId(companyId)) return null
+  const cacheKey = `${keyHash(env.apiKey)}:${companyId}`
   const hit = companyCache.get(cacheKey)
   if (hit && Date.now() - hit.at < COMPANY_TTL_MS) return hit.profile
-  const response = await call(apiKey, `/api/companies/${companyId}`, fetchImpl)
+  const response = await call(env, `/api/companies/${companyId}`, fetchImpl)
   if (!response.ok && response.status !== 404)
     throw new JobsApiError('unavailable', `Company lookup failed (HTTP ${response.status}).`)
   const profile = response.ok ? toCompanyProfile(companySchema.parse(await response.json())) : null
@@ -227,12 +226,12 @@ export async function getCompanyProfile(
   return profile
 }
 
-export async function getProductionJob(
-  apiKey: string,
+export async function getJob(
+  env: JoboEnvironment,
   id: string,
   fetchImpl: typeof fetch = fetch,
 ): Promise<Job> {
-  return (await getProductionJobDetail(apiKey, id, fetchImpl)).job
+  return (await getJobDetail(env, id, fetchImpl)).job
 }
 
 /**
@@ -240,38 +239,39 @@ export async function getProductionJob(
  * `JobDetail` for the job page, and the raw JSON response, which the page
  * shows as-is.
  */
-export async function getProductionJobDetail(
-  apiKey: string,
+export async function getJobDetail(
+  env: JoboEnvironment,
   id: string,
   fetchImpl: typeof fetch = fetch,
 ): Promise<{ job: Job; detail: JobDetail; raw: unknown; url: string }> {
-  if (!isProductionJobId(id)) throw new JobsApiError('not_found', 'Job not found.')
-  const response = await call(apiKey, `/api/jobs/${id}`, fetchImpl)
+  if (!isJobId(id)) throw new JobsApiError('not_found', 'Job not found.')
+  const response = await call(env, `/api/jobs/${id}`, fetchImpl)
   if (response.status === 404) throw new JobsApiError('not_found', 'Job not found.')
   if (!response.ok)
     throw new JobsApiError('unavailable', `Job lookup failed (HTTP ${response.status}).`)
   const raw: unknown = await response.json()
   const dto = jobSchema.parse(raw)
   return {
-    job: toJob(dto, await supportedAts()),
+    job: toJob(dto, await environmentAts(env)),
     detail: toJobDetail(dto),
     raw,
     url: `${apiBase()}/api/jobs/${id}`,
   }
 }
 
-/** Cheap shape check before any network call. */
+/** Cheap shape check before any network call: jbe_test_, jbe_live_ or legacy jbe_. */
 function looksLikeApiKey(value: string): boolean {
-  return /^jbe_(live|test)_[A-Za-z0-9_-]{20,}$/.test(value)
+  return /^jbe_[A-Za-z0-9_-]{20,}$/.test(value)
 }
 
 /**
  * Prove a key works before storing it. First a free authenticated job lookup
  * (401 = bad key; 404 for the nil id = fine; 402 = no search credits, but
  * the key itself is valid), then the Auto Apply list route through the SDK,
- * which is what applications will call. Whether the account has Auto Apply
- * enabled is only checked by Jobo at create time, so that surfaces on the
- * first application instead.
+ * which is what applications will call. A sandbox key (jbe_test_…) and a
+ * production key are verified the same way. An account without Auto Apply
+ * access is still connected: Jobo refuses its first application, and the app
+ * explains that there (lib/presentation.ts, createFailureMessage).
  */
 export async function verifyApiKey(
   apiKey: string,
@@ -280,10 +280,15 @@ export async function verifyApiKey(
   if (!looksLikeApiKey(apiKey))
     return {
       ok: false,
-      error: 'That does not look like a Jobo API key — they start with jbe_live_ or jbe_test_.',
+      error:
+        'That does not look like a Jobo API key — they start with jbe_test_ (sandbox) or jbe_live_ (production).',
     }
   try {
-    const probe = await call(apiKey, '/api/jobs/00000000-0000-0000-0000-000000000000', fetchImpl)
+    const probe = await call(
+      environmentForKey(apiKey),
+      '/api/jobs/00000000-0000-0000-0000-000000000000',
+      fetchImpl,
+    )
     if (!probe.ok && probe.status !== 404)
       return {
         ok: false,
@@ -309,6 +314,8 @@ export async function verifyApiKey(
       return { ok: false, error: 'Jobo could not check Auto Apply access. Please try again.' }
     if (error.status === 401)
       return { ok: false, error: 'Jobo rejected this API key. Reconnect with a valid key.' }
+    // The key is valid; its account just cannot apply yet. Explained at Apply time.
+    if (error.status === 403 && isAccessCode(error.code)) return { ok: true }
     if (error.status === 403)
       return {
         ok: false,

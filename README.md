@@ -2,10 +2,10 @@
 
 A complete, working integration of the [Jobo Auto Apply API](https://jobo.world/docs/api-reference/auto-apply/auto-apply) in Next.js. Candidates create an account, upload a resume and review the profile it produces, then apply to jobs while a background worker runs each application end to end.
 
-It runs in two modes:
+Each visitor connects their own Jobo API key when they sign up, and the key decides the environment, through the same code:
 
-- **Sandbox** (the default): fictional jobs on `sandbox.jobo.world`, applied to with the deployment's own API key. No employer is ever contacted.
-- **Production** (optional): the visitor connects their own Jobo API key, searches the live job catalog and applies to real employers, after accepting a one-time warning.
+- **Sandbox** (a `jbe_test_…` key): fictional jobs, free, and applications go to sandbox forms. No employer is ever contacted.
+- **Production** (a `jbe_live_…` key): the live job catalog, and applications to real employers in the visitor's Jobo account, after a one-time warning.
 
 Fork it as the starting point for your own Jobo-powered product, or read it to see how the pieces fit.
 
@@ -20,7 +20,7 @@ Fork it as the starting point for your own Jobo-powered product, or read it to s
 - [Configuration](#configuration)
 - [Find your way around the code](#find-your-way-around-the-code)
 - [Answer generation](#answer-generation)
-- [Production mode](#production-mode)
+- [Sandbox and production](#sandbox-and-production)
 - [Reliability and recovery](#reliability-and-recovery)
 - [Build your own](#build-your-own)
 - [Deploy](#deploy)
@@ -62,7 +62,7 @@ Two processes share one database, one PDF directory and one set of secrets:
 
 Auto Apply is synchronous: each call blocks until there is something for you to do, and the response is the next state. The whole loop lives in [`lib/application-engine.ts`](lib/application-engine.ts), with its full explanation at the top of the file.
 
-1. **Create.** `applications.create({ apply_url })` (sandbox) or `{ job_id }` (production), with an idempotency key stored before the first call. It blocks until Jobo has opened the form and found the first step's fields.
+1. **Create.** `applications.create({ job_id })`, with an idempotency key stored before the first call. It blocks until Jobo has opened the form and found the first step's fields.
 2. **Answer.** The application comes back `awaiting_answers` with `current_step.fields`. [`lib/answers`](lib/answers/) builds a complete answer snapshot, the app stores it, then sends it with `submitAnswers`.
 3. **Advance.** `submitAnswers` blocks while Jobo fills the form, then returns the next step, a correction round (the same step with the employer system's errors), or the final application.
 
@@ -81,7 +81,7 @@ Further reading: [the application loop](https://jobo.world/docs/api-reference/au
 
 - **Node.js 22+** and npm.
 - **Docker**, for the local Postgres (or bring your own `DATABASE_URL`).
-- A **Jobo API key with Auto Apply access**. [Request access in the portal](https://enterprise.jobo.world/auto-apply/applications). Signing up to the demo does not give your key access.
+- A **Jobo sandbox API key** (`jbe_test_…`) to sign in to the app with. [Create one in Jobo → API Keys](https://enterprise.jobo.world/api-keys). The deployment itself needs no Jobo key: each visitor connects their own.
 - An **OpenRouter API key**, for resume structuring and answers.
 - A **Brevo API key** and a verified sender, for verification and password-reset emails.
 - A **public HTTPS origin** for this app, to complete applications. Jobo downloads the candidate's resume from it. A tunnel to `localhost:3000` (Cloudflare Tunnel, ngrok, …) works for development.
@@ -115,7 +115,6 @@ All configuration is environment variables, read and validated in [`lib/config.t
 
 | Variable | Required | Purpose |
 | --- | --- | --- |
-| `JOBO_API_KEY` | Yes | Jobo key with Auto Apply access (`jbe_live_…` / `jbe_test_…`). Sandbox applications use it. |
 | `OPENROUTER_API_KEY` | Yes | Resume structuring and answer generation |
 | `DATABASE_URL` | Yes | Postgres connection URL |
 | `BETTER_AUTH_URL` | Yes | This app's origin, used in account emails. `http://localhost:3000` locally. |
@@ -125,8 +124,8 @@ All configuration is environment variables, read and validated in [`lib/config.t
 | `RESUME_URL_SIGNING_SECRET` | Yes | Signs resume download URLs, at least 32 characters |
 | `PUBLIC_BASE_URL` | To apply | Public HTTPS origin Jobo downloads resumes from (port 443, no path). The health check requires it. |
 | `DATA_DIR` | No | Resume PDF directory, shared by web app and worker. Default `./.data`. |
-| `API_KEY_ENCRYPTION_SECRET` | No | Enables [production mode](#production-mode). At least 32 characters. |
-| `JOBO_API_BASE_URL` | No | Default `https://connect.jobo.world` |
+| `API_KEY_ENCRYPTION_SECRET` | Yes | Seals each visitor's [Jobo API key](#sandbox-and-production) at rest. At least 32 characters. Rotating it disconnects every key. |
+| `JOBO_API_BASE_URL` | No | The Jobo API, for both modes. Default `https://connect.jobo.world`. |
 | `JOBO_STATUS_URL` | No | Public list of supported application systems, for production search |
 | `OPENROUTER_ANSWER_MODEL` | No | Default `~deepseek/deepseek-v4-flash-latest` |
 | `OPENROUTER_RESUME_MODEL` | No | Default `deepseek/deepseek-v4-flash-0731` |
@@ -150,8 +149,9 @@ Generate each secret separately, for example with `openssl rand -hex 32`. The wo
 | [`lib/jobo/client.ts`](lib/jobo/client.ts) | SDK client setup and redacted request recording |
 | [`lib/answers/`](lib/answers/) | Answer pipeline: deterministic rules, one model call (retried once for required fields it fumbles), coercion, repair after validation errors |
 | [`lib/resume/`](lib/resume/) | PDF text extraction, structuring into a profile, the profile schema, file storage |
-| [`lib/jobs.ts`](lib/jobs.ts) | Sandbox job catalog and the destination checks every application passes |
-| [`lib/jobo/jobs-api.ts`](lib/jobo/jobs-api.ts), [`job-filters.ts`](lib/jobo/job-filters.ts), [`supported-ats.ts`](lib/jobo/supported-ats.ts) | Production mode: Jobs API search, job and company lookups, URL filter state, supported application systems |
+| [`lib/jobo/environment.ts`](lib/jobo/environment.ts) | Sandbox or production: the API key every Jobo call uses |
+| [`lib/jobs.ts`](lib/jobs.ts) | Job ids, and the check every application passes when it is queued |
+| [`lib/jobo/jobs-api.ts`](lib/jobo/jobs-api.ts), [`job-filters.ts`](lib/jobo/job-filters.ts), [`supported-ats.ts`](lib/jobo/supported-ats.ts) | Jobs API search, job and company lookups, URL filter state, supported application systems |
 | [`lib/user-settings.ts`](lib/user-settings.ts), [`lib/secret-box.ts`](lib/secret-box.ts) | Per-visitor mode, and the visitor's API key sealed with AES-256-GCM |
 | [`lib/signed-url.ts`](lib/signed-url.ts) | Short-lived signed resume URLs for Jobo to download |
 | [`lib/jobo/recording-fetch.ts`](lib/jobo/recording-fetch.ts), [`api-preview.ts`](lib/jobo/api-preview.ts) | Captures and redacts the HTTP exchanges shown in the UI |
@@ -159,7 +159,7 @@ Generate each secret separately, for example with `openssl rand -hex 32`. The wo
 | [`lib/config.ts`](lib/config.ts) | Environment validation |
 | [`db/schema.ts`](db/schema.ts), [`db/migrations/`](db/migrations/) | Database schema and migrations (Drizzle) |
 | [`app/`](app/) | Routes: pages, [server actions](app/actions/) and [route handlers](app/api/) |
-| [`components/`](components/) | UI, including the job feed and explorer ([`JobFeed`](components/JobFeed.tsx), [`JobExplorer`](components/JobExplorer.tsx)), the mode switch ([`ModeToggle`](components/ModeToggle.tsx)) and live progress ([`ApplicationLive`](components/ApplicationLive.tsx)) |
+| [`components/`](components/) | UI, including the job feed and explorer ([`JobFeed`](components/JobFeed.tsx), [`JobExplorer`](components/JobExplorer.tsx)), the environment badge and key form ([`EnvironmentBadge`](components/EnvironmentBadge.tsx), [`ApiKeyForm`](components/ApiKeyForm.tsx)) and live progress ([`ApplicationLive`](components/ApplicationLive.tsx)) |
 | [`scripts/doctor.ts`](scripts/doctor.ts), [`scripts/worker-health.ts`](scripts/worker-health.ts) | Preflight checks and the worker's health probe |
 
 ## Answer generation
@@ -180,14 +180,24 @@ Some answers are never left to a model:
 
 The profile model ([`lib/resume/profile-schema.ts`](lib/resume/profile-schema.ts)) covers personal info, links, education, experience, projects, skills, languages, work authorization (US, Canada and UK, plus other countries), equal employment info and job preferences.
 
-## Production mode
+## Sandbox and production
 
-Set `API_KEY_ENCRYPTION_SECRET` to turn it on. The top bar then switches between **Sandbox** and **Production**. Production asks for the visitor's own Jobo API key and shows a one-time warning that applications go to real employers. Then:
+There is no deployment-wide Jobo key. After signing up, every visitor connects their own key (the first onboarding step), and its prefix picks the environment. Both environments run the same code: the same search, job pages, company profiles and Auto Apply loop, against the same API (`JOBO_API_BASE_URL`). [`lib/jobo/environment.ts`](lib/jobo/environment.ts) derives the environment from the key:
 
-- **Search** uses `POST /api/jobs/search` on the visitor's key, limited to the application systems Auto Apply supports. That list comes from `JOBO_STATUS_URL`, with a built-in fallback. Search is billed per job returned, so results are cached in memory for five minutes per key and query.
+| | Sandbox | Production |
+| --- | --- | --- |
+| API key | `jbe_test_…` | `jbe_live_…` (or a legacy `jbe_…` key) |
+| Jobs | Fictional, at fictional companies, all on the `jobosandbox` ATS | The live catalog, limited to ATSes Auto Apply supports |
+| Applications | Go to sandbox forms. No employer is contacted. | Go to real employers |
+| Billing | Free | Search billed per job returned |
+
+[Sandbox keys](https://docs.jobo.world/sandbox) work like a payments test mode: the same endpoints and response shapes, answered from fictional jobs, and a live key never sees that data. The top bar shows the environment: a neutral **Sandbox** badge, or a warning-styled **Production — real employers** one. It links to the key settings, where replacing the key is how a visitor switches. A production key asks once for confirmation that applications go to real employers.
+
+- **The key** is verified with Jobo before it is stored ([`app/actions/api-key.ts`](app/actions/api-key.ts)), then sealed with AES-256-GCM ([`lib/secret-box.ts`](lib/secret-box.ts)), because the worker needs it after the browser closes. Each queued application keeps its own sealed copy, and its `sandbox` flag from the key's prefix, so a run finishes on the key it started with even if the visitor replaces theirs. That copy is erased when the run ends. Rotating `API_KEY_ENCRYPTION_SECRET` disconnects every key.
+- **Search** uses `POST /api/jobs/search`, limited to the environment's application systems: `jobosandbox` for a sandbox key, otherwise the list from `JOBO_STATUS_URL` (with a built-in fallback). Search is billed per job returned, so results are cached in memory for five minutes per key and query.
 - **Job pages** use the free `GET /api/jobs/{id}` and `GET /api/companies/{id}`. They show every field the API returns, plus the raw JSON. ATS logos live in `public/ats-logos/`, mapped in [`lib/jobo/supported-ats.ts`](lib/jobo/supported-ats.ts).
-- **Applications** are created with `job_id` on the visitor's key, so they belong to the visitor's Jobo account. That account needs Auto Apply enabled. Jobo checks this at create time, and the app explains `auto_apply_not_enabled` and similar refusals.
-- **The key** is stored sealed with AES-256-GCM ([`lib/secret-box.ts`](lib/secret-box.ts)), because the worker needs it after the browser closes. Each queued application keeps its own sealed copy, so a run finishes on the key it started with. That copy is erased when the run ends. Disconnecting deletes the stored key. Rotating `API_KEY_ENCRYPTION_SECRET` disconnects every key.
+- **Applications** are created with `job_id`, so they belong to the visitor's Jobo account. Before queuing, the job is re-read on the visitor's key and must come from that environment's ATSes ([`lib/jobs.ts`](lib/jobs.ts)).
+- **Access refusals.** A production key's account needs Auto Apply access, an accepted agreement and an approved business review. Without them, create fails with `403` and `auto_apply_not_enabled`, `auto_apply_agreement_required` or `auto_apply_review_required`. The application page and the job card then show the API's reason and a **Use a sandbox key** action ([`components/AccessProblemNotice.tsx`](components/AccessProblemNotice.tsx)), since a sandbox key runs the full flow on any account.
 
 ## Reliability and recovery
 
@@ -204,7 +214,7 @@ The example is meant to be taken apart. Common changes:
 
 - **Use your own candidate data.** Replace the upload and review flow with your existing profiles. The engine only needs the `ProfileSnapshot` shape in [`db/schema.ts`](db/schema.ts) (profile JSON, resume text, resume file).
 - **Change how answers are made.** Add rules in [`lib/answers/deterministic.ts`](lib/answers/deterministic.ts) (each one has an id, a matcher and a resolver), adjust the prompt in [`lib/answers/prompt.ts`](lib/answers/prompt.ts), or point `OPENROUTER_ANSWER_MODEL` at another model. To use a different LLM provider, replace [`lib/openrouter.ts`](lib/openrouter.ts). It is one function that returns schema-validated JSON.
-- **Bring your own jobs.** `startApplicationAction` in [`app/actions/applications.ts`](app/actions/applications.ts) resolves a job, then queues it. Create applications from any job you can give Jobo, as an `apply_url` or a Jobo `job_id`.
+- **Bring your own jobs.** `startApplicationAction` in [`app/actions/applications.ts`](app/actions/applications.ts) resolves a job, then queues it. Create applications from any job you can give Jobo, as a Jobo `job_id` or an `apply_url`.
 - **Store files elsewhere.** Swap [`lib/resume/storage.ts`](lib/resume/storage.ts) for S3, R2 or GCS, and give Jobo the store's presigned URL instead of [`lib/signed-url.ts`](lib/signed-url.ts).
 - **Send email another way.** `sendAccountEmail` in [`lib/auth.ts`](lib/auth.ts) is the only Brevo code.
 - **Run more workers.** Start more `npm run worker` processes. The caps in `WORKER_CONCURRENCY` still hold, because the claim takes a Postgres advisory lock. Several web replicas also need shared resume storage and a shared search cache.
@@ -242,7 +252,8 @@ Each test file gets its own throwaway database, cloned from a migrated template.
 
 | Symptom | Check |
 | --- | --- |
-| `npm run doctor` fails on the Jobo key with `403` | The account owning `JOBO_API_KEY` needs Auto Apply access |
+| `/api/health` names `API_KEY_ENCRYPTION_SECRET` | It is required: at least 32 characters, the same for the web app and the worker |
+| An application says the key's account can't use Auto Apply yet | That production key's account lacks Auto Apply access, the agreement or the business review. Use a sandbox key, or sort out access in [Jobo → Auto Apply](https://enterprise.jobo.world/auto-apply) |
 | Applications stay **Queued** | The worker is running against the same database and `.env.local` |
 | No verification email | `npm run doctor` checks the Brevo key and that `AUTH_EMAIL_FROM` is an active sender. Then check spam. |
 | Applications stop at a resume field | `PUBLIC_BASE_URL` must reach this app over public HTTPS, and web and worker must share `DATA_DIR` and the signing secret |

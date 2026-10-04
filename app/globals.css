@@ -52,8 +52,7 @@
 
   /* Status */
   --green: #275b40; /* success text */
-  --green-strong: #2f7a4d; /* production mode label */
-  --green-bright: #2f9e5b; /* production mode dot */
+  --green-strong: #2f7a4d; /* success labels */
   --green-muted: #5a6a60; /* muted text on green backgrounds (4.5:1 on --mint) */
   --green-mid: #69a47e; /* completed progress */
   --green-soft: #9abcaa; /* success borders */
@@ -1466,7 +1465,7 @@ svg {
   gap: 17px;
   margin-top: 13px;
 }
-.sandbox-job-link {
+.job-posting-link {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -1479,14 +1478,14 @@ svg {
   font-size: 10px;
   color: var(--muted);
 }
-.sandbox-job-link strong {
+.job-posting-link strong {
   display: flex;
   align-items: center;
   gap: 4px;
   color: var(--purple);
   font-size: 12px;
 }
-.sandbox-job-link:hover strong {
+.job-posting-link:hover strong {
   text-decoration: underline;
 }
 
@@ -3771,173 +3770,97 @@ label.choice input {
   }
 }
 
-/* ── Sandbox | Production mode switch and key dialog (components/ModeToggle.tsx) ─── */
-.mode-control {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-.mode-toggle {
-  display: inline-flex;
-  padding: 3px;
-  gap: 3px;
-  border: var(--edge);
-  border-radius: var(--control-radius);
-  background: var(--white);
-  box-shadow: var(--shadow-small);
-}
-.mode-toggle[data-pending] {
-  opacity: 0.7;
-}
-.mode-toggle button {
+/* ── Environment badge and key form (components/EnvironmentBadge.tsx, ApiKeyForm.tsx) ─── */
+.env-badge {
   display: inline-flex;
   align-items: center;
   gap: 7px;
   min-height: 36px;
-  padding: 0 11px;
-  border-radius: 4px;
-  background: transparent;
-  color: var(--muted);
+  padding: 0 12px;
+  border: var(--edge);
+  border-radius: var(--control-radius);
+  background: var(--white);
+  color: var(--ink);
   font-size: 11px;
   font-weight: 750;
   white-space: nowrap;
+  text-decoration: none;
+  box-shadow: var(--shadow-small);
 }
-.mode-toggle button:hover:not(:disabled):not(.active) {
+.env-badge:hover {
   background: var(--pale);
-  color: var(--ink);
 }
-.mode-toggle button.active {
-  background: var(--ink);
-  color: var(--white);
-}
-.mode-dot {
+.env-dot {
   width: 6px;
   height: 6px;
   border-radius: 50%;
   background: var(--purple);
 }
-.mode-dot.production {
-  background: var(--green-bright);
+.env-badge.production {
+  border-color: var(--amber);
+  background: var(--surface-warm);
+  color: var(--amber);
 }
-.mode-toggle button.active .mode-dot.sandbox {
-  background: var(--lilac);
+.env-badge.none {
+  color: var(--purple-deep);
 }
-.mode-key {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  min-height: 44px;
-  padding: 0 4px;
-  background: none;
+.env-badge-hint {
   color: var(--muted);
-  font-size: 11px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
-.mode-key:hover {
-  color: var(--purple);
-}
-.mode-error {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  z-index: 5;
-  max-width: 280px;
-  padding: 8px 10px;
-  border: 1px solid var(--red-strong);
-  border-radius: var(--control-radius);
-  background: var(--bg);
-  color: var(--red-strong);
-  font-size: 12px;
-}
 .workspace-label.production {
-  color: var(--green-strong);
+  color: var(--amber);
 }
-.key-dialog {
-  /* Tailwind's preflight zeroes margins, which un-centers a modal dialog. */
-  margin: auto;
-  width: min(480px, calc(100vw - 32px));
-  max-height: calc(100vh - 32px);
+.key-form {
+  margin-top: 18px;
+  gap: 12px;
+}
+.key-form .text-link {
+  min-height: 0;
+  align-self: flex-start;
+}
+.key-form-modes {
+  display: grid;
+  gap: 6px;
+  margin: 0;
   padding: 0;
-  border: var(--edge);
-  border-radius: var(--radius);
-  background: var(--surface);
-  color: var(--ink);
-  box-shadow: var(--shadow);
-}
-.key-dialog::backdrop {
-  background: var(--backdrop);
-}
-.key-dialog-body {
-  padding: 24px;
-}
-.key-dialog-body h2 {
-  font-size: 21px;
-  margin: 8px 0 10px;
-}
-.key-dialog-body > p {
+  list-style: none;
   font-size: 13px;
 }
-.key-dialog-close {
-  width: 36px;
-  height: 36px;
+.key-form-warning {
+  margin: 4px 0 0;
 }
-.key-dialog-current {
-  margin-top: 10px;
-}
-.key-dialog-warning {
-  margin: 18px 0 0;
-}
-.key-dialog-check {
+.key-form-check {
   flex-direction: row;
   align-items: center;
   gap: 8px;
   margin-top: 10px;
   color: var(--ink);
 }
-.key-dialog-check input {
+.key-form-check input {
   width: 18px;
   min-height: 18px;
   height: 18px;
   padding: 0;
   accent-color: var(--purple);
 }
-.key-dialog .form-stack {
-  margin-top: 20px;
-  gap: 12px;
-}
-.key-dialog .text-link {
-  min-height: 0;
-  align-self: flex-start;
-}
-.key-dialog-actions {
+.key-form-actions {
   display: flex;
-  justify-content: flex-end;
   flex-wrap: wrap;
   gap: 10px;
   margin-top: 6px;
 }
 @media (max-width: 760px) {
-  .mode-key {
-    display: none;
-  }
-  .mode-toggle {
-    padding: 2px;
-    gap: 2px;
-  }
-  .mode-toggle button {
+  .env-badge {
     min-height: 32px;
-    padding: 0 7px;
+    padding: 0 8px;
     font-size: 10.5px;
   }
-  .mode-dot {
+  .env-badge-hint {
     display: none;
   }
-  .key-dialog-body {
-    padding: 18px;
-  }
-  .key-dialog-actions .button {
+  .key-form-actions .button {
     flex: 1;
   }
 }
@@ -4767,4 +4690,22 @@ a.tag.purple-tag:hover {
   .company-tab-title h2 {
     font-size: 19px;
   }
+}
+
+/* ── Auto Apply access refusals (components/AccessProblemNotice.tsx) ─── */
+.access-problem {
+  margin: 14px 0 0;
+}
+.access-problem p {
+  margin: 0;
+}
+.access-problem-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  margin-top: 10px;
+}
+.access-problem-actions .text-link {
+  min-height: 0;
 }

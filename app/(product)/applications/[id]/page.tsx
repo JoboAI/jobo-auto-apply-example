@@ -8,13 +8,14 @@ import { db } from '@/db/client'
 import { applications, profiles, steps, apiExchanges } from '@/db/schema'
 import { requireUser } from '@/lib/session'
 import { isTerminal } from '@/lib/status'
-import { applicationLabel, canRetry, displayDate } from '@/lib/presentation'
+import { accessProblem, applicationLabel, canRetry, displayDate } from '@/lib/presentation'
+import { AccessProblemNotice } from '@/components/AccessProblemNotice'
 import { LiveRefresh, CancelButton } from '@/components/ApplicationLive'
 import { liveVersion } from '@/lib/live-version'
 import { ApplyButton } from '@/components/JobActions'
 import { ApplicationApiPreview } from '@/components/ApplicationApiPreview'
 import { ApplicationAnswers } from '@/components/ApplicationAnswers'
-import { ProductionJobLink, SandboxJobLink } from '@/components/SandboxJobLink'
+import { JobPostingLink } from '@/components/JobPostingLink'
 import { atsLogo } from '@/lib/jobo/supported-ats'
 import { fullName } from '@/lib/resume/profile-schema'
 
@@ -47,6 +48,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
       .orderBy(desc(profiles.isDefault))
   ).find(isApplicationReady)
   const active = !isTerminal(row.status),
+    access = accessProblem(row),
     label = applicationLabel(row),
     submitted = row.status === 'submitted'
   return (
@@ -81,17 +83,21 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                     ? 'Application canceled.'
                     : 'Application could not complete.'}
           </h2>
-          <p>
-            {submitted
-              ? row.sandbox
-                ? 'Your sandbox application was confirmed as submitted.'
-                : 'Your application was submitted to the employer through your Jobo account.'
-              : row.stopReason ||
-                row.failureMessage ||
-                (active
-                  ? 'You can leave this page. Your application keeps running in the background.'
-                  : 'This application was not completed. Your other applications are unaffected.')}
-          </p>
+          {access ? (
+            <AccessProblemNotice problem={access} />
+          ) : (
+            <p>
+              {submitted
+                ? row.sandbox
+                  ? 'Your sandbox application was confirmed as submitted.'
+                  : 'Your application was submitted to the employer through your Jobo account.'
+                : row.stopReason ||
+                  row.failureMessage ||
+                  (active
+                    ? 'You can leave this page. Your application keeps running in the background.'
+                    : 'This application was not completed. Your other applications are unaffected.')}
+            </p>
+          )}
           {row.workerError && active && (
             <div className="notice warning">
               We hit a temporary connection issue. We’re checking the application safely before
@@ -173,20 +179,12 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
               <FileText size={22} />
             </span>
             <h3>Candidate snapshot</h3>
-            {row.sandbox ? (
-              <SandboxJobLink
-                url={row.applyUrl}
-                slug={row.jobId ?? ''}
-                title={row.jobSnapshot?.role ?? 'application'}
-              />
-            ) : (
-              <ProductionJobLink
-                url={row.jobSnapshot?.listingUrl ?? row.applyUrl}
-                ats={row.jobSnapshot?.sourceName}
-                atsLogoUrl={atsLogo(row.jobSnapshot?.source)}
-                title={row.jobSnapshot?.role ?? 'application'}
-              />
-            )}
+            <JobPostingLink
+              url={row.jobSnapshot?.listingUrl ?? row.applyUrl}
+              ats={row.jobSnapshot?.sourceName}
+              atsLogoUrl={atsLogo(row.jobSnapshot?.source)}
+              title={row.jobSnapshot?.role ?? 'application'}
+            />
             <p>{row.profileSnapshot?.resumeFilename}</p>
             <dl className="snapshot-details">
               <dt>Name</dt>

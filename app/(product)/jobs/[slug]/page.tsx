@@ -16,64 +16,56 @@ import {
 import { db } from '@/db/client'
 import { profiles, applications, savedJobs } from '@/db/schema'
 import { requireUser } from '@/lib/session'
-import { getJobs, isProductionJobId } from '@/lib/jobs'
-import type { Job } from '@/lib/jobs-types'
-import { getCompanyProfile, getProductionJobDetail, JobsApiError } from '@/lib/jobo/jobs-api'
+import { isJobId } from '@/lib/jobs'
+import { environmentAts, visitorEnvironment } from '@/lib/jobo/environment'
+import { getCompanyProfile, getJobDetail, JobsApiError } from '@/lib/jobo/jobs-api'
 import type { CompanyProfile } from '@/lib/jobo/company-profile'
-import type { JobDetail } from '@/lib/jobo/job-format'
-import { atsLogo, supportedAts } from '@/lib/jobo/supported-ats'
+import { atsLogo } from '@/lib/jobo/supported-ats'
 import { AtsBadge } from '@/components/AtsBadge'
 import { CompanyPanel } from '@/components/CompanyPanel'
 import { DetailTabs } from '@/components/DetailTabs'
 import { JobDetailPanel } from '@/components/JobDetailPanel'
-import { productionApiKey } from '@/lib/user-settings'
 import { ApplyButton, SaveButton } from '@/components/JobActions'
-import { ProductionJobLink, SandboxJobLink } from '@/components/SandboxJobLink'
+import { JobPostingLink } from '@/components/JobPostingLink'
+import { ConnectKeyPrompt } from '@/components/ConnectKeyPrompt'
 
 export const metadata: Metadata = { title: 'Job' }
 export default async function JobPage({ params }: { params: Promise<{ slug: string }> }) {
   const user = await requireUser(),
     { slug } = await params
-  let job: Job | undefined
-  let detail: { detail: JobDetail; raw: unknown; url: string } | undefined
+  if (!isJobId(slug)) notFound()
+  // The same page in both modes: only the key differs.
+  const env = await visitorEnvironment(user.id)
+  if (!env) return <ConnectKeyPrompt />
+  const production = env.mode === 'production'
+  let loaded: Awaited<ReturnType<typeof getJobDetail>>
   let company: CompanyProfile | null = null
-  if (isProductionJobId(slug)) {
-    const apiKey = await productionApiKey(user.id)
-    if (!apiKey)
-      return (
-        <div className="empty-state">
-          <h1>This is a real job.</h1>
-          <p>Switch to production mode with your Jobo API key to view and apply to it.</p>
-          <PageLink href="/jobs" className="button primary">
-            Back to jobs
-          </PageLink>
-        </div>
-      )
-    try {
-      const loaded = await getProductionJobDetail(apiKey, slug)
-      job = loaded.job
-      detail = loaded
-      // A profile that fails to load costs the tab, never the page.
-      if (job.companyId) company = await getCompanyProfile(apiKey, job.companyId).catch(() => null)
-    } catch (error) {
-      if (error instanceof JobsApiError && error.kind === 'not_found') notFound()
-      return (
-        <div className="empty-state">
-          <h1>Job unavailable</h1>
-          <p>
-            {error instanceof JobsApiError
+  try {
+    loaded = await getJobDetail(env, slug)
+    // A profile that fails to load costs the tab, never the page.
+    if (loaded.job.companyId)
+      company = await getCompanyProfile(env, loaded.job.companyId).catch(() => null)
+  } catch (error) {
+    const missing = error instanceof JobsApiError && error.kind === 'not_found'
+    return (
+      <div className="empty-state">
+        <h1>{missing ? 'Job not found' : 'Job unavailable'}</h1>
+        <p>
+          {missing
+            ? production
+              ? 'It may have closed. Sandbox jobs open with a sandbox key.'
+              : 'This is not a sandbox job. Real jobs open with a production key.'
+            : error instanceof JobsApiError
               ? error.message
               : 'We couldn’t load this job from Jobo right now.'}
-          </p>
-          <PageLink href="/jobs" className="button primary">
-            Back to jobs
-          </PageLink>
-        </div>
-      )
-    }
-  } else job = (await getJobs()).find((j) => j.slug === slug)
-  if (!job) notFound()
-  const production = !!job.production
+        </p>
+        <PageLink href="/jobs" className="button primary">
+          Back to jobs
+        </PageLink>
+      </div>
+    )
+  }
+  const { job, detail, raw, url } = loaded
   const profile = (
     await db
       .select()
@@ -95,7 +87,7 @@ export default async function JobPage({ params }: { params: Promise<{ slug: stri
   const companyAts = company?.atsProvider
     ? {
         name:
-          (await supportedAts()).find((a) => a.id === company.atsProvider)?.name ??
+          (await environmentAts(env)).find((a) => a.id === company.atsProvider)?.name ??
           company.atsProvider.replace(/[_-]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
         logoUrl: atsLogo(company.atsProvider),
       }
@@ -103,13 +95,14 @@ export default async function JobPage({ params }: { params: Promise<{ slug: stri
   const jobBody = (
     <JobDetailPanel
       job={job}
-      detail={detail?.detail}
-      raw={detail?.raw}
-      url={detail?.url}
+      detail={detail}
+      raw={raw}
+      url={url}
+      production={production}
       showCompanySummary={!company}
     />
   )
-  const extraLocations = (detail?.detail.locations.length ?? 1) - 1
+  const extraLocations = detail.locations.length - 1
   return (
     <>
       <PageLink href="/jobs" className="back-link">
@@ -157,7 +150,7 @@ export default async function JobPage({ params }: { params: Promise<{ slug: stri
                 Posted {job.postedAgo.toLowerCase()}
               </span>
             )}
-            {production && job.sourceName ? (
+            {job.sourceName ? (
               <AtsBadge name={job.sourceName} logoUrl={job.sourceLogoUrl} className="tag" />
             ) : (
               <span className="tag">{job.department}</span>
@@ -203,16 +196,12 @@ export default async function JobPage({ params }: { params: Promise<{ slug: stri
               available={job.available}
               existingId={existing?.id}
             />
-            {production ? (
-              <ProductionJobLink
-                url={job.listingUrl ?? job.applyUrl}
-                ats={job.sourceName}
-                atsLogoUrl={job.sourceLogoUrl}
-                title={job.role}
-              />
-            ) : (
-              <SandboxJobLink url={job.applyUrl} slug={job.slug} title={job.role} />
-            )}
+            <JobPostingLink
+              url={job.listingUrl ?? job.applyUrl}
+              ats={job.sourceName}
+              atsLogoUrl={job.sourceLogoUrl}
+              title={job.role}
+            />
             <small>
               We only use facts you’ve provided. If something’s missing, we stop and let you know.
             </small>

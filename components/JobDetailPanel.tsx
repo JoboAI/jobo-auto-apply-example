@@ -62,31 +62,33 @@ function Qualifications({ title, set }: { title: string; set: QualificationSet }
 }
 
 /**
- * The "Job details" tab. Sandbox jobs have no `detail` and keep the short
- * layout; production jobs show everything `GET /api/jobs/{id}` returned.
+ * The "Job details" tab: everything `GET /api/jobs/{id}` returned, the same
+ * for a real job and a sandbox one.
  */
 export function JobDetailPanel({
   job,
   detail,
   raw,
   url,
+  production,
   showCompanySummary,
 }: {
   job: Job
-  detail?: JobDetail
-  raw?: unknown
-  url?: string
+  detail: JobDetail
+  raw: unknown
+  url: string
+  /** A real job, applied to on the visitor's key, rather than a sandbox one. */
+  production: boolean
   /** No company tab on this page, so the job's own company blurb goes here. */
   showCompanySummary?: boolean
 }) {
-  const production = !!job.production
   const notice = (
     <div className={`notice ${production ? 'warning' : ''}`}>
       <Sparkles size={18} />
       <span>
         {production
           ? `This is a real job on ${job.sourceName ?? 'the employer’s ATS'}. Applying submits your profile to the employer on your own Jobo API key.`
-          : 'This is a fictional sandbox role. Try a real application flow without contacting an employer.'}
+          : 'This is a fictional sandbox job. Applying runs a real application flow on a sandbox form; no employer is contacted.'}
       </span>
     </div>
   )
@@ -100,22 +102,6 @@ export function JobDetailPanel({
       </ul>
     </>
   )
-
-  if (!detail)
-    return (
-      <>
-        <h2>Meet {job.company}</h2>
-        <p>{job.about}</p>
-        {!!job.skills?.length && (
-          <>
-            <h2>Must-have skills</h2>
-            <SkillTags skills={job.skills} />
-          </>
-        )}
-        {responsibilities}
-        {notice}
-      </>
-    )
 
   const facts: { label: string; value: React.ReactNode }[] = []
   const fact = (label: string, value: React.ReactNode | undefined) =>
@@ -138,7 +124,7 @@ export function JobDetailPanel({
   fact('Requisition ID', detail.externalId && <code>{detail.externalId}</code>)
   fact('Normalized title', detail.normalizedTitle)
 
-  const json = raw === undefined ? '' : JSON.stringify(raw, null, 2)
+  const json = JSON.stringify(raw, null, 2)
   return (
     <>
       {detail.summary && <p className="job-lead">{detail.summary}</p>}
@@ -229,14 +215,14 @@ export function JobDetailPanel({
         </>
       )}
       {notice}
-      {url && json && (
+      {json && (
         <details className="api-call">
           <summary>
             <Code2 size={16} /> See the raw API response for this job
           </summary>
           <p>
             Everything on this tab comes from one free request,{' '}
-            <code>GET /api/jobs/&#123;id&#125;</code>, made with your API key.
+            <code>GET /api/jobs/&#123;id&#125;</code>.
           </p>
           <CodeBlock
             title="GET /api/jobs/{id}"

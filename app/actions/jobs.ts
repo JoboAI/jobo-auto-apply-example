@@ -4,23 +4,22 @@ import { revalidatePath } from 'next/cache'
 import { db } from '@/db/client'
 import { savedJobs } from '@/db/schema'
 import { requireUser } from '@/lib/session'
-import { getJobs, isProductionJobId } from '@/lib/jobs'
-import { getProductionJob } from '@/lib/jobo/jobs-api'
-import { productionApiKey } from '@/lib/user-settings'
+import { isJobId } from '@/lib/jobs'
+import { visitorEnvironment } from '@/lib/jobo/environment'
+import { getJob } from '@/lib/jobo/jobs-api'
 
-/** Save or unsave a job (sandbox slug or production job id) for the user. */
+/** Save or unsave a job (a Jobo job id, in the visitor's current mode). */
 export async function saveJobAction(jobId: string, saved: boolean) {
   const user = await requireUser()
   if (typeof jobId !== 'string' || !jobId || jobId.length > 100 || typeof saved !== 'boolean')
     return { ok: false, error: 'Invalid request.' }
   try {
     if (saved) {
-      if (isProductionJobId(jobId)) {
-        const apiKey = await productionApiKey(user.id)
-        if (!apiKey) return { ok: false, error: 'Switch to production mode to save real jobs.' }
-        await getProductionJob(apiKey, jobId)
-      } else if (!(await getJobs()).some((j) => j.slug === jobId))
-        return { ok: false, error: 'Job unavailable.' }
+      if (!isJobId(jobId)) return { ok: false, error: 'Job unavailable.' }
+      // Only a job the visitor can see on their current key.
+      const env = await visitorEnvironment(user.id)
+      if (!env) return { ok: false, error: 'Connect your Jobo API key first.' }
+      await getJob(env, jobId)
       await db.insert(savedJobs).values({ userId: user.id, jobId }).onConflictDoNothing()
     } else
       await db
