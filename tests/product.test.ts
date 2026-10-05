@@ -258,6 +258,53 @@ describe('private profiles and durable applications', () => {
         ?.cancelRequested,
     ).toBe(false)
   })
+  it('asks once for the AI-answers acknowledgement before the first application', async () => {
+    const fetchSpy = vi.fn(async () => new Response('not found', { status: 404 }))
+    vi.stubGlobal('fetch', fetchSpy)
+    try {
+      identity.id = 'alice'
+      const { connectApiKey } = await import('@/lib/user-settings')
+      const { startApplicationAction } = await import('@/app/actions/applications')
+      const { AI_CONSENT_VERSION } = await import('@/lib/ai-consent')
+      await connectApiKey('alice', SANDBOX_KEY, false)
+      const apply = (aiConsent?: true) =>
+        startApplicationAction({
+          jobId: 'missing-job',
+          profileId: 'sample-ada-lovelace',
+          aiConsent,
+        })
+      const stored = async () =>
+        (
+          await db.select().from(schema.userSettings).where(eq(schema.userSettings.userId, 'alice'))
+        )[0]
+
+      // Refused before anything is fetched or queued.
+      expect(await apply()).toEqual({
+        ok: false,
+        error: expect.stringMatching(/AI-generated answers/),
+        aiConsentRequired: true,
+      })
+      expect(fetchSpy).not.toHaveBeenCalled()
+
+      // Ticking the box records it; the request then carries on (to a missing job here).
+      expect(await apply(true)).not.toHaveProperty('aiConsentRequired')
+      expect(await stored()).toMatchObject({ aiAnswersConsentVersion: AI_CONSENT_VERSION })
+      expect((await stored()).aiAnswersConsentAt).toBeGreaterThan(0)
+
+      // Not asked again.
+      expect(await apply()).not.toHaveProperty('aiConsentRequired')
+
+      // New wording asks again.
+      await db
+        .update(schema.userSettings)
+        .set({ aiAnswersConsentVersion: 'older-wording' })
+        .where(eq(schema.userSettings.userId, 'alice'))
+      expect(await apply()).toMatchObject({ ok: false, aiConsentRequired: true })
+      await apply(true)
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
   it('applies only once a key is connected, and to real jobs only on a production key', async () => {
     const realId = '9d1c2b3a-4e5f-4a6b-8c7d-0e1f2a3b4c5d'
     const seen: { url: string; key: string | null }[] = []

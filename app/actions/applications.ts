@@ -10,6 +10,7 @@ import { z } from 'zod'
 import { enqueueApplication, EnqueueRefusedError } from '@/lib/queue'
 import { isTerminal } from '@/lib/status'
 import { log } from '@/lib/logger'
+import { hasAiAnswersConsent, recordAiAnswersConsent } from '@/lib/user-settings'
 
 /**
  * Applying and canceling. Both only write the database: the background
@@ -23,13 +24,16 @@ const startInput = z.object({
   jobId: z.string().min(1).max(100),
   profileId: z.string().min(1).max(100),
   retry: z.boolean().optional(),
+  /** Set when the visitor ticked the AI-answers acknowledgement (lib/ai-consent.ts). */
+  aiConsent: z.literal(true).optional(),
 })
 const applicationIdInput = z.string().min(1).max(100)
 const NO_KEY = 'Connect your Jobo API key before applying.'
+const AI_CONSENT_REQUIRED = 'Allow AI-generated answers before applying.'
 
 export async function startApplicationAction(
   raw: z.input<typeof startInput>,
-): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+): Promise<{ ok: true; id: string } | { ok: false; error: string; aiConsentRequired?: true }> {
   const user = await requireUser()
   const parsed = startInput.safeParse(raw)
   if (!parsed.success) return { ok: false, error: 'Invalid request.' }
@@ -39,6 +43,13 @@ export async function startApplicationAction(
     // trusted from the browser. A job from the other mode is not found there.
     const env = await visitorEnvironment(user.id)
     if (!env) return { ok: false, error: NO_KEY }
+    // Answers are AI-generated and sent without per-application review, so the
+    // visitor must explicitly accept that once before the first application.
+    // `aiConsent` only records a fresh tick in the dialog; otherwise a stored
+    // acceptance of the current wording is required.
+    if (input.aiConsent) await recordAiAnswersConsent(user.id)
+    else if (!(await hasAiAnswersConsent(user.id)))
+      return { ok: false, error: AI_CONSENT_REQUIRED, aiConsentRequired: true }
     let job
     try {
       job = await getJob(env, input.jobId)

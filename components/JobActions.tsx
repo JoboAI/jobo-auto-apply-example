@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { ArrowUpRight, Bookmark, Sparkles } from 'lucide-react'
 import { saveJobAction } from '@/app/actions/jobs'
 import { startApplicationAction } from '@/app/actions/applications'
+import { AiConsentDialog } from './AiConsentDialog'
 /**
  * Bookmark toggle. The new state shows as soon as the action succeeds, rather
  * than waiting for the server re-render to commit (see lib/use-busy.ts).
@@ -55,7 +56,20 @@ export function ApplyButton({
 }) {
   const router = useRouter(),
     [pending, start] = useBusy(),
-    [error, setError] = useState('')
+    [error, setError] = useState(''),
+    [consentOpen, setConsentOpen] = useState(false)
+  const apply = (profile: string, aiConsent?: true) =>
+    start(async () => {
+      setError('')
+      try {
+        const result = await startApplicationAction({ jobId, profileId: profile, retry, aiConsent })
+        if (result.ok) pushWithFallback(router, `/applications/${result.id}`)
+        else if (result.aiConsentRequired) setConsentOpen(true)
+        else setError(result.error)
+      } catch {
+        setError('Could not connect. Please try again.')
+      }
+    })
   return (
     <div>
       <button
@@ -70,20 +84,7 @@ export function ApplyButton({
             router.push('/profiles')
             return
           }
-          start(async () => {
-            setError('')
-            try {
-              const result = await startApplicationAction({
-                jobId,
-                profileId,
-                retry,
-              })
-              if (result.ok) pushWithFallback(router, `/applications/${result.id}`)
-              else setError(result.error)
-            } catch {
-              setError('Could not connect. Please try again.')
-            }
-          })
+          apply(profileId)
         }}
       >
         <Sparkles size={16} />
@@ -104,6 +105,16 @@ export function ApplyButton({
         <p className="inline-error" role="alert">
           {error}
         </p>
+      )}
+      {profileId && (
+        <AiConsentDialog
+          open={consentOpen}
+          onClose={() => setConsentOpen(false)}
+          onAccept={() => {
+            setConsentOpen(false)
+            apply(profileId, true)
+          }}
+        />
       )}
     </div>
   )

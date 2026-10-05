@@ -4,6 +4,7 @@ import { userSettings } from '@/db/schema'
 import { config } from '@/lib/config'
 import { open, seal } from '@/lib/secret-box'
 import { keyMode, type JoboMode } from '@/lib/jobo/environment'
+import { AI_CONSENT_VERSION } from '@/lib/ai-consent'
 
 /**
  * The visitor's own Jobo API key, which every Jobo call they cause uses.
@@ -62,6 +63,25 @@ export async function connectApiKey(userId: string, apiKey: string, acknowledged
     apiKeyCiphertext: sealApiKey(apiKey),
     apiKeyHint: apiKey.slice(-4),
     ...(acknowledged ? { productionAcknowledgedAt: Date.now() } : {}),
+    updatedAt: Date.now(),
+  }
+  await db
+    .insert(userSettings)
+    .values({ userId, ...values })
+    .onConflictDoUpdate({ target: userSettings.userId, set: values })
+}
+
+/** Whether the visitor accepted the current AI-answers wording (lib/ai-consent.ts). */
+export async function hasAiAnswersConsent(userId: string): Promise<boolean> {
+  const found = await row(userId)
+  return !!found?.aiAnswersConsentAt && found.aiAnswersConsentVersion === AI_CONSENT_VERSION
+}
+
+/** Record the visitor's explicit acceptance of the current AI-answers wording. */
+export async function recordAiAnswersConsent(userId: string) {
+  const values = {
+    aiAnswersConsentAt: Date.now(),
+    aiAnswersConsentVersion: AI_CONSENT_VERSION,
     updatedAt: Date.now(),
   }
   await db

@@ -153,6 +153,9 @@ export const userSettings = pgTable('user_settings', {
   apiKeyHint: text('api_key_hint'),
   /** When the visitor accepted the one-time "real employers" warning for a production key. */
   productionAcknowledgedAt: epochMs('production_acknowledged_at'),
+  /** When the visitor allowed AI-generated answers (lib/ai-consent.ts), and which wording. */
+  aiAnswersConsentAt: epochMs('ai_answers_consent_at'),
+  aiAnswersConsentVersion: text('ai_answers_consent_version'),
   updatedAt: epochMs('updated_at').notNull().default(nowMs),
 })
 export type UserSettingsRow = typeof userSettings.$inferSelect

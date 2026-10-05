@@ -8,6 +8,7 @@ import type { LiveState } from '@/lib/live-version'
 import type { CardApplication } from '@/lib/presentation'
 import { useBusy } from '@/lib/use-busy'
 import { AccessProblemNotice } from './AccessProblemNotice'
+import { AiConsentDialog } from './AiConsentDialog'
 
 const POLL_MS = 3000
 /** Polls in a row showing a status the card has not rendered before a reload. */
@@ -36,6 +37,23 @@ export function CardApply({
   const [pending, start] = useBusy()
   const [queuedId, setQueuedId] = useState<string>()
   const [error, setError] = useState('')
+  const [consentOpen, setConsentOpen] = useState(false)
+  const apply = (profile: string, aiConsent?: true) =>
+    start(async () => {
+      setError('')
+      try {
+        const result = await startApplicationAction({ jobId, profileId: profile, retry, aiConsent })
+        if (!result.ok) {
+          if (result.aiConsentRequired) setConsentOpen(true)
+          else setError(result.error)
+          return
+        }
+        setQueuedId(result.id)
+        router.refresh()
+      } catch {
+        setError('Could not connect. Please try again.')
+      }
+    })
   // The persisted row has arrived: drop the placeholder below.
   if (queuedId && queuedId === application?.id) setQueuedId(undefined)
   // Keep immediate feedback until the persisted row arrives on refresh.
@@ -116,20 +134,7 @@ export function CardApply({
             router.push('/profiles')
             return
           }
-          setError('')
-          await start(async () => {
-            try {
-              const result = await startApplicationAction({ jobId, profileId, retry })
-              if (!result.ok) {
-                setError(result.error)
-                return
-              }
-              setQueuedId(result.id)
-              router.refresh()
-            } catch {
-              setError('Could not connect. Please try again.')
-            }
-          })
+          await apply(profileId)
         }}
       >
         {pending || active ? (
@@ -171,6 +176,16 @@ export function CardApply({
         <p className="inline-error" role="alert">
           {error}
         </p>
+      )}
+      {profileId && (
+        <AiConsentDialog
+          open={consentOpen}
+          onClose={() => setConsentOpen(false)}
+          onAccept={() => {
+            setConsentOpen(false)
+            void apply(profileId, true)
+          }}
+        />
       )}
     </div>
   )

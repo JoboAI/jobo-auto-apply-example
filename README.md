@@ -31,7 +31,7 @@ Fork it as the starting point for your own Jobo-powered product, or read it to s
 
 | Your app owns | Auto Apply handles |
 | --- | --- |
-| Accounts, consent, reviewed profiles and resume files | Opening the employer's application form |
+| Accounts, consent (including the one-time AI-answers acknowledgement), reviewed profiles and resume files | Opening the employer's application form |
 | Turning candidate facts into answers (rules first, one model call for the rest) | Discovering typed fields and their validation rules |
 | A durable queue and worker that survive restarts | Filling answers, moving through pages, reporting corrections |
 | Presenting progress and results | Reporting `submitted`, `failed` or `canceled` |
@@ -107,7 +107,7 @@ In a second terminal, start the worker. Without it, applications stay queued.
 npm run worker
 ```
 
-Open [localhost:3000](http://localhost:3000), sign up and verify your email, then upload a text-based PDF resume. [`tests/fixtures/ada-lovelace.pdf`](tests/fixtures/ada-lovelace.pdf) is a fictional one you can use. Review the profile, apply to a sandbox job, and follow it on the application page. Expand **API requests & responses** to see every HTTP exchange, with credentials redacted. Close the tab and come back: it keeps going.
+Open [localhost:3000](http://localhost:3000), sign up and verify your email, then upload a text-based PDF resume. [`tests/fixtures/ada-lovelace.pdf`](tests/fixtures/ada-lovelace.pdf) is a fictional one you can use. Review the profile, apply to a sandbox job (the first time, allow AI-generated answers), and follow it on the application page. Expand **API requests & responses** to see every HTTP exchange, with credentials redacted. Close the tab and come back: it keeps going.
 
 ## Configuration
 
@@ -177,6 +177,12 @@ Some answers are never left to a model:
 - **Self-identification** (gender, ethnicity, veteran, disability, LGBTQ+) is collected explicitly during onboarding and filled by fixed rules in [`lib/answers/eeo.ts`](lib/answers/eeo.ts). With no exact match, the form's own decline option is chosen.
 - **Work authorization and age** come only from what the candidate stated. A form that needs a missing fact cannot be completed automatically.
 - The date of birth and self-identification answers are never sent to the model.
+
+### The candidate's AI acknowledgement
+
+Answers are generated and submitted without the candidate reviewing each one. The Auto Apply Terms allow that only after the candidate explicitly accepts, before their first AI-generated application, that AI writes and submits their answers and can make mistakes. Without that acceptance, they must approve every application themselves. Your product collects this acknowledgement and keeps the evidence; Jobo only transmits the answers you supply.
+
+Here, the first **Apply** opens a dialog ([`components/AiConsentDialog.tsx`](components/AiConsentDialog.tsx)) with an unticked checkbox. The wording and its version live in [`lib/ai-consent.ts`](lib/ai-consent.ts). The server action ([`app/actions/applications.ts`](app/actions/applications.ts)) refuses an application until the visitor has accepted the current version, and stores when they did (`user_settings.ai_answers_consent_at` and `ai_answers_consent_version`). Changing the wording means bumping the version, which asks everyone again. Every answer sent stays visible on the application page.
 
 The profile model ([`lib/resume/profile-schema.ts`](lib/resume/profile-schema.ts)) covers personal info, links, education, experience, projects, skills, languages, work authorization (US, Canada and UK, plus other countries), equal employment info and job preferences.
 
