@@ -381,7 +381,7 @@ describe('catalog jobs', () => {
     await getCompanyProfile(LIVE, ID, fetchImpl)
     expect(calls).toHaveLength(1)
   })
-  it('reads links, people, funding and press from the company profile', async () => {
+  it('reads links, funding and ratings from the company profile', async () => {
     const OTHER = '9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d'
     const company = await getCompanyProfile(
       LIVE,
@@ -402,16 +402,6 @@ describe('catalog jobs', () => {
           primary_industry: 'Finance',
           stock_symbol: 'GLBX',
           stock_exchange: 'nasdaq',
-          leadership: [
-            {
-              name: 'Ada Park',
-              title: 'CEO',
-              linkedin_url: 'https://www.linkedin.com/in/ada',
-              avatar_url: null,
-            },
-            { name: null, title: 'CTO' },
-          ],
-          founders: ['Ada Park', 'Ada Park', 'Lin Wu'],
           funding_rounds: [
             {
               investment_type: 'series_a',
@@ -434,14 +424,6 @@ describe('catalog jobs', () => {
               url: 'https://glassdoor.example/globex',
             },
           ],
-          press_references: [
-            {
-              title: 'Globex raises $40M',
-              publisher: 'TechCrunch',
-              posted_on: '2025-06-10',
-              url: 'https://tc.example/a',
-            },
-          ],
           products: [{ name: 'Globex Pay', description: '<p>Robot wallets</p>' }],
           acquisitions: [{ acquiree_name: 'Initech' }],
           subsidiary_list: ['Globex EU'],
@@ -460,10 +442,6 @@ describe('catalog jobs', () => {
         { kind: 'linkedin', href: 'https://www.linkedin.com/company/globex' },
         { kind: 'github', href: 'https://github.com/globex' },
       ],
-      leadership: [
-        { name: 'Ada Park', title: 'CEO', linkedinUrl: 'https://www.linkedin.com/in/ada' },
-      ],
-      founders: ['Ada Park', 'Lin Wu'],
       fundingRounds: [
         { type: 'Series B', date: 'Jun 10, 2025', amount: '$40M', valuation: '$400M' },
         { type: 'Series A', date: 'Feb 1, 2023', amount: '$12M', lead: 'Seedcamp' },
@@ -474,14 +452,6 @@ describe('catalog jobs', () => {
           rating: '4.3',
           reviewCount: 212,
           url: 'https://glassdoor.example/globex',
-        },
-      ],
-      press: [
-        {
-          title: 'Globex raises $40M',
-          publisher: 'TechCrunch',
-          date: 'Jun 10, 2025',
-          url: 'https://tc.example/a',
         },
       ],
       products: [{ name: 'Globex Pay', description: 'Robot wallets' }],

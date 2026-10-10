@@ -4,7 +4,7 @@ import { valueLabel } from './job-filters'
 
 /**
  * GET /api/companies/{id}: the full company profile (links, facts, funding,
- * leadership, ratings, tech stack), validated and shaped for the job page's
+ * ratings, tech stack), validated and shaped for the job page's
  * company tab. Pure; lib/jobo/jobs-api.ts does the fetching.
  */
 
@@ -60,10 +60,6 @@ export const companySchema = z.object({
       }),
     )
     .nullish(),
-  founders: z.array(z.string()).nullish(),
-  leadership: z
-    .array(z.object({ name: str, title: str, linkedin_url: str, avatar_url: str }))
-    .nullish(),
   ratings: z
     .array(
       z.object({
@@ -73,9 +69,6 @@ export const companySchema = z.object({
         review_count: z.number().nullish(),
       }),
     )
-    .nullish(),
-  press_references: z
-    .array(z.object({ url: str, posted_on: str, title: str, publisher: str }))
     .nullish(),
   products: z.array(z.object({ name: str, description: str })).nullish(),
   acquisitions: z.array(z.object({ acquiree_name: str, title: str })).nullish(),
@@ -122,10 +115,7 @@ export interface CompanyProfile {
     valuation?: string
     lead?: string
   }[]
-  founders: string[]
-  leadership: { name: string; title?: string; linkedinUrl?: string; avatarUrl?: string }[]
   ratings: { source: string; rating: string; reviewCount?: number; url?: string }[]
-  press: { title: string; publisher?: string; date?: string; url?: string }[]
   products: { name: string; description?: string }[]
   acquisitions: string[]
   subsidiaries: string[]
@@ -228,16 +218,6 @@ export function toCompanyProfile(dto: z.infer<typeof companySchema>): CompanyPro
         valuation: text(r.post_money_valuation),
         lead: text(r.lead_investor),
       })),
-    founders: uniqueText(dto.founders ?? [], 6),
-    leadership: (dto.leadership ?? [])
-      .filter((l) => text(l.name))
-      .slice(0, 6)
-      .map((l) => ({
-        name: l.name!.trim(),
-        title: text(l.title),
-        linkedinUrl: href(l.linkedin_url),
-        avatarUrl: href(l.avatar_url),
-      })),
     ratings: (dto.ratings ?? []).flatMap((r) => {
       const rating = r.rating == null ? '' : String(r.rating).trim()
       return text(r.source) && rating
@@ -251,15 +231,6 @@ export function toCompanyProfile(dto: z.infer<typeof companySchema>): CompanyPro
           ]
         : []
     }),
-    press: (dto.press_references ?? [])
-      .filter((p) => text(p.title))
-      .slice(0, 5)
-      .map((p) => ({
-        title: p.title!.trim(),
-        publisher: text(p.publisher),
-        date: formatDate(p.posted_on),
-        url: href(p.url),
-      })),
     products: (dto.products ?? [])
       .filter((p) => text(p.name))
       .slice(0, 6)

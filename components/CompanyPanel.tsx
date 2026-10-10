@@ -23,15 +23,6 @@ function LinkIcon({ kind, size = 17 }: { kind: CompanyLinkKind; size?: number })
   return isBrand(kind) ? <BrandIcon brand={kind} size={size - 1} /> : null
 }
 
-function initials(name: string) {
-  return name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((w) => w[0]!.toUpperCase())
-    .join('')
-}
-
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="company-section">
@@ -118,44 +109,6 @@ export function CompanyPanel({
           ))}
         </div>
       )}
-      {(company.leadership.length > 0 || company.founders.length > 0) && (
-        <Section title="Leadership">
-          {company.leadership.length > 0 && (
-            <ul className="leader-list">
-              {company.leadership.map((leader) => (
-                <li key={leader.name}>
-                  {leader.avatarUrl ? (
-                    <img className="leader-avatar" src={leader.avatarUrl} alt="" loading="lazy" />
-                  ) : (
-                    <span className="leader-avatar">{initials(leader.name)}</span>
-                  )}
-                  <span className="leader-text">
-                    <strong>{leader.name}</strong>
-                    {leader.title && <small>{leader.title}</small>}
-                  </span>
-                  {leader.linkedinUrl && (
-                    <a
-                      href={leader.linkedinUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="brand-link small brand-linkedin"
-                      aria-label={`${leader.name} on LinkedIn`}
-                      title="LinkedIn"
-                    >
-                      <BrandIcon brand="linkedin" size={13} />
-                    </a>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-          {company.founders.length > 0 && (
-            <p className="company-note">
-              <strong>Founded by</strong> {company.founders.join(', ')}
-            </p>
-          )}
-        </Section>
-      )}
       {(company.fundingRounds.length > 0 || company.investors.length > 0) && (
         <Section title="Funding">
           {company.fundingRounds.length > 0 && (
@@ -232,26 +185,6 @@ export function CompanyPanel({
                 </li>
               )
             })}
-          </ul>
-        </Section>
-      )}
-      {company.press.length > 0 && (
-        <Section title="In the press">
-          <ul className="press-list">
-            {company.press.map((p) => (
-              <li key={p.title}>
-                {p.url ? (
-                  <a href={p.url} target="_blank" rel="noopener noreferrer">
-                    {p.title} <ArrowUpRight size={13} />
-                  </a>
-                ) : (
-                  <span>{p.title}</span>
-                )}
-                {(p.publisher || p.date) && (
-                  <small>{[p.publisher, p.date].filter(Boolean).join(' · ')}</small>
-                )}
-              </li>
-            ))}
           </ul>
         </Section>
       )}
